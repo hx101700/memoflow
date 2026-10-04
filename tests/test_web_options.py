@@ -14,6 +14,7 @@ from asr_runtime.application.rules import ValidationError
 from asr_runtime.utils.environment import Runtime
 from asr_runtime.web import create_server
 from asr_runtime.application.session import Session
+from asr_runtime.application.recovery import finish_session
 from tests.support import RuntimeTestCase
 
 
@@ -29,7 +30,7 @@ class OptionsFixture(RuntimeTestCase):
         self.other.mkdir()
 
     def payload_for(self, session):
-        """上传合成音频并生成默认会话配置。"""
+        """选择合成音频原文件并生成默认会话配置。"""
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as audio:
             audio.setnchannels(1)
@@ -37,9 +38,12 @@ class OptionsFixture(RuntimeTestCase):
             audio.setframerate(16000)
             audio.writeframes(b"\0" * 32000)
         content = buffer.getvalue()
-        uploaded = session.upload("audio", "synthetic.wav", io.BytesIO(content), len(content))
+        source = self.runtime.workspace / "synthetic.wav"
+        source.write_bytes(content)
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=source):
+            selection = session.select_audio("fixture-audio")
         return {
-            "auth_mode": "console", "audio_upload_id": uploaded["upload_id"],
+            "auth_mode": "console", "audio_id": selection["audio_id"],
             "diarization_enabled": True, "enhancement_mode": "none",
             "hotword_rows": [], "context": "",
             "json_directory": "default", "document_directory": "default",
@@ -52,7 +56,7 @@ class OptionsFixture(RuntimeTestCase):
 
     def select(self, session, kind, destination):
         """模拟原生目录选择并返回登记结果。"""
-        with patch("asr_runtime.utils.directory_picker.choose_directory", return_value=destination) as picker:
+        with patch("asr_runtime.utils.path_picker.choose_path", return_value=destination) as picker:
             result = session.select_directory(kind, "test-picker")
         picker.assert_called_once()
         return result
@@ -98,13 +102,10 @@ class DirectoryOptionTests(OptionsFixture):
                     initial.write_text("keep", encoding="utf-8")
                 if kind == "document":
                     self.session.output_directories[kind] = initial
-                with patch("asr_runtime.utils.directory_picker.subprocess.Popen") as start:
-                    process = start.return_value
-                    process.returncode = process.poll.return_value = 0
-                    process.communicate.return_value = (json.dumps({"path": str(self.selected)}), "")
+                with patch("asr_runtime.utils.path_picker.choose_path", return_value=self.selected) as choose:
                     result = self.session.select_directory(kind, "choose-output")
                 self.assertEqual(result["path"], str(self.selected))
-                self.assertEqual(start.call_args.args[0][5], str(self.runtime.workspace))
+                self.assertEqual(choose.call_args.args[0], self.runtime.workspace)
                 if make_file:
                     self.assertEqual(initial.read_text(encoding="utf-8"), "keep")
 
@@ -120,7 +121,7 @@ class DirectoryOptionTests(OptionsFixture):
         for kind in ("json", "document"):
             for selected in (self.runtime.skill_root, self.runtime.skill_root / "scripts"):
                 with self.subTest(kind=kind, selected=selected), \
-                     patch("asr_runtime.utils.directory_picker.choose_directory", return_value=selected), \
+                     patch("asr_runtime.utils.path_picker.choose_path", return_value=selected), \
                      patch("asr_runtime.application.session.tempfile.TemporaryFile") as probe:
                     with self.assertRaisesRegex(ValidationError, "Skill安装目录") as caught:
                         self.session.select_directory(kind, "test-picker")
@@ -142,6 +143,7 @@ class DirectoryOptionTests(OptionsFixture):
             self.assertIsNone(session.draft)
         finally:
             session.cleanup()
+            finish_session(self.runtime, session.session_id)
 
     def test_directory_approval_is_bound_to_kind_and_exact_directory(self):
         """验证目录授权绑定用途与精确位置。"""
@@ -189,20 +191,20 @@ class DirectoryOptionTests(OptionsFixture):
         started = threading.Event()
         cancellation_events = []
 
-        def blocked_picker(_initial, *, cancel_event):
+        def blocked_picker(_initial, *, mode, audio_suffixes, cancel_event):
             """等待取消事件以模拟正在选择目录的窗口。"""
             cancellation_events.append(cancel_event)
             started.set()
             self.assertTrue(cancel_event.wait(timeout=3))
             return self.selected  # 即使同时收到结果，也不能把已取消的选择登记下来。
 
-        with patch("asr_runtime.utils.directory_picker.choose_directory", side_effect=blocked_picker):
+        with patch("asr_runtime.utils.path_picker.choose_path", side_effect=blocked_picker):
             with ThreadPoolExecutor(max_workers=1) as pool:
                 selected = pool.submit(self.session.select_directory, "json", "picker-current")
                 self.assertTrue(started.wait(timeout=3))
-                self.session.cancel_directory("picker-old")
+                self.session.cancel_picker("picker-old")
                 self.assertFalse(cancellation_events[0].is_set())
-                self.session.cancel_directory("picker-current")
+                self.session.cancel_picker("picker-current")
                 self.assertTrue(selected.result(timeout=3)["cancelled"])
         self.assertEqual(self.session.output_directories, {})
         self.assertEqual(self.session.draft["id"], preview["validation_id"])
@@ -210,8 +212,8 @@ class DirectoryOptionTests(OptionsFixture):
 
     def test_cancel_arriving_before_open_prevents_window_but_not_next_request(self):
         """验证提前取消作用于对应请求且后续选择正常。"""
-        self.session.cancel_directory("early-cancel")
-        with patch("asr_runtime.utils.directory_picker.choose_directory", return_value=self.selected) as picker:
+        self.session.cancel_picker("early-cancel")
+        with patch("asr_runtime.utils.path_picker.choose_path", return_value=self.selected) as picker:
             self.assertTrue(self.session.select_directory("json", "early-cancel")["cancelled"])
             picker.assert_not_called()
             self.assertFalse(self.session.select_directory("json", "next-request")["cancelled"])
@@ -226,7 +228,7 @@ class DirectoryOptionTests(OptionsFixture):
         workbook.save(buffer)
         workbook.close()
         content = buffer.getvalue()
-        uploaded = self.session.upload("hotwords", "synthetic.xlsx", io.BytesIO(content), len(content))
+        uploaded = self.session.receive_hotwords("synthetic.xlsx", io.BytesIO(content), len(content))
         preview = self.session.validate({
             **self.payload, "language_hint": "zh", "speaker_count": 3,
             "enhancement_mode": "both", "hotword_rows": uploaded["rows"],
@@ -240,8 +242,8 @@ class DirectoryOptionTests(OptionsFixture):
         self.assertEqual(config["enhancement"]["hotwords"]["count"], 1)
         self.assertEqual(config["enhancement"]["context"], "本次会议讨论测试术语。")
         self.assertTrue(config["execution_authorized"])
-        self.assertFalse(list(self.session.upload_directory.glob("*.xlsx*")))
         self.session.cleanup()
+        finish_session(self.runtime, self.session.session_id)
         self.assertTrue(Path(config["audio"]["path"]).is_file())
         self.assertEqual(config["enhancement"]["hotwords"]["vocabulary"], {"测试术语": 4})
 
@@ -282,7 +284,7 @@ class ProtectedOptionsEndpointTests(OptionsFixture):
 
     def test_directory_route_uses_native_selection_and_ignores_browser_path(self):
         """验证目录接口使用原生选择且忽略客户端路径。"""
-        with patch("asr_runtime.utils.directory_picker.choose_directory", return_value=self.selected) as picker:
+        with patch("asr_runtime.utils.path_picker.choose_path", return_value=self.selected) as picker:
             status, _, body = self.request("POST", "/api/select-directory", {
                 "kind": "document", "picker_id": "select-document", "path": str(self.other),
             })
@@ -295,10 +297,10 @@ class ProtectedOptionsEndpointTests(OptionsFixture):
 
     def test_new_routes_require_token_and_correct_origin_before_any_action(self):
         """验证新增接口在操作前检查令牌和来源。"""
-        with patch("asr_runtime.utils.directory_picker.choose_directory") as picker, \
+        with patch("asr_runtime.utils.path_picker.choose_path") as picker, \
              patch("asr_runtime.application.session.read_api_key") as read_key:
             # 鉴权在读取正文前完成；无正文请求可稳定检查HTTP拒绝和零副作用。
-            for route in ("/api/select-directory", "/api/api-key", "/api/cancel-directory"):
+            for route in ("/api/select-audio", "/api/select-directory", "/api/api-key", "/api/cancel-picker"):
                 with self.subTest(route=route):
                     self.assertEqual(self.request("POST", route, token=False)[0], 403)
                     self.assertEqual(self.request("POST", route, origin="https://example.invalid")[0], 403)
@@ -307,7 +309,7 @@ class ProtectedOptionsEndpointTests(OptionsFixture):
 
     def test_directory_request_requires_page_request_id(self):
         """验证缺少页面请求编号时拒绝打开不可关联取消操作的窗口。"""
-        with patch("asr_runtime.utils.directory_picker.choose_directory") as picker:
+        with patch("asr_runtime.utils.path_picker.choose_path") as picker:
             status, _, _ = self.request("POST", "/api/select-directory", {"kind": "json"})
         self.assertEqual(status, 422)
         picker.assert_not_called()

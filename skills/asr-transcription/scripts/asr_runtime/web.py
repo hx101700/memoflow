@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import socket
+import sys
 import threading
 import webbrowser
 from collections.abc import Mapping
@@ -17,7 +18,8 @@ from urllib.parse import unquote, urlsplit
 from .utils.environment import Runtime, SetupError
 from .utils.hotwords import hotwords_template
 from .utils.i18n import language_scope, translate
-from .utils.session_files import read_connection, read_receipt, remove_connection, write_connection
+from .utils.session_files import read_connection, read_receipt, write_connection
+from .application.recovery import CleanupReport, finish_session, recover_workspace
 from .application.session import Session
 from .application.rules import ValidationError
 
@@ -32,6 +34,7 @@ class LocalServer(ThreadingHTTPServer):
     allow_reuse_address = False
     daemon_threads = False
     session: Session
+    recovery: CleanupReport
 
     def serve_forever(self, poll_interval: float = 0.1) -> None:
         """启动一次到期计时器，运行到会话结束或调用方停止服务。"""
@@ -56,18 +59,21 @@ class LocalServer(ThreadingHTTPServer):
         super().server_bind()
 
     def server_close(self) -> None:
-        """通知会话关闭，再释放监听并等待请求线程完成清理。"""
+        """关闭会话并等待请求结束，再回收会话的磁盘暂存。"""
         try:
             self.session.cleanup()
         finally:
             try:
-                remove_connection(self.session.runtime, self.session.session_id)
-            finally:
                 super().server_close()
+            finally:
+                report = finish_session(self.session.runtime, self.session.session_id)
+                if report["warnings"]:
+                    print(json.dumps({"event": "cleanup_warning", **report}, ensure_ascii=False), file=sys.stderr, flush=True)
 
 
 def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
     """建立绑定127.0.0.1的HTTP服务与独立配置会话。"""
+    recovery = recover_workspace(runtime)
     session = Session(runtime)
 
     class Handler(BaseHTTPRequestHandler):
@@ -180,13 +186,12 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                 if not self.allowed(control=path in ("/api/confirm", "/api/cancel")):
                     return
                 try:
-                    if path in ("/api/upload-audio", "/api/upload-hotwords"):
+                    if path == "/api/import-hotwords":
                         if self.headers.get("Transfer-Encoding") or self.headers.get_content_type() != "application/octet-stream":
                             raise ValidationError("请选择文件后传入本机。", "upload")
                         size = int(self.headers.get("Content-Length", "0"))
                         name = unquote(self.headers.get("X-File-Name", ""), errors="strict")
-                        kind = "audio" if path == "/api/upload-audio" else "hotwords"
-                        self.json(200, session.upload(kind, name, self.rfile, size))
+                        self.json(200, session.receive_hotwords(name, self.rfile, size))
                         return
                     if self.headers.get("Transfer-Encoding") or self.headers.get_content_type() != "application/json":
                         raise ValidationError("请求必须为JSON。", "request")
@@ -201,8 +206,6 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                         raise ValidationError("请求格式不正确。", "request")
                     if path == "/api/validate":
                         self.json(200, session.validate(payload))
-                    elif path == "/api/validate-hotwords":
-                        self.json(200, session.check_hotwords(payload.get("rows")))
                     elif path == "/api/preview-ready":
                         self.json(200, session.preview_ready(payload.get("validation_id")))
                     elif path == "/api/edit":
@@ -217,8 +220,10 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                         self.json(200, session.save_api_key(payload.get("value")))
                     elif path == "/api/select-directory":
                         self.json(200, session.select_directory(payload.get("kind"), payload.get("picker_id")))
-                    elif path == "/api/cancel-directory":
-                        self.json(200, session.cancel_directory(payload.get("picker_id")))
+                    elif path == "/api/select-audio":
+                        self.json(200, session.select_audio(payload.get("picker_id")))
+                    elif path == "/api/cancel-picker":
+                        self.json(200, session.cancel_picker(payload.get("picker_id")))
                     else:
                         self.json(404, {"ok": False, "error": translate("未找到此接口。")})
                 except (ValidationError, SetupError, OSError) as exc:
@@ -231,11 +236,12 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
 
     server = LocalServer(("127.0.0.1", port), Handler, bind_and_activate=False)
     server.session = session
+    server.recovery = recovery
     try:
         server.server_bind()
         server.server_activate()
-        write_connection(runtime, session.session_id, server.server_port, session.token)
-    except OSError:
+        write_connection(runtime, session.session_id, server.server_port, session.token, session.deadline)
+    except (OSError, SetupError):
         server.server_close()
         raise
     return server
@@ -254,7 +260,7 @@ def serve(runtime: Runtime, *, port: int = 0, open_browser: bool = True) -> None
                 browser_request = "failed"
         print(json.dumps({"event": "listening", "session_id": server.session.session_id,
                           "expires_at": server.session.expires_at, "url": url, "pid": os.getpid(),
-                          "browser_request": browser_request}, ensure_ascii=False), flush=True)
+                          "browser_request": browser_request, "cleanup": server.recovery}, ensure_ascii=False), flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass

@@ -2,6 +2,7 @@
 
 import html
 import math
+import os
 import re
 import string
 import tempfile
@@ -58,7 +59,8 @@ def timestamp(milliseconds: int) -> str:
 def publish_document(writer: DocumentWriter, transcript: Transcript, final_path: Path, *,
                      source_name: str, job_id: str, model: str) -> int:
     """先生成临时文件，再替换同名成品并返回文件大小。"""
-    with tempfile.NamedTemporaryFile(dir=final_path.parent, prefix=final_path.stem + ".partial-",
+    with tempfile.NamedTemporaryFile(dir=final_path.parent,
+                                      prefix=f"{final_path.stem}.partial-pid-{os.getpid()}-",
                                       suffix=final_path.suffix, delete=False) as stream:
         temporary = Path(stream.name)
     # Windows需先关闭临时句柄；每次发布只写入和清理自己创建的文件。

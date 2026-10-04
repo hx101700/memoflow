@@ -14,9 +14,9 @@ from tests.support import RuntimeTestCase
 
 class WebFixture(RuntimeTestCase):
     def setUp(self):
-        """准备可供会话上传的合成音频。"""
+        """准备供原生选择窗口读取的合成音频。"""
         super().setUp()
-        self.audio = self.runtime.path("data/audio/录音.wav")
+        self.audio = self.runtime.workspace / "recordings/录音.wav"
         self.audio.parent.mkdir(parents=True)
         with wave.open(str(self.audio), "wb") as audio:
             audio.setnchannels(2)
@@ -25,10 +25,10 @@ class WebFixture(RuntimeTestCase):
             audio.writeframes(b"\0" * 64000)
 
     def payload_for(self, session):
-        """上传合成音频并构造默认网页配置。"""
-        content = self.audio.read_bytes()
-        uploaded = session.upload("audio", self.audio.name, io.BytesIO(content), len(content))
-        return {"auth_mode": "console", "audio_upload_id": uploaded["upload_id"],
+        """模拟原生窗口选中音频，并构造默认网页配置。"""
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=self.audio):
+            selection = session.select_audio("test-audio")
+        return {"auth_mode": "console", "audio_id": selection["audio_id"],
                         "diarization_enabled": True, "enhancement_mode": "none",
                         "hotword_rows": [], "context": "", "json_directory": "default",
                         "document_directory": "default"}
@@ -36,7 +36,7 @@ class WebFixture(RuntimeTestCase):
 
 class SessionTests(WebFixture):
     def setUp(self):
-        """准备会话及已上传音频的默认配置。"""
+        """准备会话及已选择原音频的默认配置。"""
         super().setUp()
         self.session = Session(self.runtime)
         self.addCleanup(self.session.cleanup)
@@ -53,15 +53,54 @@ class SessionTests(WebFixture):
     def test_hotword_import_errors_target_the_editable_table(self):
         """验证导入前的文件错误与等待提示指向当前热词表格字段。"""
         with self.assertRaises(ValidationError) as caught:
-            self.session.upload("hotwords", "words.xlsx", io.BytesIO(), 0)
+            self.session.receive_hotwords("words.xlsx", io.BytesIO(), 0)
         self.assertEqual(caught.exception.field, "hotword_rows")
-        self.session._pending_uploads.add("hotwords")
+        self.session._receiving_hotwords = True
         try:
             with self.assertRaises(ValidationError) as caught:
                 self.session.validate(self.payload)
             self.assertEqual(caught.exception.field, "hotword_rows")
         finally:
-            self.session._pending_uploads.clear()
+            self.session._receiving_hotwords = False
+
+    def test_hotword_only_upload_reads_excel_in_memory_and_preserves_the_source(self):
+        """验证只导入热词时始终使用内存，原Excel及运行目录保持原样。"""
+        session = Session(self.runtime)
+        self.addCleanup(session.cleanup)
+        source = self.runtime.workspace / "original-hotwords.xlsx"
+        workbook = Workbook()
+        workbook.active.append(["text", "weight"])
+        for row in (["术语", 99], ["术语", 4], ["=1+1", 4]):
+            workbook.active.append(row)
+        workbook.save(source)
+        workbook.close()
+        content = source.read_bytes()
+        files_before = set(self.runtime.root.rglob("*"))
+
+        with patch.object(Path, "open", side_effect=AssertionError("热词导入只接收内存字节")), \
+                patch("asr_runtime.application.rules.build_vocabulary", side_effect=AssertionError("预览才检查词条")):
+            imported = session.receive_hotwords(source.name, io.BytesIO(content), len(content))
+
+        self.assertEqual(imported["rows"], [
+            {"text": "术语", "weight": 99}, {"text": "术语", "weight": 4},
+            {"text": "=1+1", "weight": 4, "invalid_fields": ["text"]},
+        ])
+        self.assertNotIn("issues", imported)
+        self.assertEqual(set(self.runtime.root.rglob("*")), files_before)
+        self.assertEqual(source.read_bytes(), content)
+        self.assertFalse(session._receiving_hotwords)
+
+    def test_failed_hotword_receive_or_parse_leaves_no_disk_copy(self):
+        """验证热词传输截断或文件损坏时释放登记且不创建暂存目录。"""
+        session = Session(self.runtime)
+        self.addCleanup(session.cleanup)
+        content = b"synthetic invalid Excel"
+        files_before = set(self.runtime.root.rglob("*"))
+        for declared_size in (len(content), len(content) + 1):
+            with self.subTest(declared_size=declared_size), self.assertRaises(ValidationError):
+                session.receive_hotwords("invalid.xlsx", io.BytesIO(content), declared_size)
+            self.assertEqual(set(self.runtime.root.rglob("*")), files_before)
+            self.assertFalse(session._receiving_hotwords)
 
     def test_confirm_is_idempotent_even_with_concurrent_requests(self):
         """验证并发确认共用同一配置回执。"""
@@ -83,7 +122,7 @@ class SessionTests(WebFixture):
         """验证再次校验失败使旧预览失效。"""
         previous = self.session.validate(self.payload)
         with self.assertRaises(ValidationError):
-            self.session.validate({**self.payload, "audio_upload_id": "missing"})
+            self.session.validate({**self.payload, "audio_id": "missing"})
         with self.assertRaises(ValidationError):
             self.session.preview_ready(previous["validation_id"])
         with self.assertRaises(ValidationError):
@@ -93,8 +132,7 @@ class SessionTests(WebFixture):
         """验证预览后文件变化时拒绝确认。"""
         preview = self.session.validate(self.payload)
         self.session.preview_ready(preview["validation_id"])
-        uploaded = Path(self.session.uploaded_audio(self.payload["audio_upload_id"])["path"])
-        uploaded.write_bytes(uploaded.read_bytes() + b"changed")
+        self.audio.write_bytes(self.audio.read_bytes() + b"changed")
         with self.assertRaises(ValidationError):
             self.session.confirm()
         self.assertFalse(self.runtime.path(".state/jobs").exists())
@@ -139,7 +177,7 @@ class SessionTests(WebFixture):
 
     def test_confirmation_uses_edited_rows_after_excel_is_removed(self):
         """验证词表导入后可编辑，确认阶段复用已校验词典。"""
-        path = self.runtime.path("data/热词.xlsx")
+        path = self.runtime.workspace / "热词.xlsx"
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "热词"
@@ -148,9 +186,8 @@ class SessionTests(WebFixture):
         workbook.save(path)
         workbook.close()
         content = path.read_bytes()
-        uploaded = self.session.upload("hotwords", path.name, io.BytesIO(content), len(content))
+        uploaded = self.session.receive_hotwords(path.name, io.BytesIO(content), len(content))
         path.unlink()
-        self.assertFalse(list(self.session.upload_directory.glob("*.xlsx*")))
         uploaded["rows"][0]["weight"] = "4"
         payload = {**self.payload, "enhancement_mode": "both", "hotword_rows": uploaded["rows"],
                    "context": "会议涉及测试术语"}
@@ -174,36 +211,46 @@ class SessionTests(WebFixture):
         with self.assertRaises(ValidationError):
             self.session.validate({**self.payload, "model": "other-model"})
         with self.assertRaises(ValidationError):
-            self.session.validate({**self.payload, "audio_upload_id": ["a", "b"]})
+            self.session.validate({**self.payload, "audio_id": ["a", "b"]})
 
-    def test_browser_source_is_not_read_again_after_upload(self):
-        """验证上传后预览使用本机会话副本。"""
+    def test_reselection_invalidates_preview_and_preserves_both_original_files(self):
+        """验证重选更新选择编号并使旧预览失效，两份原始录音保持不变。"""
         preview = self.session.validate(self.payload)
-        self.session.preview_ready(preview["validation_id"])
-        self.audio.write_bytes(b"source changed outside local upload")
-        receipt = self.session.confirm()
-        self.assertTrue(receipt["ok"])
-
-    def test_reselection_invalidates_preview_and_replaces_only_own_copy(self):
-        """验证重选使预览失效并替换当前会话副本。"""
-        preview = self.session.validate(self.payload)
-        old_copy = Path(self.session.uploaded_audio(self.payload["audio_upload_id"])["path"])
         content = self.audio.read_bytes()
-        self.session.upload("audio", "another.wav", io.BytesIO(content), len(content))
-        self.assertFalse(old_copy.exists())
-        self.assertTrue(self.audio.is_file())
+        another = self.runtime.workspace / "another.wav"
+        another.write_bytes(content)
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=another):
+            selection = self.session.select_audio("another-audio")
+        self.assertNotEqual(selection["audio_id"], self.payload["audio_id"])
+        self.assertEqual(selection["path"], str(another))
+        self.assertEqual(self.audio.read_bytes(), content)
+        self.assertEqual(another.read_bytes(), content)
         with self.assertRaises(ValidationError):
             self.session.preview_ready(preview["validation_id"])
         with self.assertRaises(ValidationError):
             self.session.confirm()
 
-    def test_incomplete_upload_removes_partial_copy(self):
-        """验证上传长度异常时清理临时副本。"""
-        with self.assertRaises(ValidationError):
-            self.session.upload("audio", "short.wav", io.BytesIO(b"short"), 10)
-        self.assertFalse(list(self.session.upload_directory.glob("*.part")))
+    def test_cancelled_selection_keeps_original_selection_and_preview(self):
+        """验证取消文件窗口保留原选择和已检查的配置。"""
+        preview = self.session.validate(self.payload)
+        before = self.session.selected_audio.copy()
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=None):
+            self.assertEqual(self.session.select_audio("cancel-audio"), {"ok": True, "cancelled": True})
+        self.assertEqual(self.session.selected_audio, before)
+        self.assertEqual(self.session.draft["id"], preview["validation_id"])
 
-    def test_upload_id_cannot_be_used_by_another_session(self):
-        """验证跨会话上传编号被拒绝。"""
+    def test_audio_selection_and_session_cleanup_preserve_original_without_copy(self):
+        """验证所选原音频直接进入快照，关闭会话保留文件且不生成副本。"""
+        original = self.audio.read_bytes()
+        before = set(self.runtime.root.rglob("*"))
+        preview = self.session.validate(self.payload)
+        self.assertEqual(preview["summary"]["audio"]["path"], str(self.audio))
+        self.assertEqual(self.session.draft["config"]["audio"]["path"], str(self.audio))
+        self.session.cleanup()
+        self.assertEqual(self.audio.read_bytes(), original)
+        self.assertEqual(set(self.runtime.root.rglob("*")), before)
+
+    def test_audio_id_cannot_be_used_by_another_session(self):
+        """验证跨会话音频选择编号被拒绝。"""
         with self.assertRaises(ValidationError):
             Session(self.runtime).validate(self.payload)

@@ -44,6 +44,8 @@ class PackageTests(RuntimeTestCase):
             "AGENTS.md", ".gitignore", ".env", "pyproject.toml",
             "data/audio/private.wav", "transcriptions/job/transcription.md",
             ".asr-transcription/.env", ".asr-transcription/.state/jobs/config.json",
+            ".asr-transcription/.state/sessions/private/connection.json",
+            ".asr-transcription/.runtime/tmp/python-123-private/openpyxl.tmp",
             ".asr-transcription/.venv/Lib/site-packages/private.py",
             "scripts/bailian/node_modules/private.js", "scripts/developer.py",
             "scripts/asr_runtime/debug.py", "scripts/asr_runtime/static/debug.ts",

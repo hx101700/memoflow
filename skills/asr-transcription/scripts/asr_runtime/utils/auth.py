@@ -1,5 +1,8 @@
 """读取工作区API Key并准备BL凭据环境。"""
 
+import shutil
+from pathlib import Path
+
 from .environment import Runtime, SetupError, child_environment
 
 
@@ -31,15 +34,25 @@ def read_api_key(runtime: Runtime, *, required: bool = True) -> str:
     return _validate_api_key(value)
 
 
-def write_api_key(runtime: Runtime, value: object) -> None:
-    """更新工作区私有.env中的Key，保留其他配置与注释。"""
+def write_api_key(runtime: Runtime, value: object, *, staging_directory: Path) -> None:
+    """在会话目录更新Key后替换正式.env，保留其他配置与注释。"""
     from dotenv import set_key
 
     key = _validate_api_key(value)
     path = runtime.path(".env")
     path.parent.mkdir(parents=True, exist_ok=True)
-    # 复用python-dotenv的引号编码和原子替换，保留其他配置项。
-    set_key(path, "DASHSCOPE_API_KEY", key, encoding="utf-8")
+    staging_directory.mkdir(parents=True, exist_ok=True)
+    staged = staging_directory / ".env"
+    try:
+        if path.exists():
+            shutil.copyfile(path, staged)
+        else:
+            staged.write_bytes(b"")
+        # dotenv将临时文件放在目标旁；会话目录使强制退出后的凭据副本也可归属清理。
+        set_key(staged, "DASHSCOPE_API_KEY", key, encoding="utf-8")
+        staged.replace(path)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def api_key_status(runtime: Runtime) -> dict[str, str | bool]:

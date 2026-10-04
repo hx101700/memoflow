@@ -1,6 +1,5 @@
 """验证编辑会话的预览、一次性交接、截止时间和输入保留。"""
 
-import io
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +9,7 @@ from unittest.mock import patch
 from asr_runtime.application.rules import ValidationError
 from asr_runtime.application.inputs import validate_audio
 from asr_runtime.application.session import Session, SESSION_LIFETIME_SECONDS
+from asr_runtime.application.recovery import finish_session
 from asr_runtime.application.transcription import job_status
 from asr_runtime.utils.job_files import publish_config
 from asr_runtime.utils.session_files import read_receipt
@@ -56,7 +56,8 @@ class SessionHandoffTests(WebFixture):
             preview = self.show_preview()
             restored = self.session.edit(preview["validation_id"])
             self.assertEqual(restored["configuration"], self.form)
-            self.assertEqual(restored["audio"]["upload_id"], self.form["audio_upload_id"])
+            self.assertEqual(restored["audio"]["audio_id"], self.form["audio_id"])
+            self.assertEqual(restored["audio"]["path"], str(self.audio))
             self.assertEqual(self.session.description()["phase"], "editing")
             self.assertIsNone(self.session.description()["preview"])
             self.assertFalse(self.runtime.path(".state/jobs").exists())
@@ -88,11 +89,10 @@ class SessionHandoffTests(WebFixture):
     def test_preview_rejects_mutation_until_returned_to_edit(self):
         """验证预览期间只接受返回修改，不能悄悄替换已展示内容。"""
         self.show_preview()
-        content = self.audio.read_bytes()
         actions = (lambda: self.session.validate(self.form),
                    lambda: self.session.save_api_key("synthetic-key"),
-                   lambda: self.session.upload("audio", "new.wav", io.BytesIO(content), len(content)),
-                   lambda: self.session.check_hotwords(self.form["hotword_rows"]))
+                   lambda: self.session.select_audio("preview-audio"),
+                   lambda: self.session.select_directory("json", "preview-picker"))
         for action in actions:
             with self.assertRaisesRegex(ValidationError, "返回修改"):
                 action()
@@ -127,7 +127,7 @@ class SessionHandoffTests(WebFixture):
             self.assertEqual(sum((confirmed.result(timeout=5), edited.result(timeout=5))), 1)
 
     def test_expiry_uses_fixed_deadline_and_cleans_only_unsubmitted_copy(self):
-        """验证操作不延长时限，到期收尾删除副本并保留原文件和Key。"""
+        """验证操作不延长时限，到期收尾保留原音频和Key。"""
         deadline = self.session.deadline
         self.session.save_api_key("synthetic-saved-key")
         self.now += SESSION_LIFETIME_SECONDS - 1
@@ -142,7 +142,8 @@ class SessionHandoffTests(WebFixture):
         with self.assertRaisesRegex(ValidationError, "失效"):
             self.session.confirm()
         self.session.cleanup()
-        self.assertFalse(self.session.upload_directory.exists())
+        finish_session(self.runtime, self.session.session_id)
+        self.assertTrue(self.audio.is_file())
         self.assertTrue(self.audio.exists())
         self.assertIn("synthetic-saved-key", self.runtime.path(".env").read_text(encoding="utf-8"))
         self.assertFalse(self.runtime.path(".state/jobs").exists())
@@ -193,6 +194,7 @@ class SessionHandoffTests(WebFixture):
         self.assertEqual(self.session.expire(), {"state": "handed_off", "receipt": receipt})
         self.assertEqual(self.session.cancel(), {"state": "handed_off", "receipt": receipt})
         self.session.cleanup()
+        finish_session(self.runtime, self.session.session_id)
         self.assertEqual(self.session.confirm(), receipt)
         self.assertEqual(read_receipt(self.runtime, self.session.session_id), receipt)
         config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
@@ -206,7 +208,8 @@ class SessionHandoffTests(WebFixture):
         self.assertEqual(self.session.cancel(), {"state": "cancelled", "receipt": None})
         self.assertTrue(self.session.terminal_event.is_set())
         self.session.cleanup()
-        self.assertFalse(self.session.upload_directory.exists())
+        finish_session(self.runtime, self.session.session_id)
+        self.assertTrue(self.audio.is_file())
         self.assertFalse(self.runtime.path(".state/jobs").exists())
         with self.assertRaises(ValidationError):
             self.session.confirm()
@@ -231,7 +234,7 @@ class SessionHandoffTests(WebFixture):
         replace = Path.replace
 
         def fail_config_publish(path, target):
-            """仅阻止配置的最终发布，保留已写入的合成诊断文件。"""
+            """模拟配置最终发布失败。"""
             if path.name == "config.json.tmp":
                 raise OSError("synthetic config publication failure")
             return replace(path, target)
@@ -240,13 +243,14 @@ class SessionHandoffTests(WebFixture):
             with self.assertRaises(OSError):
                 self.session.confirm()
         self.assertIsNone(read_receipt(self.runtime, self.session.session_id))
-        self.assertFalse(list(self.runtime.path(".state/jobs").glob("*/config.json")))
+        self.assertFalse(list(self.runtime.path(".state/jobs").iterdir()))
         self.assertFalse(self.session.terminal_event.is_set())
         self.assertEqual(self.session.edit(preview["validation_id"])["configuration"], self.form)
         self.now = self.session.deadline
         self.assertEqual(self.session.expire(), {"state": "expired", "receipt": None})
         self.session.cleanup()
-        self.assertFalse(self.session.upload_directory.exists())
+        finish_session(self.runtime, self.session.session_id)
+        self.assertTrue(self.audio.is_file())
 
     def test_successful_publication_can_recover_receipt_before_http_returns(self):
         """验证配置文件成为可见提交点后，代码已可恢复同一交接回执。"""
@@ -265,12 +269,13 @@ class SessionHandoffTests(WebFixture):
         self.assertEqual(recovered, [receipt])
 
     def test_cleanup_after_receipt_failure_wakes_terminal_subscriber(self):
-        """验证回执写盘失败后正常关闭唤醒事件读取者并清理未提交副本。"""
+        """验证回执写盘失败后正常关闭唤醒事件读取者并保留用户原文件。"""
         self.show_preview()
         with patch("asr_runtime.application.session.write_receipt", side_effect=OSError("synthetic write error")):
             with self.assertRaises(OSError):
                 self.session.confirm()
         self.session.cleanup()
+        finish_session(self.runtime, self.session.session_id)
         self.assertTrue(self.session.terminal_event.is_set())
         self.assertEqual(self.session.terminal_result(), {"state": "cancelled", "receipt": None})
-        self.assertFalse(self.session.upload_directory.exists())
+        self.assertTrue(self.audio.is_file())

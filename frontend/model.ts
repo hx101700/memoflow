@@ -2,16 +2,13 @@ import { UiError } from "./api";
 import type { Translate } from "./i18n";
 import type { Configuration, FormValues, HotwordRow, Limits, Model, SessionEnd, ValidationResult } from "./types";
 
-// 初始化页面阶段、上传引用、凭据读取和目录选择状态。
+// 初始化页面阶段、音频选择、词表导入与凭据状态。
 export function createModel(): Model {
   return {
     phase: "loading", revision: 0, preview: null, receipt: null, session: null,
     directories: { json: "default", document: "default" },
-    uploads: {
-      audio: { status: "empty", id: null, name: "", size: 0 },
-      hotwords: { status: "empty", id: null, name: "", size: 0 },
-    },
-    hotwords: { issues: [], warnings: [], checking: false, revision: 0, validatedRevision: 0 },
+    audio: null, hotwordImport: { status: "empty", name: "", size: 0 },
+    hotwords: { issues: [], warnings: [] },
     auth: { revision: 0, status: "idle" }, picker: null, downloadingTemplate: false, statusMessage: "",
   };
 }
@@ -19,23 +16,21 @@ export function createModel(): Model {
 // 从同一份页面状态推导事件与控件的操作权限。
 export function availability(model: Model) {
   const editable = ["editing", "validating"].includes(model.phase);
-  const uploading = Object.values(model.uploads).some(upload => upload.status === "uploading");
-  const pending = uploading || model.auth.status === "loading" || model.auth.status === "saving" || Boolean(model.picker);
+  const importing = model.hotwordImport.status === "importing";
+  const pending = importing || model.auth.status === "loading" || model.auth.status === "saving" || Boolean(model.picker);
   return {
     editable,
     validate: editable && model.phase !== "validating" && !pending,
     edit: model.phase === "preview" && Boolean(model.preview),
     copy: model.phase === "preview" && Boolean(model.preview?.ready),
+    selectAudio: editable && !model.picker,
     chooseDirectory: editable && !model.picker,
-    cancelDirectory: Boolean(model.picker) && !model.picker?.cancelling,
+    cancelPicker: Boolean(model.picker) && !model.picker?.cancelling,
     template: editable && !model.downloadingTemplate,
-    editHotwords: editable && model.uploads.hotwords.status !== "uploading",
+    editHotwords: editable && !importing,
     changeAuth: editable && model.auth.status !== "saving",
     changeLanguage: !pending && !model.downloadingTemplate && !["validating", "returning"].includes(model.phase),
-    upload: {
-      audio: editable && model.uploads.audio.status !== "uploading",
-      hotwords: editable && model.uploads.hotwords.status !== "uploading",
-    },
+    importHotwords: editable && !importing,
   };
 }
 
@@ -65,7 +60,6 @@ export function receiveEnd(model: Model, result: SessionEnd): void {
   model.statusMessage = "";
   model.auth.revision += 1;
   model.auth.status = "idle";
-  model.hotwords.checking = false;
 }
 
 // 按当前表格顺序生成传输行，保留错误原值并去除组件标识。
@@ -74,7 +68,7 @@ export function hotwordRows(form: FormValues): HotwordRow[] {
     ...(entry.invalid_fields ? { invalid_fields: [...entry.invalid_fields] } : {}) }));
 }
 
-// 根据普通表单与上传引用构建确认配置。
+// 根据普通表单与已选择音频构建确认配置。
 export function configuration(model: Model, form: FormValues, limits: Limits, t: Translate): Configuration {
   let speakerCount: number | null = null;
   if (form.diarizationEnabled && form.speaker !== "") {
@@ -85,7 +79,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
   }
   return {
     auth_mode: form.useApiKey ? "api_key" : "console",
-    audio_upload_id: model.uploads.audio.id, diarization_enabled: form.diarizationEnabled,
+    audio_id: model.audio?.audio_id ?? null, diarization_enabled: form.diarizationEnabled,
     enhancement_mode: form.hotwordsEnabled ? (form.contextEnabled ? "both" : "hotwords") : (form.contextEnabled ? "context" : "none"),
     hotword_rows: form.hotwordsEnabled ? hotwordRows(form) : [],
     context: form.contextEnabled ? form.context : "", language_hint: form.language || null,
@@ -93,17 +87,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
   };
 }
 
-// 检查必填输入并保留超长上下文的全部原文供用户修改。
-export function checkRequiredInputs(config: Configuration, limits: Limits, t: Translate): void {
-  if (!config.audio_upload_id) throw new UiError(t("missingAudio"), "audio_upload_id");
-  if (["both", "hotwords"].includes(config.enhancement_mode) && !config.hotword_rows.length) {
-    throw new UiError(t("missingHotwords"), "hotword_rows");
-  }
-  if (["both", "context"].includes(config.enhancement_mode)) {
-    const length = Array.from(config.context).length;
-    if (!config.context.trim()) throw new UiError(t("missingContext", { length, count: limits.context_chars }), "context");
-    if (length > limits.context_chars) {
-      throw new UiError(t("contextTooLong", { length, count: limits.context_chars, excess: length - limits.context_chars }), "context");
-    }
-  }
+// 检查音频选择状态并指出选择区域。
+export function checkRequiredInputs(config: Configuration, t: Translate): void {
+  if (!config.audio_id) throw new UiError(t("missingAudio"), "audio_id");
 }

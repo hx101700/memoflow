@@ -4,12 +4,13 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 from pathlib import Path
 
 from .application.bootstrap import bootstrap
 from .application.diagnostics import doctor
 from .utils.auth import api_key_status
-from .utils.environment import Runtime, SetupError
+from .utils.environment import Runtime, SetupError, python_temporary_directory
 from .utils.bailian import BailianFailure, console_status, login_console
 
 
@@ -37,28 +38,29 @@ def main(argv: list[str] | None = None) -> int:
     report: Mapping[str, object]
     try:
         runtime = Runtime(args.workspace, Path(__file__).resolve().parents[2])
-        if args.command == "serve":
-            from .web import serve
-            serve(runtime, port=args.port, open_browser=not args.no_browser)
-            return 0
-        if args.command in ("confirm", "cancel"):
-            from .web import control_session
-            report = control_session(runtime, args.session, args.command)
-        elif args.command == "transcribe":
-            from .application.transcription import transcribe
-            report = transcribe(runtime, args.job)
-        elif args.command == "export":
-            from .application.transcription import export_job
-            report = export_job(runtime, args.job)
-        elif args.command == "job-status":
-            from .application.transcription import job_status
-            report = job_status(runtime, args.job)
-        else:
-            actions: dict[str, Callable[[Runtime], Mapping[str, object]]] = {
-                "doctor": doctor, "bootstrap": bootstrap, "api-key-status": api_key_status,
-                "console-status": console_status, "login": login_console,
-            }
-            report = actions[args.command](runtime)
+        with python_temporary_directory(runtime) if args.command in ("serve", "transcribe", "export") else nullcontext():
+            if args.command == "serve":
+                from .web import serve
+                serve(runtime, port=args.port, open_browser=not args.no_browser)
+                return 0
+            if args.command in ("confirm", "cancel"):
+                from .web import control_session
+                report = control_session(runtime, args.session, args.command)
+            elif args.command == "transcribe":
+                from .application.transcription import transcribe
+                report = transcribe(runtime, args.job)
+            elif args.command == "export":
+                from .application.transcription import export_job
+                report = export_job(runtime, args.job)
+            elif args.command == "job-status":
+                from .application.transcription import job_status
+                report = job_status(runtime, args.job)
+            else:
+                actions: dict[str, Callable[[Runtime], Mapping[str, object]]] = {
+                    "doctor": doctor, "bootstrap": bootstrap, "api-key-status": api_key_status,
+                    "console-status": console_status, "login": login_console,
+                }
+                report = actions[args.command](runtime)
     except BailianFailure as exc:
         print(json.dumps({"status": "STOPPED", "error": exc.report}, ensure_ascii=False))
         return 1

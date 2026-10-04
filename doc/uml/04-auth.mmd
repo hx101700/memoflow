@@ -31,7 +31,9 @@ alt 使用指定API Key
         V-->>W: 当前输入，仅用于本次凭据请求
         W->>W: 输入非空后设置auth.status=saving<br/>暂停认证方式与Key编辑
         W->>S: POST /api/save-api-key，独立value字段
-        S->>F: auth.write_api_key()校验并更新<br/>WORKSPACE/.asr-transcription/.env
+        S->>F: auth.write_api_key()复制正式.env到会话目录<br/>python-dotenv更新副本后替换正式.env
+    Note over S,F: 正常清理暂存；强制退出残留由下次serve按会话回收
+    Note over S,F: 正式.env及BL凭据始终保留
         S-->>W: ok；Key保存完成
         W->>W: auth.status=ready
     end

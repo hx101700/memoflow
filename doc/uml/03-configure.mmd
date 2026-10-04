@@ -3,41 +3,52 @@ actor U as 用户
 participant C as Codex＋Skill
 participant W as Vue页面
 participant H as web模块
+participant G as recovery模块
 participant S as Session
+participant P as PathPicker
 participant Q as inputs／rules模块
 participant F as session_files／job_files
 Note over C,F: Python路径：skills/asr-transcription/scripts/asr_runtime/<br/>前端路径：frontend/App.vue、useTranscription.ts、api.ts、components/HotwordEditor.vue
 C->>H: serve --no-browser（具备宿主开页能力时）
+H->>G: recover_workspace(runtime)
+G->>F: 读取有效任务配置，定位文档临时文件
+G->>G: 到期且原PID已结束的会话 → finish_session
+G->>G: 回收已结束PID的状态／文档／Python临时文件
+Note over G,F: 存活、未知进程、记录异常或归属不明时保留<br/>正式凭据、已交接音频、mono.flac、JSON、成品与执行占用保留
+G-->>H: removed_items与warnings
 H->>S: 创建session_id、两小时截止时间
-H->>F: write_connection（私有端口与令牌）
-H-->>C: listening：session_id、url、expires_at
+H->>F: write_connection（端口、令牌、PID、deadline）
+H-->>C: listening：session_id、url、expires_at、cleanup
 C->>W: 打开URL一次
 Note over C,W: Codex保留进程并交给用户填写<br/>正常路径不检查浏览器DOM或截图
 W->>H: GET / 首页建立HttpOnly Cookie
 W->>H: GET /api/session；GET /api/events
 H->>S: description()
 H-->>W: 选项、会话阶段、可恢复预览
-U->>W: 添加音频、填写设置
-W->>S: 经HTTP上传音频副本
+U->>W: 选择音频文件
+W->>S: POST /api/select-audio(picker_id)
+S->>P: select(mode=audio)
+P->>U: 系统文件选择窗口
+U-->>P: 选择原录音
+P-->>S: 原始绝对路径
+S-->>W: audio_id、path、name、size_bytes
+Note over W,P: 网页只登记原文件引用，音频不复制到工作目录
+U->>W: 填写设置
 opt 导入热词Excel
-  W->>S: upload(hotwords)
-  S->>Q: import_hotwords → validate_hotword_rows
-  Q-->>W: 去表头及全空行的数组、单元格问题
-  S->>S: 清理Excel临时副本
+  W->>S: POST /api/import-hotwords（文件字节）
+  S->>Q: receive_hotwords的BytesIO → import_hotwords → read_hotwords
+  Q-->>W: 去表头及全空行的数组、保留错误原值
+  Note over S,Q: Excel仅在内存解析，返回后释放字节缓冲
 end
 U->>W: 编辑热词、删除或新增行
 Note over U,W: 显示序号按当前数组1…N；稳定组件键独立
-opt 内容改变且焦点离开整个热词区域
-  W->>S: POST /api/validate-hotwords
-  S->>Q: validate_hotword_rows → build_vocabulary
-  Q-->>W: 当前行级问题；迟到响应按输入版本丢弃
-end
+Note over W,S: 编辑和失焦不校验热词或上下文内容
 U->>W: 确认并预览
 opt API Key待保存
   W->>S: 专用save-api-key请求保存本机.env
 end
 W->>S: POST /api/validate
-S->>Q: 共享增强规则、音频探测与SHA、输出位置
+S->>Q: validate_hotword_rows、validate_context<br/>音频探测与SHA、输出位置
 Q-->>S: 已校验输入
 S-->>W: validation_id＋summary（尚无job_id）
 W->>W: 展示独立预览
@@ -57,7 +68,7 @@ C->>H: confirm --session 用户提供的ID
 H->>F: read_receipt；未交接则read_connection
 H->>S: 受保护POST /api/confirm
 critical Session状态锁
-  S->>S: 截止时间、预览版本、音频size/mtime
+  S->>S: 截止时间、预览版本、原音频size/mtime
   S->>F: write_receipt（候选session_id对应job_id）
   S->>F: publish_config（唯一job_id、授权True、SHA）
   Note over S,F: config.json最后原子发布，是交接完成标记
@@ -67,10 +78,16 @@ end
 S-->>C: 同一任务回执及认证方式
 S-->>W: SSE ended：handed_off
 W-->>U: 已交给Codex，可关闭页面
-H->>S: cleanup保留交接输入、清理其他副本
-H->>F: remove_connection
-H->>H: 正常关闭并等待请求线程
+H->>S: cleanup关闭状态并取消原生选择窗口
+H->>H: 基类server_close等待请求线程收尾
+H->>G: finish_session(runtime, session_id)
+G->>F: 读取回执及配置发布标记，保留已交接回执
+G->>F: 清理会话临时记录、候选文件、Key暂存及连接记录
+G-->>H: 未完成项以cleanup_warning报告
 Note over C,F: 相同confirm先读持久回执，服务结束也返回原任务<br/>接下来认证、转写与文档交付见图04、05
 opt 交接前取消或到期
-  Note over H,S: cancel或单次Timer触发expire，共用状态锁<br/>发送cancelled／expired，清理未提交副本并结束服务<br/>原文件和已保存Key保留；不创建job
+  Note over H,S: cancel或单次Timer触发expire，共用状态锁<br/>发送cancelled／expired，清理会话临时记录并结束服务<br/>原文件和已保存Key保留；不创建job
 end
+
+Note over C,G: CLI的serve使用python_temporary_directory<br/>第三方Python库临时文件位于私有进程目录；正常退出清理
+Note over H,G: 强制结束可能不执行finally；下次serve按PID与截止时间回收

@@ -23,7 +23,7 @@ note right of Preview
 end note
 note right of Expired
   ended事件通知页面，由用户关闭标签页
-  清理未提交副本及临时连接凭据
+  等待请求结束后由finish_session回收磁盘暂存
   不影响已交接的任务、登录或转写
 end note
 
@@ -59,4 +59,12 @@ note left of Preparing
   Session：application/session.py
   执行／交付：application/transcription.py、delivery.py
   文件协议：utils/session_files.py、job_files.py
+end note
+
+note left of Cancelled
+  正常结束：关闭Session → 等待请求线程 → finish_session
+  强制退出可能没有终态通知或finally
+  下次serve按connection中的deadline与PID回收旧会话
+  须已到期且原PID已结束；存活或未知时保留
+  application/recovery.py::recover_workspace、finish_session
 end note

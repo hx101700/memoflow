@@ -4,6 +4,7 @@ import argparse
 import json
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import Workbook
 
@@ -42,7 +43,8 @@ def main() -> None:
     url = f"http://127.0.0.1:{server.server_port}/"
     print(json.dumps({"url": url, "session_id": server.session.session_id}), flush=True)
     try:
-        server.serve_forever()
+        with patch("asr_runtime.utils.path_picker.choose_path", return_value=(fixtures / "sample.wav").resolve()):
+            server.serve_forever()
     finally:
         server.server_close()
 

@@ -3,7 +3,6 @@
 import io
 import math
 import zipfile
-from pathlib import Path
 from typing import cast
 from xml.etree.ElementTree import ParseError
 
@@ -31,11 +30,9 @@ class HotwordFileError(ValueError):
         self.details = details or []
 
 
-def _check_xlsx_archive(path: Path) -> None:
-    """检查Excel压缩包大小、展开规模和加密标记。"""
-    if path.stat().st_size > MAX_XLSX_BYTES:
-        raise HotwordFileError("热词文件超过 5 MB 文件上限。")
-    with zipfile.ZipFile(path) as archive:
+def _check_xlsx_archive(stream: io.BytesIO) -> None:
+    """检查内存中Excel压缩包的展开规模和加密标记。"""
+    with zipfile.ZipFile(stream) as archive:
         entries = archive.infolist()
         if (len(entries) > MAX_XLSX_ENTRIES
                 or sum(item.file_size for item in entries) > MAX_XLSX_UNCOMPRESSED_BYTES):
@@ -44,14 +41,16 @@ def _check_xlsx_archive(path: Path) -> None:
             raise HotwordFileError("不支持加密的热词Excel，请保存为普通.xlsx文件。")
 
 
-def read_hotwords(path: Path) -> tuple[list[HotwordRow], list[str]]:
-    """读取固定两列原始值，返回词条行及工作簿提示。"""
+def read_hotwords(content: bytes) -> tuple[list[HotwordRow], list[str]]:
+    """从Excel字节读取固定两列原始值及工作簿提示。"""
     workbook = None
     try:
-        _check_xlsx_archive(path)
+        if len(content) > MAX_XLSX_BYTES:
+            raise HotwordFileError("热词文件超过 5 MB 文件上限。")
         # 有界的小型工作簿直接读取，不依赖可伪造的dimension标签。
-        # 显式拥有句柄，XML解析失败时也立即关闭，便于Windows清理副本。
-        with path.open("rb") as stream:
+        with io.BytesIO(content) as stream:
+            _check_xlsx_archive(stream)
+            stream.seek(0)
             workbook = load_workbook(stream, read_only=False, data_only=False, keep_links=False)
         sheet: object
         if "热词" in workbook.sheetnames:

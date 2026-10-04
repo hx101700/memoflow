@@ -19,16 +19,15 @@ class FileError(ValueError):
         super().__init__(translate(message))
 
 
-def resolve_input(root: Path, value: object, allowed_suffixes: Collection[str]) -> Path:
-    """核对输入的会话归属、真实路径、文件类型和扩展名。"""
+def resolve_input(value: object, allowed_suffixes: Collection[str]) -> Path:
+    """将所选绝对文件路径规范化，并核对文件类型和扩展名。"""
     if not isinstance(value, (str, Path)) or not str(value).strip():
         raise FileError("本机文件位置无效，请重新添加文件。")
     try:
-        root = root.resolve(strict=True)
         path = Path(value)
-        if (not path.is_absolute() or not path.is_relative_to(root)
-                or path.resolve(strict=True) != path):
-            raise FileError("文件不是当前会话的本机副本，请重新添加。")
+        if not path.is_absolute():
+            raise FileError("本机文件位置无效，请重新添加文件。")
+        path = path.resolve(strict=True)
         if not path.is_file():
             raise FileError("请选择普通文件，不能选择目录。")
         if path.suffix.lower() not in allowed_suffixes:
@@ -67,7 +66,7 @@ def check_file_unchanged(path: Path, fingerprint: FileStat) -> None:
 def write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
     """写入JSON临时文件，再原子替换目标记录。"""
     stream = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=path.name + ".", suffix=".tmp", delete=False)
+                                         prefix=f"{path.name}.pid-{os.getpid()}-", suffix=".tmp", delete=False)
     temporary = Path(stream.name)
     try:
         with stream:

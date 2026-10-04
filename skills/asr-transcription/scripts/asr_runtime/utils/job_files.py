@@ -29,16 +29,24 @@ def publish_config(runtime: Runtime, config: JobConfig) -> Path:
     directory.mkdir(parents=True, exist_ok=False)
     temporary = directory / "config.json.tmp"
     destination = directory / "config.json"
-    content = (json.dumps(config, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    with temporary.open("xb") as output:
-        output.write(content)
-        output.flush()
-        os.fsync(output.fileno())
-    with (directory / "config.sha256").open("x", encoding="ascii") as checksum:
-        checksum.write(hashlib.sha256(content).hexdigest() + "\n")
-        checksum.flush()
-        os.fsync(checksum.fileno())
-    temporary.replace(destination)
+    checksum_path = directory / "config.sha256"
+    try:
+        content = (json.dumps(config, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        with temporary.open("xb") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        with checksum_path.open("x", encoding="ascii") as checksum:
+            checksum.write(hashlib.sha256(content).hexdigest() + "\n")
+            checksum.flush()
+            os.fsync(checksum.fileno())
+        temporary.replace(destination)
+    except BaseException:
+        if not destination.exists():
+            temporary.unlink(missing_ok=True)
+            checksum_path.unlink(missing_ok=True)
+            directory.rmdir()
+        raise
     return destination
 
 
@@ -142,12 +150,18 @@ def prepare_result(runtime: Runtime, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=False)
 
 
-def prepare_documents(runtime: Runtime, config: JobConfig) -> Path:
-    """核对并创建或复用已确认的文档保存目录。"""
+def document_directory(config: JobConfig) -> Path:
+    """核对已确认的文档保存路径并返回任务专属目录。"""
     base = Path(config["document_directory"])
     if (not base.is_absolute() or base.name != "documents"
             or base.parent.name != config["job_id"] or base.resolve() != base):
         raise SetupError("文档保存位置发生变化或不是已确认的任务目录。")
+    return base
+
+
+def prepare_documents(runtime: Runtime, config: JobConfig) -> Path:
+    """核对并创建或复用已确认的文档保存目录。"""
+    base = document_directory(config)
     runtime.check_output_path(base)
     base.mkdir(parents=True, exist_ok=True)
     return base

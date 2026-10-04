@@ -35,7 +35,7 @@ a { color: var(--el-color-primary); }
 .topbar-inner, .action-inner { max-width: 1224px; margin: auto; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .topbar-inner { min-height: 76px; padding: 14px 24px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--el-text-color-primary); text-decoration: none; font-size: 16px; font-weight: 600; }
-.brand-mark, .section-icon, .upload-icon { color: var(--el-text-color-secondary); }
+.brand-mark, .section-icon { color: var(--el-text-color-secondary); }
 .appearance-controls { display: flex; gap: 10px; }
 .language-select { width: 126px; }
 .theme-select { width: 140px; }
@@ -56,10 +56,9 @@ h1 { font-size: clamp(26px, 3vw, 30px); font-weight: 600; }
 .section-description, .helper, .subtle, .toggle-row p { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; }
 .section-description { margin-bottom: 16px; }
 .helper { margin-top: 8px; }
-.upload-icon { margin-bottom: 12px; }
-.upload-title { margin-bottom: 6px; font-weight: 600; }
-.upload-status { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
-.upload-status .el-tag { flex-shrink: 0; }
+.audio-selection { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.audio-selection .el-tag { flex-shrink: 0; }
+.audio-path { overflow-wrap: anywhere; }
 .format-help { margin-top: 16px; }
 .toggle-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .toggle-row label { display: inline-flex; align-items: center; gap: 8px; line-height: 32px; cursor: pointer; }

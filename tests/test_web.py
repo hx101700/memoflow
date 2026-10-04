@@ -121,16 +121,23 @@ class WebServerTests(WebFixture):
                 self.assertEqual(self.request("POST", endpoint, {}, token=False, headers={"Cookie": cookie})[0], 403)
         self.assertFalse(self.runtime.path(".state/jobs").exists())
 
-    def test_direct_upload_and_template(self):
-        """验证直接上传与热词模板下载。"""
-        status, _, body = self.request("POST", "/api/upload-audio", body=self.audio.read_bytes(),
-                                      headers={"Content-Type": "application/octet-stream",
-                                               "X-File-Name": quote(self.audio.name)})
+    def test_native_audio_selection_and_hotword_template(self):
+        """验证音频使用原生选择的原文件，热词模板仍可直接下载。"""
+        original = self.audio.read_bytes()
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=self.audio) as picker:
+            status, _, body = self.request("POST", "/api/select-audio", {
+                "picker_id": "choose-audio", "path": str(self.runtime.workspace / "ignored.wav"),
+            })
         self.assertEqual(status, 200)
-        uploaded = json.loads(body)
-        self.assertEqual(uploaded["name"], self.audio.name)
+        selected = json.loads(body)
+        self.assertEqual(selected["name"], self.audio.name)
+        self.assertEqual(selected["path"], str(self.audio))
+        self.assertFalse(selected["cancelled"])
+        picker.assert_called_once()
         self.assertEqual(self.request("POST", "/api/validate",
-                                      {**self.payload, "audio_upload_id": uploaded["upload_id"]})[0], 200)
+                                      {**self.payload, "audio_id": selected["audio_id"]})[0], 200)
+        self.assertEqual(self.audio.read_bytes(), original)
+        self.assertEqual(self.request("POST", "/api/upload-audio", {})[0], 404)
         self.assertEqual(self.request("GET", "/api/files?directory=data/audio")[0], 404)
         status, _, body = self.request("GET", "/api/hotwords-template")
         self.assertEqual(status, 200)
@@ -138,14 +145,14 @@ class WebServerTests(WebFixture):
         self.assertEqual(workbook["热词"]["A1"].value, "text")
         workbook.close()
 
-    def test_upload_filename_cannot_supply_a_path(self):
-        """验证路径形式的上传文件名被拒绝。"""
-        status, _, body = self.request("POST", "/api/upload-audio",
+    def test_hotword_filename_cannot_supply_a_path(self):
+        """验证路径形式的热词文件名被拒绝。"""
+        status, _, body = self.request("POST", "/api/import-hotwords",
                                    headers={"Content-Type": "application/octet-stream",
-                                            "X-File-Name": quote("../escape.wav")})
+                                            "X-File-Name": quote("../escape.xlsx")})
         self.assertEqual(status, 422)
         self.assertIn("所选文件名或格式不符合要求", json.loads(body)["error"])
-        self.assertFalse(self.runtime.path("escape.wav").exists())
+        self.assertFalse(self.runtime.path("escape.xlsx").exists())
 
     def test_missing_api_key_returns_empty_editable_value(self):
         """验证未配置Key时页面可直接填写凭据。"""
@@ -210,7 +217,7 @@ class WebServerTests(WebFixture):
         status, _, body = self.request("GET", "/api/session", token=False, headers=english)
         self.assertEqual(status, 403)
         self.assertIn("Reopen the local page from Codex", json.loads(body)["error"])
-        invalid = {**self.payload, "audio_upload_id": "missing"}
+        invalid = {**self.payload, "audio_id": "missing"}
         status, _, body = self.request("POST", "/api/validate", invalid, headers=english)
         self.assertEqual(status, 422)
         self.assertEqual(json.loads(body)["error"], "Choose an audio file.")
@@ -221,7 +228,7 @@ class WebServerTests(WebFixture):
 
     def test_concurrent_http_languages_are_independent(self) -> None:
         """验证并发HTTP请求使用各自的提示语言。"""
-        invalid = {**self.payload, "audio_upload_id": "missing"}
+        invalid = {**self.payload, "audio_id": "missing"}
 
         def error_in(language: str) -> str:
             """读取指定页面语言下的字段错误。"""
@@ -268,7 +275,7 @@ class WebServerTests(WebFixture):
         content = io.BytesIO()
         workbook.save(content)
         workbook.close()
-        status, _, body = self.request("POST", "/api/upload-hotwords", body=content.getvalue(),
+        status, _, body = self.request("POST", "/api/import-hotwords", body=content.getvalue(),
                               headers={"Content-Type": "application/octet-stream",
                                        "X-File-Name": quote("热词.xlsx"), "Accept-Language": "en"})
         self.assertEqual(status, 422)
@@ -280,36 +287,45 @@ class WebServerTests(WebFixture):
         })
 
     def test_hotword_import_returns_invalid_rows_for_inline_correction(self):
-        """验证HTTP导入保留错误行，修改后的表格使用相同规则通过检查。"""
+        """验证HTTP导入只提供原始行，整单预览才报告和复查词条问题。"""
         workbook = Workbook()
         for row in (["text", "weight"], ["术语", 4], ["另一个词", 99], ["术语", 5]):
             workbook.active.append(row)
         content = io.BytesIO()
         workbook.save(content)
         workbook.close()
-        status, _, body = self.request("POST", "/api/upload-hotwords", body=content.getvalue(),
-                                      headers={"Content-Type": "application/octet-stream", "X-File-Name": "words.xlsx"})
+        files_before = set(self.runtime.root.rglob("*"))
+        with patch("asr_runtime.application.rules.build_vocabulary", side_effect=AssertionError("导入只读取原始行")):
+            status, _, body = self.request("POST", "/api/import-hotwords", body=content.getvalue(),
+                                          headers={"Content-Type": "application/octet-stream", "X-File-Name": "words.xlsx"})
         self.assertEqual(status, 200)
         imported = json.loads(body)
-        self.assertEqual([(item["row"], item["field"]) for item in imported["issues"]],
-                         [(1, "text"), (2, "weight"), (3, "text")])
+        self.assertNotIn("issues", imported)
         self.assertEqual(imported["rows"][1]["weight"], 99)
-        self.assertFalse(list(self.server.session.upload_directory.glob("*.xlsx*")))
+        self.assertEqual(set(self.runtime.root.rglob("*")), files_before)
+        payload = {**self.payload, "enhancement_mode": "hotwords", "hotword_rows": imported["rows"]}
+        status, _, body = self.request("POST", "/api/validate", payload)
+        self.assertEqual(status, 422)
+        error = json.loads(body)
+        self.assertEqual(error["field"], "hotword_rows")
+        self.assertEqual([(item["row"], item["field"]) for item in error["details"]],
+                         [(1, "text"), (2, "weight"), (3, "text")])
         imported["rows"][1]["weight"] = "4"
         imported["rows"].pop(2)
-        status, _, body = self.request("POST", "/api/validate-hotwords", {"rows": imported["rows"]})
+        status, _, body = self.request("POST", "/api/validate", payload)
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["issues"], [])
-        self.assertEqual(json.loads(body)["count"], 2)
+        self.assertEqual(json.loads(body)["summary"]["enhancement"]["count"], 2)
+        self.assertEqual(self.request("POST", "/api/validate-hotwords", {"rows": imported["rows"]})[0], 404)
 
     def test_hotword_request_accepts_model_limit_beyond_old_body_limit(self):
         """验证2000条词表可通过HTTP检查，避免被旧32KiB请求上限误拒绝。"""
         rows = [{"text": f"术语{number}", "weight": "4"} for number in range(2000)]
         self.assertGreater(len(json.dumps({"rows": rows}).encode()), 32 * 1024)
-        status, _, body = self.request("POST", "/api/validate-hotwords", {"rows": rows})
+        status, _, body = self.request("POST", "/api/validate", {
+            **self.payload, "enhancement_mode": "hotwords", "hotword_rows": rows,
+        })
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["count"], 2000)
-        self.assertEqual(json.loads(body)["issues"], [])
+        self.assertEqual(json.loads(body)["summary"]["enhancement"]["count"], 2000)
 
     def test_return_to_edit_invalidates_preview_without_creating_a_job(self):
         """验证返回修改使旧预览失效，重复填写始终没有执行任务。"""

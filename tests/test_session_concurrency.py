@@ -1,15 +1,15 @@
-"""用事件控制文件读取和目录等待，验证取消与上传的真实并发边界。"""
+"""用事件控制热词接收和路径选择，验证会话的真实并发边界。"""
 
 import io
 import threading
 import wave
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import patch
 
 from openpyxl import Workbook
 
 from asr_runtime.application.session import Session
+from asr_runtime.application.recovery import finish_session
 from asr_runtime.application.rules import ValidationError
 from asr_runtime.application.inputs import validate_audio
 from tests.support import RuntimeTestCase
@@ -32,112 +32,109 @@ class PausedInput(io.BytesIO):
 
 class SessionConcurrencyTests(RuntimeTestCase):
     def setUp(self):
-        """准备会话、合成音频及初始配置。"""
+        """准备已选择的原音频和仅在内存中的热词样本。"""
         super().setUp()
         self.session = Session(self.runtime)
-        content = io.BytesIO()
-        with wave.open(content, "wb") as audio:
+        self.audio_path = self.runtime.workspace / "original.wav"
+        with wave.open(str(self.audio_path), "wb") as audio:
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(16000)
             audio.writeframes(b"\0" * 32000)
-        self.audio = content.getvalue()
-        uploaded = self.session.upload("audio", "original.wav", io.BytesIO(self.audio), len(self.audio))
+        self.audio = self.audio_path.read_bytes()
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=self.audio_path):
+            selected = self.session.select_audio("fixture-audio")
         self.payload = {
-            "auth_mode": "console", "audio_upload_id": uploaded["upload_id"],
+            "auth_mode": "console", "audio_id": selected["audio_id"],
             "diarization_enabled": True, "enhancement_mode": "none",
             "hotword_rows": [], "context": "",
             "json_directory": "default", "document_directory": "default",
         }
-
-    def tearDown(self):
-        """清理会话上传副本和测试临时项目。"""
-        self.session.cleanup()
-        super().tearDown()
-
-    def test_cancel_directory_completes_while_upload_read_is_paused(self):
-        """验证上传读取暂停时仍能取消目录窗口。"""
-        source = PausedInput(self.audio)
-        picker_started = threading.Event()
-        picker_events = []
-
-        def wait_for_cancel(_initial, *, cancel_event):
-            """等待目录取消事件并返回取消结果。"""
-            picker_events.append(cancel_event)
-            picker_started.set()
-            if not cancel_event.wait(timeout=5):
-                raise AssertionError("目录选择未收到取消")
-            return None
-
-        with patch("asr_runtime.utils.directory_picker.choose_directory", side_effect=wait_for_cancel), \
-             ThreadPoolExecutor(max_workers=3) as pool:
-            selecting = pool.submit(self.session.select_directory, "json", "during-upload")
-            try:
-                self.assertTrue(picker_started.wait(timeout=2))
-                uploading = pool.submit(self.session.upload, "audio", "replacement.wav", source, len(self.audio))
-                self.assertTrue(source.read_started.wait(timeout=2))
-                cancelling = pool.submit(self.session.cancel_directory, "during-upload")
-                self.assertTrue(cancelling.result(timeout=1)["ok"])
-                self.assertTrue(picker_events[0].is_set())
-                self.assertTrue(selecting.result(timeout=1)["cancelled"])
-                self.assertFalse(source.release.is_set())
-                self.assertFalse(uploading.done())
-            finally:
-                source.release.set()
-                self.session.cancel_directory("during-upload")
-            self.assertTrue(uploading.result(timeout=2)["ok"])
-
-    def test_same_kind_concurrent_upload_is_rejected_without_reading_it(self):
-        """验证同类并发上传在读入前被拒绝。"""
-        source = PausedInput(self.audio)
-        other = io.BytesIO(self.audio)
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            uploading = pool.submit(self.session.upload, "audio", "replacement.wav", source, len(self.audio))
-            try:
-                self.assertTrue(source.read_started.wait(timeout=2))
-                duplicate = pool.submit(self.session.upload, "audio", "duplicate.wav", other, len(self.audio))
-                with self.assertRaisesRegex(ValidationError, "正在添加"):
-                    duplicate.result(timeout=1)
-                self.assertEqual(other.tell(), 0)
-            finally:
-                source.release.set()
-            self.assertTrue(uploading.result(timeout=2)["ok"])
-        self.assertEqual(len(self.session.uploads), 1)
-        self.assertFalse(list(self.session.upload_directory.glob("*.part")))
-
-    def test_audio_and_hotwords_can_receive_independently(self):
-        """验证音频和热词可以独立接收。"""
-        audio = PausedInput(self.audio)
         workbook = Workbook()
         workbook.active.append(["text", "weight"])
         workbook.active.append(["fixture", 4])
         content = io.BytesIO()
         workbook.save(content)
         workbook.close()
-        hotwords = PausedInput(content.getvalue())
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            audio_upload = pool.submit(self.session.upload, "audio", "replacement.wav", audio, len(self.audio))
-            try:
-                self.assertTrue(audio.read_started.wait(timeout=2))
-                words_upload = pool.submit(self.session.upload, "hotwords", "words.xlsx", hotwords, len(hotwords.getvalue()))
-                self.assertTrue(hotwords.read_started.wait(timeout=2))
-                # 音频还在接收时，词表已可独立导入供用户编辑。
-                hotwords.release.set()
-                words_result = words_upload.result(timeout=1)
-                self.assertEqual(words_result["rows"], [{"text": "fixture", "weight": 4}])
-                self.assertFalse(audio_upload.done())
-            finally:
-                audio.release.set()
-                hotwords.release.set()
-            self.assertTrue(audio_upload.result(timeout=2)["ok"])
-        self.assertEqual([entry["name"] for entry in self.session.uploads.values()], ["replacement.wav"])
+        self.hotwords = content.getvalue()
 
-    def test_pending_upload_rejects_validation_and_confirmation(self):
-        """验证上传进行中拒绝预览和确认。"""
-        preview = self.session.validate(self.payload)
-        source = PausedInput(self.audio)
+    def tearDown(self):
+        """关闭会话并清理测试记录，验证原音频保持完整。"""
+        self.session.cleanup()
+        finish_session(self.runtime, self.session.session_id)
+        self.assertEqual(self.audio_path.read_bytes(), self.audio)
+        super().tearDown()
+
+    def test_cancel_picker_completes_while_hotword_receive_is_paused(self):
+        """验证热词接收暂停时仍能取消原生窗口。"""
+        source = PausedInput(self.hotwords)
+        picker_started = threading.Event()
+        picker_events = []
+
+        def wait_for_cancel(_initial, *, mode, audio_suffixes, cancel_event):
+            """等待取消事件并结束模拟目录窗口。"""
+            picker_events.append(cancel_event)
+            picker_started.set()
+            if not cancel_event.wait(timeout=5):
+                raise AssertionError("目录选择未收到取消")
+            return None
+
+        with patch("asr_runtime.utils.path_picker.choose_path", side_effect=wait_for_cancel), \
+                ThreadPoolExecutor(max_workers=3) as pool:
+            selecting = pool.submit(self.session.select_directory, "json", "during-import")
+            try:
+                self.assertTrue(picker_started.wait(timeout=2))
+                receiving = pool.submit(self.session.receive_hotwords, "words.xlsx", source, len(self.hotwords))
+                self.assertTrue(source.read_started.wait(timeout=2))
+                cancelling = pool.submit(self.session.cancel_picker, "during-import")
+                self.assertTrue(cancelling.result(timeout=1)["ok"])
+                self.assertTrue(picker_events[0].is_set())
+                self.assertTrue(selecting.result(timeout=1)["cancelled"])
+                self.assertFalse(receiving.done())
+            finally:
+                source.release.set()
+                self.session.cancel_picker("during-import")
+            self.assertTrue(receiving.result(timeout=2)["ok"])
+
+    def test_concurrent_hotword_import_is_rejected_before_reading(self):
+        """验证同一会话只接收一份热词，后来的请求保持未读取。"""
+        source = PausedInput(self.hotwords)
+        other = io.BytesIO(self.hotwords)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            receiving = pool.submit(self.session.receive_hotwords, "words.xlsx", source, len(self.hotwords))
+            try:
+                self.assertTrue(source.read_started.wait(timeout=2))
+                duplicate = pool.submit(self.session.receive_hotwords, "duplicate.xlsx", other, len(self.hotwords))
+                with self.assertRaisesRegex(ValidationError, "正在添加"):
+                    duplicate.result(timeout=1)
+                self.assertEqual(other.tell(), 0)
+            finally:
+                source.release.set()
+            self.assertTrue(receiving.result(timeout=2)["ok"])
+        self.assertFalse(self.session._receiving_hotwords)
+
+    def test_audio_selection_can_change_while_hotwords_receive(self):
+        """验证原音频选择与热词内存接收相互独立。"""
+        source = PausedInput(self.hotwords)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            receiving = pool.submit(self.session.receive_hotwords, "words.xlsx", source, len(self.hotwords))
+            try:
+                self.assertTrue(source.read_started.wait(timeout=2))
+                with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=self.audio_path):
+                    selected = self.session.select_audio("reselect-audio")
+                self.assertNotEqual(selected["audio_id"], self.payload["audio_id"])
+                self.assertEqual(selected["path"], str(self.audio_path))
+                self.assertFalse(receiving.done())
+            finally:
+                source.release.set()
+            self.assertEqual(receiving.result(timeout=2)["rows"], [{"text": "fixture", "weight": 4}])
+
+    def test_pending_hotwords_block_preview_and_confirmation(self):
+        """验证热词接收完成前拒绝预览和交接。"""
+        self.session.validate(self.payload)
+        source = PausedInput(self.hotwords)
         with ThreadPoolExecutor(max_workers=3) as pool:
-            uploading = pool.submit(self.session.upload, "audio", "replacement.wav", source, len(self.audio))
+            receiving = pool.submit(self.session.receive_hotwords, "words.xlsx", source, len(self.hotwords))
             try:
                 self.assertTrue(source.read_started.wait(timeout=2))
                 validating = pool.submit(self.session.validate, self.payload)
@@ -150,75 +147,47 @@ class SessionConcurrencyTests(RuntimeTestCase):
                 self.assertFalse(self.runtime.path(".state/jobs").exists())
             finally:
                 source.release.set()
-            uploading.result(timeout=2)
+            receiving.result(timeout=2)
 
-    def test_cleanup_returns_before_late_upload_and_prevents_publication(self):
-        """验证会话关闭及时返回并清理迟到上传。"""
-        source = PausedInput(self.audio)
+    def test_close_rejects_late_hotword_result_without_writing_files(self):
+        """验证关闭会话后拒绝迟到热词结果，全程没有输入副本落盘。"""
+        source = PausedInput(self.hotwords)
+        files_before = set(self.runtime.root.rglob("*"))
         with ThreadPoolExecutor(max_workers=2) as pool:
-            uploading = pool.submit(self.session.upload, "audio", "late.wav", source, len(self.audio))
+            receiving = pool.submit(self.session.receive_hotwords, "words.xlsx", source, len(self.hotwords))
             try:
                 self.assertTrue(source.read_started.wait(timeout=2))
-                self.assertEqual(len(list(self.session.upload_directory.glob("*.part"))), 1)
-                closing = pool.submit(self.session.cleanup)
-                closing.result(timeout=1)
-                self.assertFalse(uploading.done())
-                # 活动上传拥有.part的清理责任，关闭线程不删除另一个线程打开的文件。
-                self.assertEqual(len(list(self.session.upload_directory.glob("*.part"))), 1)
+                self.assertEqual(set(self.runtime.root.rglob("*")), files_before)
+                pool.submit(self.session.cleanup).result(timeout=1)
+                self.assertFalse(receiving.done())
             finally:
                 source.release.set()
             with self.assertRaisesRegex(ValidationError, "会话已关闭"):
-                uploading.result(timeout=2)
-        self.assertFalse(self.session.upload_directory.exists())
-        self.assertFalse(any(record["name"] == "late.wav" for record in self.session.uploads.values()))
+                receiving.result(timeout=2)
+        self.assertEqual(set(self.runtime.root.rglob("*")), files_before)
+        self.assertFalse(self.session._receiving_hotwords)
         with self.assertRaisesRegex(ValidationError, "会话已关闭"):
             self.session.validate(self.payload)
 
-    def test_failed_replacement_preserves_old_file_but_not_old_preview(self):
-        """验证替换失败保留旧文件但使旧预览失效。"""
+    def test_failed_import_keeps_audio_and_invalidates_previous_preview(self):
+        """验证热词文件解析失败保留音频选择并使旧预览失效。"""
         preview = self.session.validate(self.payload)
-        original = self.session.uploaded_audio(self.payload["audio_upload_id"]).copy()
-        with self.assertRaisesRegex(ValidationError, "不完整"):
-            self.session.upload("audio", "incomplete.wav", io.BytesIO(b"short"), 100)
-        self.assertEqual(self.session.uploaded_audio(self.payload["audio_upload_id"]), original)
-        self.assertEqual(Path(original["path"]).read_bytes(), self.audio)
-        self.assertEqual(list(self.session.upload_directory.iterdir()), [Path(original["path"])])
-        self.assertIsNone(self.session.draft)
+        selected = self.session.selected_audio.copy()
         with self.assertRaises(ValidationError):
-            self.session.confirm()
+            self.session.receive_hotwords("broken.xlsx", io.BytesIO(b"broken"), 6)
+        self.assertEqual(self.session.selected_audio, selected)
+        self.assertIsNone(self.session.draft)
+        self.assertFalse(self.session._receiving_hotwords)
         self.assertNotEqual(self.session.validate(self.payload)["validation_id"], preview["validation_id"])
 
-    def test_publish_failure_removes_new_destination_and_keeps_original(self):
-        """验证发布失败删除新文件并保留原副本。"""
-        preview = self.session.validate(self.payload)
-        original = Path(self.session.uploaded_audio(self.payload["audio_upload_id"])["path"])
-        unlink = Path.unlink
-
-        def refuse_original_delete(path, *args, **kwargs):
-            """阻止删除旧副本以模拟发布失败。"""
-            if path == original:
-                raise PermissionError("synthetic file is in use")
-            return unlink(path, *args, **kwargs)
-
-        with patch.object(Path, "unlink", refuse_original_delete):
-            with self.assertRaises(PermissionError):
-                self.session.upload("audio", "replacement.wav", io.BytesIO(self.audio), len(self.audio))
-        self.assertEqual(list(self.session.upload_directory.iterdir()), [original])
-        self.assertEqual(original.read_bytes(), self.audio)
-        self.assertIsNone(self.session.draft)
-        with self.assertRaises(ValidationError):
-            self.session.confirm()
-        # 最终发布失败也必须撤销“正在添加”，让用户可以重新检查旧文件。
-        self.assertTrue(self.session.validate(self.payload)["ok"])
-
-    def test_cancel_directory_does_not_wait_for_audio_validation(self):
-        """验证音频校验期间目录取消及时完成。"""
+    def test_cancel_picker_does_not_wait_for_audio_validation(self):
+        """验证原音频校验期间仍可及时取消目录窗口。"""
         picker_started = threading.Event()
         validation_started = threading.Event()
         release_validation = threading.Event()
         picker_events = []
 
-        def wait_for_cancel(_initial, *, cancel_event):
+        def wait_for_cancel(_initial, *, mode, audio_suffixes, cancel_event):
             """等待取消信号以模拟正在打开的目录窗口。"""
             picker_events.append(cancel_event)
             picker_started.set()
@@ -233,20 +202,20 @@ class SessionConcurrencyTests(RuntimeTestCase):
                 raise AssertionError("测试未释放音频校验")
             return validate_audio(*args)
 
-        with patch("asr_runtime.utils.directory_picker.choose_directory", side_effect=wait_for_cancel), \
-             patch("asr_runtime.application.session.validate_audio", side_effect=paused_validation), \
-             ThreadPoolExecutor(max_workers=3) as pool:
+        with patch("asr_runtime.utils.path_picker.choose_path", side_effect=wait_for_cancel), \
+                patch("asr_runtime.application.session.validate_audio", side_effect=paused_validation), \
+                ThreadPoolExecutor(max_workers=3) as pool:
             selecting = pool.submit(self.session.select_directory, "json", "during-validation")
             try:
                 self.assertTrue(picker_started.wait(timeout=2))
                 validating = pool.submit(self.session.validate, self.payload)
                 self.assertTrue(validation_started.wait(timeout=2))
-                cancelling = pool.submit(self.session.cancel_directory, "during-validation")
+                cancelling = pool.submit(self.session.cancel_picker, "during-validation")
                 self.assertTrue(cancelling.result(timeout=1)["ok"])
                 self.assertTrue(picker_events[0].is_set())
                 self.assertTrue(selecting.result(timeout=1)["cancelled"])
                 self.assertFalse(validating.done())
             finally:
                 release_validation.set()
-                self.session.cancel_directory("during-validation")
-            self.assertTrue(validating.result(timeout=2)["ok"])
+                self.session.cancel_picker("during-validation")
+            self.assertTrue(validating.result(timeout=5)["ok"])

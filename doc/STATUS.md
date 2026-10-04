@@ -6,35 +6,29 @@
 
 MemoFlow 第一阶段由 asr-transcription Skill 完成单录音网页配置、BL 识别及 JSON、Word、Excel、Markdown 交付。个性化纪要与反馈学习尚未实现。
 
-新识别使用 qwen-audio-3.1-asr-flash-filetrans，北京地域，固定 BL 2.1.0。入口为 skills/asr-transcription/scripts/asr.py；Python 保持入口 → application → utils，前端采用 Vue、TypeScript 与 Element Plus。开发分支 dev，版本 0.1.0；master 不随本次修改推进。
+固定模型 qwen-audio-3.1-asr-flash-filetrans，北京地域，BL 2.1.0。入口为 skills/asr-transcription/scripts/asr.py；Python 保持入口 → application → utils，前端采用 Vue、TypeScript 与 Element Plus。开发分支 dev，版本 0.1.0，master 保持 6c83711。
 
-## 当前工作
+## 当前行为
 
-已完成“编辑会话一次性交接转写任务”：
+- 网页分填写、独立预览两步。音频通过系统文件窗口选择并直接读取原路径，Excel 在内存解析，两者均不产生输入副本。Excel 导入只读取并填表；热词和上下文内容仅在点击“确认并预览”后由后端校验。错误就地提示，原值保留。编辑、导入成功、失焦和语言切换不触发内容检查。
+- 只有用户在对话中提供预览页会话编号，才交接唯一不可变任务；裸“继续”不能代选会话。必要登录完成后继续同一任务，等待交付，不再询问业务授权。
+- 编辑会话有效两小时。正常结束先关闭会话和目录窗口，等待 HTTP 请求线程，再清理磁盘暂存。
+- 下次在同一工作目录启动 serve 时，回收已到期且原进程确定结束的会话。PID 临时文件、Python 库暂存目录按已结束进程回收。正式凭据、已交接输入、mono.flac、JSON、成品及执行占用保留。
+- Key 继续由 dotenv 更新，工作副本位于会话目录。无法确认归属或进程状态的文件保留并提示；不扫描系统 Temp，也不自动重传识别。
+- ZIP 按固定清单交付运行代码、前端产物、参考资料和仓库最新双语 README，不包含开发 doc、UML、测试、环境或用户数据。
 
-- 两步页面：填写、独立预览；校验或返回修改均不生成任务编号。
-- 用户在预览点击“复制给 Codex”，发送含会话编号的确认消息；代码核对就绪版本后交接唯一不可变任务。
-- 编辑会话从打开起有效两小时，交接、取消或到期通知终态并退出服务；任务执行与登录不受编辑期限影响。
-- 热词表按当前数组显示连续序号，删除后重排；导入、改动后区域失焦与整单校验共用规则。
-- transcribe 使用交接授权，删除额外上传参数与旧撤回任务协议。认证完成继续同一任务，等待进程直到交付。
-- ZIP 从仓库根纳入最新双语 README，继续排除开发资料、环境和用户数据。
+## 相关代码与资料
 
-用户进一步明确：裸“继续”不能代替会话确认；Skill 必须取得当前用户消息所含的会话编号，不能从启动回执或历史代选。已经交接后的登录“已完成”继续同一任务即可。
+会话及回收：application/session.py、application/recovery.py、web.py、utils/session_files.py。写入归属：utils/files.py、documents.py、auth.py、environment.py、job_files.py。前端由 useTranscription.ts 编排，热词由 HotwordEditor.vue 展示。
 
-## 相关位置
+使用指令为 SKILL.md 和 references；架构、文件生命周期、UML 与验证分别见 DEVELOPMENT、UML、ACCEPTANCE。
 
-主要接口位于 application/session.py、web.py、utils/session_files.py、utils/job_files.py 和 __main__.py；页面编排位于 frontend/useTranscription.ts，热词交互位于 HotwordEditor.vue。安装及识别 API 边界保持原职责。
+## 本轮验证与交付
 
-使用指令为 SKILL.md 和 references；设计见 DEVELOPMENT 与 UML；验证入口见 ACCEPTANCE。
+404 项 Python 测试通过（88.437 秒），无跳过；43 项前端测试、严格 mypy 31 个源文件、Vue 类型检查及 Vite 构建通过。Edge 完整页面验收通过（12.324 秒），验证内容只在预览按钮触发检查，以及原路径音频选择、Key 保存、交接、服务关闭与重复回执。
 
-## 验证与交付
+真实测试子进程被强制结束后，再次开页回收 Key 工作副本和 Python 暂存，所选原录音保留。测试使用实际服务进程句柄，避免仅结束 Windows venv 启动器。活进程、未知状态、未到期、已交接数据及正式凭据均有保留检查。
 
-364 项 Python 测试通过（80.116 秒），42 项前端测试通过，严格 mypy 覆盖 30 个源文件，Vue 类型检查和 Vite 构建通过。Edge 真实本机页面回归通过（10.343 秒），覆盖双语主题、热词编辑、返回修改、复制会话编号、CLI 交接、SSE 终态、服务退出和原任务恢复。浏览器目视发现的预览滚动遮挡已修正并复测。
+本轮未执行真实云端识别、真实登录、原生目录窗口人工操作、Office 逐页检查或全新联网安装。已安装 Skill 和真实工作目录保持原样。发行包及远端同步待最终核对，继续沿用 v0.1.0 预览。
 
-独立 Skill 文本行为演练覆盖 7 个接续场景，修正“先说继续再补编号”被要求再次确认的歧义，以及已知原进程运行时多余的状态查询。此演练不等于新 Codex 对话的实际使用。10 份 UML 已渲染并目视，12 项打包测试通过，112 个本地 Markdown 链接有效。
-
-发行 ZIP 含 47 文件、335250 字节，SHA-256 为 `0543dd117b6e9c5b2bf5ec93cf7399d989dd10297799f6f6210ea91e9cfd750b`；CRC、固定清单及逐文件源码字节核对通过。实现提交 `3df7ba1` 已推送远端 dev，现有 [v0.1.0 预览](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 的 ZIP 与双语说明已更新。匿名公开下载与本机包逐字节一致；138 文件的远端源码树与实现提交一致，仍为一个 Release、一个标签、一个 ZIP 附件。master 保持 `6c83711`，版本号不变。
-
-本轮未执行真实云端识别、真实登录、原生目录窗口人工操作、Office 逐页检查或全新联网安装。官方 quick_validate 因验证环境缺 PyYAML 未完成，详见 ACCEPTANCE。
-
-保留用户 README 中 API Key 保存位置的原有修改意图；不替换用户已安装 Skill，不操作其真实测试工作目录。沿用现有 v0.1.0 开发预览，不新增版本号。
+发行包已核对：48 文件、338972 字节，SHA-256 `e24f48f040e551f7599b4e9b2759ce94d2e9dd408f17717e506e54848dfc2292`。CRC、固定清单及源码逐文件字节一致；远端同步待完成。

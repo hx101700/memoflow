@@ -44,6 +44,15 @@ class AudioRecord(TypedDict):
     name: NotRequired[str]
 
 
+class AudioSelection(TypedDict):
+    """关联原生窗口选中的音频与当前会话选择编号。"""
+
+    audio_id: str
+    path: str
+    name: str
+    size_bytes: int
+
+
 class HotwordIssue(TypedDict):
     """定位热词工作表中需要用户修正的单元格。"""
 
@@ -65,10 +74,9 @@ class HotwordRow(TypedDict):
 
 
 class HotwordImport(TypedDict):
-    """返回Excel导入后的可编辑行、单元格问题及读取提示。"""
+    """返回Excel导入后的可编辑原始行及读取提示。"""
 
     rows: list[HotwordRow]
-    issues: list[HotwordIssue]
     warnings: list[str]
 
 

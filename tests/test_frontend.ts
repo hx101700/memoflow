@@ -4,21 +4,21 @@ import { useTranscription, type ViewEffects } from "../frontend/useTranscription
 import { createApi, UiError } from "../frontend/api";
 import { availability, configuration, createModel, hotwordRows } from "../frontend/model";
 import { translate, type Translate } from "../frontend/i18n";
-import type { Api, Configuration, Endpoints, HotwordValidation, Language, Limits, Model, Receipt, SessionDescription, SessionEnd, ValidationResult } from "../frontend/types";
+import type { Api, Configuration, Endpoints, Language, Limits, Model, Receipt, SessionDescription, SessionEnd, ValidationResult } from "../frontend/types";
 
-const limits: Limits = { audio_bytes: 2_000_000_000, hotwords_bytes: 5_000_000, upload_bytes: 1_000_000_000,
+const limits: Limits = { hotwords_bytes: 5_000_000, upload_bytes: 1_000_000_000,
   audio_seconds: 43200, hotwords_count: 2000, context_chars: 400, speaker_min: 2, speaker_max: 100 };
 const description: SessionDescription = { session_id: "session-one", phase: "editing", expires_at: "2026-10-04T12:00:00Z",
   model: "fixed-model", region: "cn-beijing", limits, audio_suffixes: [".wav"], languages: ["zh"],
   output_defaults: { json: "D:/example", document: "D:/example" }, preview: null, terminal: null };
-const audio = new File(["synthetic audio"], "sample.wav");
+const audio = { name: "sample.wav", size: 15, path: "D:/recordings/sample.wav" };
 const words = new File(["synthetic spreadsheet"], "words.xlsx");
 const receipt: Receipt = { session_id: "session-one", job_id: "job", config_path: "fixture/config.json", json_directory: "fixture/json",
   document_directory: "fixture/documents", auth_mode: "console", execution_started: false };
 
 // 生成具备真实协议字段的合成预览。
 function validation(id = "validation-1"): ValidationResult {
-  return { validation_id: id, summary: { auth_mode: "console", audio: { name: audio.name, duration_seconds: 2,
+  return { validation_id: id, summary: { auth_mode: "console", audio: { name: audio.name, path: audio.path, duration_seconds: 2,
     size_bytes: audio.size, format_name: "wav", channels: 1, sample_rate: 16000 },
     enhancement: { mode: "none", count: 0, context_chars: 0 }, json_directory: "fixture/json",
     document_directory: "fixture/documents", warnings: [] } };
@@ -54,18 +54,17 @@ function harness(overrides: Partial<Handlers> = {}) {
   };
   const handlers: Handlers = {
     "/api/session": () => structuredClone(description),
-    "/api/upload-audio": () => ({ upload_id: "audio-1", name: audio.name, size_bytes: audio.size }),
-    "/api/upload-hotwords": () => ({ name: words.name, size_bytes: words.size,
-      rows: [{ text: "术语", weight: 4 }], issues: [], warnings: [] }),
-    "/api/validate-hotwords": () => ({ issues: [], warnings: [], count: 1 }),
+    "/api/select-audio": () => ({ ok: true, cancelled: false, audio_id: "audio-1", name: audio.name, path: audio.path, size_bytes: audio.size }),
+    "/api/import-hotwords": () => ({ name: words.name, size_bytes: words.size,
+      rows: [{ text: "术语", weight: 4 }], warnings: [] }),
     "/api/validate": () => validation(),
     "/api/preview-ready": () => ({ ok: true }),
     "/api/api-key": () => ({ value: "" }),
     "/api/save-api-key": () => ({ ok: true }),
     "/api/select-directory": () => ({ cancelled: true }),
-    "/api/cancel-directory": () => ({ ok: true }),
+    "/api/cancel-picker": () => ({ ok: true }),
     "/api/edit": () => ({ ok: true, configuration: structuredClone(calls.filter(call => call.path === "/api/validate").at(-1)?.payload as Configuration),
-      audio: { upload_id: "audio-1", name: audio.name, size_bytes: audio.size } }),
+      audio: { audio_id: "audio-1", name: audio.name, path: "D:/recordings/sample.wav", size_bytes: audio.size } }),
     ...overrides,
   };
   const api: Api = {
@@ -91,15 +90,15 @@ function harness(overrides: Partial<Handlers> = {}) {
     end(result: SessionEnd) { endListener(result); },
     // 模拟通知连接意外断开。
     disconnect() { errorListener(); },
-    // 切换翻译器语言并应用语言变更操作。
-    setLanguage(value: Language) { language = value; controller.actions.languageChanged(); } };
+    // 切换后续请求与界面使用的翻译语言。
+    setLanguage(value: Language) { language = value; } };
 }
 type Page = ReturnType<typeof harness>;
 
-// 启动会话并添加合成音频。
+// 启动会话并接收原音频选择回执。
 async function addAudio(page: Page): Promise<void> {
   await page.actions.start();
-  await page.actions.upload("audio", [audio]);
+  await page.actions.selectAudio();
 }
 
 // 将页面推进到已登记的只读预览。
@@ -115,11 +114,11 @@ function lastConfig(page: Page): Configuration {
   return page.calls.filter(call => call.path === "/api/validate").at(-1)?.payload as Configuration;
 }
 
-test("会话加载完成前不上传或校验，完成后只订阅一次结束通知", async () => {
+test("会话加载完成前不选文件或校验，完成后只订阅一次结束通知", async () => {
   const pending = deferred<SessionDescription>();
   const page = harness({ "/api/session": () => pending.promise });
   const starting = page.actions.start();
-  await page.actions.upload("audio", [audio]);
+  await page.actions.selectAudio();
   await page.actions.validate();
   assert.deepEqual(page.calls.map(call => call.path), ["/api/session"]);
   assert.equal(page.view.subscriptions, 0);
@@ -184,7 +183,7 @@ test("返回修改等待后端批准，成功后恢复输入且没有任务编�
   assert.equal(page.model.phase, "returning");
   assert.equal(availability(page.model).editable, false);
   assert.equal(availability(page.model).copy, false);
-  pending.resolve({ ok: true, configuration: lastConfig(page), audio: { upload_id: "audio-1", name: audio.name, size_bytes: audio.size } });
+  pending.resolve({ ok: true, configuration: lastConfig(page), audio: { audio_id: "audio-1", name: audio.name, path: "D:/recordings/sample.wav", size_bytes: audio.size } });
   await returning;
   assert.equal(page.model.phase, "editing");
   assert.equal(page.model.preview, null);
@@ -208,7 +207,7 @@ test("返回修改开始后忽略迟到的预览登记错误", async () => {
   await checking;
   assert.equal(page.model.phase, "returning");
   assert.equal(page.error.value, null);
-  editing.resolve({ ok: true, configuration: lastConfig(page), audio: { upload_id: "audio-1", name: audio.name, size_bytes: audio.size } });
+  editing.resolve({ ok: true, configuration: lastConfig(page), audio: { audio_id: "audio-1", name: audio.name, path: "D:/recordings/sample.wav", size_bytes: audio.size } });
   await returning;
   assert.equal(page.model.phase, "editing");
   assert.equal(page.error.value, null);
@@ -218,7 +217,7 @@ test("返回修改被拒绝保持只读预览，直到明确终态到达", async
   const page = harness({ "/api/edit": () => { throw new UiError("会话已交接", undefined, 409); } });
   await preview(page);
   page.handlers["/api/session"] = () => ({ ...description, phase: "preview", preview: { ...validation(), configuration: lastConfig(page),
-    audio: { upload_id: "audio-1", name: audio.name, size_bytes: audio.size } } });
+    audio: { audio_id: "audio-1", name: audio.name, path: "D:/recordings/sample.wav", size_bytes: audio.size } } });
   await page.actions.edit();
   assert.equal(page.model.phase, "preview");
   assert.equal(availability(page.model).editable, false);
@@ -238,7 +237,7 @@ test("返回编辑已成功但响应丢失时只读取一次状态并恢复本�
   assert.equal(page.model.phase, "editing");
   assert.equal(page.model.preview, null);
   assert.equal(page.form.context, "保留原始输入");
-  assert.equal(page.model.uploads.audio.id, "audio-1");
+  assert.equal(page.model.audio?.audio_id, "audio-1");
   assert.equal(page.calls.filter(call => call.path === "/api/session").length, 2);
   assert.equal(page.calls.filter(call => call.path === "/api/edit").length, 1);
   assert.equal(page.error.value, null);
@@ -265,11 +264,11 @@ test("校验等待期间改动输入丢弃旧预览，退出后端草稿后才�
 });
 
 test("刷新只恢复服务内已校验预览，重新登记渲染且不读取Key", async () => {
-  const config: Configuration = { auth_mode: "api_key", audio_upload_id: "audio-kept", diarization_enabled: false,
+  const config: Configuration = { auth_mode: "api_key", audio_id: "audio-kept", diarization_enabled: false,
     enhancement_mode: "both", hotword_rows: [{ text: "术语", weight: "4" }], context: "完整参考文本\n",
     language_hint: "en", speaker_count: null, json_directory: "D:/json", document_directory: "D:/docs" };
   const page = harness({ "/api/session": () => ({ ...description, phase: "preview", preview: { ...validation(), configuration: config,
-    audio: { upload_id: "audio-kept", name: "original.wav", size_bytes: 123 } } }) });
+    audio: { audio_id: "audio-kept", name: "original.wav", path: "D:/recordings/original.wav", size_bytes: 123 } } }) });
   await page.actions.start();
   assert.equal(page.model.phase, "preview");
   assert.equal(page.model.preview?.ready, true);
@@ -317,26 +316,70 @@ test("预览中的语言切换保持同一只读快照和已登记版本", async
   assert.equal(page.t("confirmationMessage", { id: "session-one" }), "Confirm transcription. Session ID: session-one");
 });
 
-test("未选择音频定位上传区，空热词和空白上下文留在原输入", async () => {
+test("修改热词与上下文和切换语言只更新本地输入，最终点击一次检查", async () => {
+  const page = harness();
+  await addAudio(page);
+  const before = page.calls.length;
+  page.form.hotwordsEnabled = true;
+  page.form.contextEnabled = true;
+  page.actions.addHotword();
+  page.actions.changeHotword(page.form.hotwordRows[0].key, "text", "术语");
+  page.form.context = "完整参考文本";
+  page.actions.changed();
+  page.setLanguage("en");
+  assert.equal(page.calls.length, before);
+  assert.deepEqual(page.model.hotwords.issues, []);
+  assert.equal(page.error.value, null);
+  await page.actions.validate();
+  assert.equal(page.calls.filter(call => call.path === "/api/validate").length, 1);
+  assert.deepEqual(lastConfig(page).hotword_rows, [{ text: "术语", weight: 4 }]);
+  assert.equal(lastConfig(page).context, "完整参考文本");
+});
+
+test("切换语言保留最终检查的词表错误，编辑后清除并等下一次确认", async () => {
+  const issues = [{ row: 1, field: "weight", message: "请修改权重。" }];
+  const page = harness({ "/api/import-hotwords": () => ({ name: words.name, size_bytes: words.size,
+    rows: [{ text: "术语", weight: 9 }], warnings: [] }),
+    "/api/validate": () => { throw new UiError("请修正热词。", "hotword_rows", 422, issues); } });
+  await addAudio(page);
+  page.form.hotwordsEnabled = true;
+  await page.actions.importHotwords([words]);
+  assert.deepEqual(page.model.hotwords.issues, []);
+  await page.actions.validate();
+  const before = page.calls.length;
+  page.setLanguage("en");
+  assert.deepEqual(page.model.hotwords.issues, issues);
+  page.actions.changeHotword(page.form.hotwordRows[0].key, "weight", "4");
+  assert.deepEqual(page.model.hotwords.issues, []);
+  assert.equal(page.calls.length, before);
+  page.handlers["/api/validate"] = () => validation();
+  await page.actions.validate();
+  assert.equal(page.model.phase, "preview");
+});
+
+test("未选择音频定位文件选择区，空增强输入由整单接口检查并保留原文", async () => {
   const page = harness();
   await page.actions.start();
   await page.actions.validate();
-  assert.equal(page.error.value?.field, "audio_upload_id");
-  await page.actions.upload("audio", [audio]);
+  assert.equal(page.error.value?.field, "audio_id");
+  await page.actions.selectAudio();
   page.form.hotwordsEnabled = true;
+  page.handlers["/api/validate"] = () => { throw new UiError("请添加热词。", "hotword_rows", 422); };
   await page.actions.validate();
   assert.equal(page.error.value?.field, "hotword_rows");
   page.form.hotwordsEnabled = false;
   page.form.contextEnabled = true;
   page.form.context = " \n\t";
+  page.handlers["/api/validate"] = () => { throw new UiError("内容仅包含空白，共3个字符。", "context", 422); };
   await page.actions.validate();
   assert.equal(page.form.context, " \n\t");
   assert.equal(page.view.focus, "context");
-  assert.match(page.error.value?.message ?? "", /仅包含空白.*3 个字符/);
-  assert.equal(page.calls.some(call => call.path === "/api/validate"), false);
+  assert.equal(page.error.value?.message, "内容仅包含空白，共3个字符。");
+  assert.equal(lastConfig(page).context, " \n\t");
+  assert.equal(page.calls.filter(call => call.path === "/api/validate").length, 2);
 });
 
-test("人数与上下文使用服务端限制，关闭发言人区分后忽略旧人数", async () => {
+test("超长上下文原样发送后显示服务器错误，关闭发言人区分忽略旧人数", async () => {
   const page = harness({ "/api/session": () => ({ ...description, limits: { ...limits, speaker_max: 4, context_chars: 3 } }) });
   await addAudio(page);
   page.form.speaker = "1e";
@@ -345,22 +388,68 @@ test("人数与上下文使用服务端限制，关闭发言人区分后忽略�
   page.form.diarizationEnabled = false;
   page.form.contextEnabled = true;
   page.form.context = "甲乙丙丁";
+  page.handlers["/api/validate"] = () => { throw new UiError("参考文本超出1个字符。", "context", 422); };
+  page.actions.changed();
+  assert.equal(Boolean(page.error.value), false);
   await page.actions.validate();
-  assert.match(page.error.value?.message ?? "", /超出 1 个/);
+  assert.equal(lastConfig(page).context, "甲乙丙丁");
+  assert.equal(page.error.value?.message, "参考文本超出1个字符。");
   assert.equal(page.form.context, "甲乙丙丁");
   page.form.context = "甲乙";
+  page.actions.changed();
+  assert.equal(page.error.value, null);
+  page.handlers["/api/validate"] = () => validation();
   await page.actions.validate();
   assert.equal(lastConfig(page).speaker_count, null);
 });
 
-test("文件类型与大小使用会话限制，上传失败不重试", async () => {
-  const page = harness({ "/api/upload-audio": () => { throw new Error("传输中断"); } });
+test("音频选择只发送窗口编号，取消或失败保留已选择的原文件", async () => {
+  const page = harness();
+  await addAudio(page);
+  const selected = page.model.audio;
+  const first = page.calls.find(call => call.path === "/api/select-audio");
+  assert.deepEqual(first?.payload, { picker_id: "request-1" });
+  assert.equal(first?.file, undefined);
+  assert.equal(page.model.audio?.path, audio.path);
+  page.handlers["/api/select-audio"] = () => ({ cancelled: true });
+  await page.actions.selectAudio();
+  assert.deepEqual(page.model.audio, selected);
+  page.handlers["/api/select-audio"] = () => { throw new Error("选择窗口不可用"); };
+  await page.actions.selectAudio();
+  assert.deepEqual(page.model.audio, selected);
+  assert.equal(page.error.value?.field, "audio_id");
+  assert.equal(page.model.picker, null);
+  assert.equal(page.calls.filter(call => call.path === "/api/select-audio").length, 3);
+});
+
+test("音频窗口等待时阻止第二个窗口，用同一编号取消并忽略结束后的结果", async () => {
+  const pending = deferred<Endpoints["/api/select-audio"]>();
+  const page = harness({ "/api/select-audio": () => pending.promise });
   await page.actions.start();
-  await page.actions.upload("audio", [new File(["a"], "sample.mp3")]);
-  assert.equal(page.calls.filter(call => call.path === "/api/upload-audio").length, 0);
-  await page.actions.upload("audio", [new File(["a"], "sample.WAV")]);
-  assert.equal(page.model.uploads.audio.status, "failed");
-  assert.equal(page.calls.filter(call => call.path === "/api/upload-audio").length, 1);
+  const selecting = page.actions.selectAudio();
+  await page.actions.selectAudio();
+  await page.actions.selectDirectory("json");
+  assert.equal(availability(page.model).validate, false);
+  await page.actions.cancelPicker();
+  assert.deepEqual(page.calls.at(-1)?.payload, { picker_id: "request-1" });
+  assert.equal(page.calls.at(-1)?.path, "/api/cancel-picker");
+  page.end({ state: "cancelled", receipt: null });
+  pending.resolve({ ok: true, cancelled: false, audio_id: "late", name: audio.name, path: audio.path, size_bytes: audio.size });
+  await selecting;
+  assert.equal(page.model.audio, null);
+  assert.equal(page.calls.filter(call => call.path === "/api/select-audio").length, 1);
+});
+
+test("Excel类型与大小使用会话限制，导入失败不自动重试", async () => {
+  const page = harness({ "/api/session": () => ({ ...description, limits: { ...limits, hotwords_bytes: 10 } }),
+    "/api/import-hotwords": () => { throw new Error("Excel读取失败"); } });
+  await page.actions.start();
+  await page.actions.importHotwords([new File(["a"], "words.csv")]);
+  await page.actions.importHotwords([new File(["12345678901"], "words.xlsx")]);
+  assert.equal(page.calls.filter(call => call.path === "/api/import-hotwords").length, 0);
+  await page.actions.importHotwords([new File(["a"], "words.XLSX")]);
+  assert.equal(page.model.hotwordImport.status, "failed");
+  assert.equal(page.calls.filter(call => call.path === "/api/import-hotwords").length, 1);
 });
 
 test("目录等待保留其他编辑能力，取消沿用原编号，选定后可恢复默认", async () => {
@@ -370,7 +459,7 @@ test("目录等待保留其他编辑能力，取消沿用原编号，选定后�
   const selecting = page.actions.selectDirectory("json");
   page.form.speaker = "4";
   page.actions.changed();
-  await page.actions.cancelDirectory();
+  await page.actions.cancelPicker();
   assert.equal(availability(page.model).editable, true);
   assert.equal(availability(page.model).chooseDirectory, false);
   const opening = page.calls.find(call => call.path === "/api/select-directory")?.payload as { picker_id: string };
@@ -502,19 +591,18 @@ test("空Key阻止预览，切回控制台可继续", async () => {
 
 test("导入数组保留错误值，显示序号从1开始且不发送内部key或row", async () => {
   const rows = [{ text: 100, weight: 8 }, { text: "合法术语", weight: 4 }];
-  const issues = [{ row: 1, field: "text", message: "热词应为文本。" }];
-  const page = harness({ "/api/upload-hotwords": () => ({ name: words.name, size_bytes: words.size, rows, issues, warnings: [] }) });
+  const page = harness({ "/api/import-hotwords": () => ({ name: words.name, size_bytes: words.size, rows, warnings: [] }) });
   await addAudio(page);
-  await page.actions.upload("hotwords", [words]);
+  page.form.hotwordsEnabled = true;
+  await page.actions.importHotwords([words]);
   assert.deepEqual(page.form.hotwordRows.map(row => row.row), [1, 2]);
   assert.deepEqual(hotwordRows(page.form), rows);
-  assert.deepEqual(page.model.hotwords.issues, issues);
+  assert.deepEqual(page.model.hotwords.issues, []);
   const before = page.calls.length;
-  await page.actions.checkHotwords();
-  assert.equal(page.calls.length, before);
   page.actions.changeHotword(page.form.hotwordRows[0].key, "text", "修改后的术语");
-  await page.actions.checkHotwords();
-  assert.deepEqual(page.calls.at(-1)?.payload, { rows: [{ text: "修改后的术语", weight: 8 }, rows[1]] });
+  assert.equal(page.calls.length, before);
+  await page.actions.validate();
+  assert.deepEqual(lastConfig(page).hotword_rows, [{ text: "修改后的术语", weight: 8 }, rows[1]]);
 });
 
 test("删除与新增后序号重排，未删除词条的组件key保持稳定", async () => {
@@ -534,66 +622,20 @@ test("删除与新增后序号重排，未删除词条的组件key保持稳定",
 });
 
 test("编辑导入异常单元格只清除该格类型标记", async () => {
-  const page = harness({ "/api/upload-hotwords": () => ({ name: words.name, size_bytes: words.size,
-    rows: [{ text: "2026-10-03", weight: "#N/A", invalid_fields: ["text", "weight"] }], issues: [], warnings: [] }) });
+  const page = harness({ "/api/import-hotwords": () => ({ name: words.name, size_bytes: words.size,
+    rows: [{ text: "2026-10-03", weight: "#N/A", invalid_fields: ["text", "weight"] }], warnings: [] }) });
   await page.actions.start();
-  await page.actions.upload("hotwords", [words]);
+  await page.actions.importHotwords([words]);
   page.actions.changeHotword(1, "text", "技术术语");
   assert.deepEqual(page.form.hotwordRows[0].invalid_fields, ["weight"]);
   page.actions.changeHotword(1, "weight", "4");
   assert.equal(page.form.hotwordRows[0].invalid_fields, undefined);
 });
 
-test("词表内容改变才检查一次，后台检查不禁用编辑或改变焦点", async () => {
-  const page = harness({ "/api/validate-hotwords": () => ({ issues: [{ row: 1, field: "weight", message: "修改权重" }], warnings: [], count: 0 }) });
-  await page.actions.start();
-  await page.actions.checkHotwords();
-  page.actions.addHotword();
-  page.actions.changeHotword(1, "text", "Term");
-  await page.actions.checkHotwords();
-  await page.actions.checkHotwords();
-  page.actions.changeHotword(1, "text", "Term");
-  await page.actions.checkHotwords();
-  assert.equal(page.calls.filter(call => call.path === "/api/validate-hotwords").length, 1);
-  assert.equal(page.view.focus, "");
-  assert.equal(page.model.hotwords.issues[0].row, 1);
-});
-
-test("词表检查中可继续编辑，旧版本结果及错误均不会覆盖新结果", async () => {
-  const first = deferred<HotwordValidation>();
-  const page = harness({ "/api/validate-hotwords": () => first.promise });
-  await page.actions.start();
-  page.actions.addHotword();
-  const checking = page.actions.checkHotwords();
-  page.actions.changeHotword(1, "text", "新词");
-  assert.equal(availability(page.model).editHotwords, true);
-  assert.equal(availability(page.model).validate, true);
-  page.handlers["/api/validate-hotwords"] = () => ({ issues: [], warnings: [], count: 1 });
-  await page.actions.checkHotwords();
-  first.resolve({ issues: [{ row: 1, message: "旧错误" }], warnings: [], count: 0 });
-  await checking;
-  assert.deepEqual(page.model.hotwords.issues, []);
-  assert.equal(page.model.hotwords.checking, false);
-});
-
-test("整单预览完成后忽略尚未结束的词表错误", async () => {
-  const pending = deferred<HotwordValidation>();
-  const page = harness({ "/api/validate-hotwords": () => pending.promise });
-  await addAudio(page);
-  page.actions.addHotword();
-  page.actions.changeHotword(1, "text", "术语");
-  const checking = page.actions.checkHotwords();
-  await page.actions.validate();
-  pending.reject(new UiError("预览已只读", "hotword_rows", 422));
-  await checking;
-  assert.equal(page.model.phase, "preview");
-  assert.equal(page.error.value, null);
-});
-
 test("最终校验错误交给同一表格，导入失败保留已填词条", async () => {
   const detail = { row: 1, field: "weight", message: "请修改权重。" };
   const page = harness({ "/api/validate": () => { throw new UiError("请修正热词。", "hotword_rows", 422, [detail]); },
-    "/api/upload-hotwords": () => { throw new UiError("表头不正确", "hotword_rows", 422, [{ row: 1, field: "header", message: "请使用text和weight列。" }]); } });
+    "/api/import-hotwords": () => { throw new UiError("表头不正确", "hotword_rows", 422, [{ row: 1, field: "header", message: "请使用text和weight列。" }]); } });
   await addAudio(page);
   page.form.hotwordsEnabled = true;
   page.actions.addHotword();
@@ -601,7 +643,7 @@ test("最终校验错误交给同一表格，导入失败保留已填词条", as
   await page.actions.validate();
   assert.deepEqual(page.model.hotwords.issues, [detail]);
   assert.equal(page.view.focus, "hotword_rows");
-  await page.actions.upload("hotwords", [words]);
+  await page.actions.importHotwords([words]);
   assert.equal(page.form.hotwordRows[0].text, "原有词条");
   assert.equal(page.model.hotwords.issues[0].field, "header");
 });
@@ -660,12 +702,11 @@ test("结束事件读取一次后关闭，连接失败也关闭且不自动重�
   assert.equal(opened, 1);
 });
 
-test("后台热词检查不冻结其他普通操作", () => {
+test("目录选择保留普通编辑能力，等待期间阻止整单校验", () => {
   const model = createModel();
   model.phase = "editing";
-  model.hotwords.checking = true;
   assert.equal(availability(model).validate, true);
-  assert.equal(availability(model).upload.hotwords, true);
+  assert.equal(availability(model).importHotwords, true);
   model.picker = { id: "picker", kind: "json", cancelling: false };
   assert.equal(availability(model).editable, true);
   assert.equal(availability(model).validate, false);

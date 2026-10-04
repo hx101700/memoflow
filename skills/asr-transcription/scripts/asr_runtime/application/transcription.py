@@ -88,13 +88,11 @@ def export_job(runtime: Runtime, job_id: str) -> ExecutionReport:
     return _deliver(runtime, config, transcript, report)
 
 
-def _check_input(runtime: Runtime, record: AudioRecord) -> Path:
-    """核对会话音频副本的路径、大小和内容摘要，返回实际读取路径。"""
+def _check_input(record: AudioRecord) -> Path:
+    """核对用户原始音频的路径、大小和内容摘要，返回读取路径。"""
     path = Path(record["path"])
-    base = runtime.path(".state/web-uploads")
-    if (not path.is_absolute() or not path.is_relative_to(base)
-            or len(path.relative_to(base).parts) != 2 or path.resolve() != path):
-        raise SetupError("输入文件不是网页保存的本机会话副本，请重新配置并确认新任务。")
+    if not path.is_absolute() or path.resolve() != path:
+        raise SetupError("已确认的音频位置发生变化，请重新选择并确认新任务。")
     current = file_fingerprint(path)
     expected = record["fingerprint"]
     if (current["size_bytes"], current["sha256"]) != (expected["size_bytes"], expected["sha256"]):
@@ -105,7 +103,7 @@ def _check_input(runtime: Runtime, record: AudioRecord) -> Path:
 def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple[PreparedCommand, list[str], Path]:
     """核对音频、准备识别命令与结果目录，并按需转换声道。"""
     audio_record = config["audio"]
-    source = _check_input(runtime, audio_record)
+    source = _check_input(audio_record)
     prepared = execution / "mono.flac" if audio_record["requires_mono"] else source
     destination = result_path(config)
     arguments = recognition_arguments(config, prepared, destination)

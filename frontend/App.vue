@@ -11,14 +11,14 @@ import { useTranscription } from "./useTranscription";
 import type { Api, DirectoryKind, Language } from "./types";
 import KeyDisplay from "./components/KeyDisplay.vue";
 import ReviewPanel from "./components/ReviewPanel.vue";
-import UploadField from "./components/UploadField.vue";
+import AudioField from "./components/AudioField.vue";
 import HotwordEditor from "./components/HotwordEditor.vue";
 
 const props = defineProps<{ connect: (language: () => Language, t: Translate) => Api }>();
 const { language, theme, t } = usePreferences();
 const keyDisplay = ref<InstanceType<typeof KeyDisplay>>();
 const hotwordEditor = ref<InstanceType<typeof HotwordEditor>>();
-const aliases: Record<string, string> = { audio_path: "audio_upload_id" };
+const aliases: Record<string, string> = { audio_path: "audio_id" };
 
 // 在控件完成渲染后定位错误字段或当前操作区域。
 async function focus(target: string): Promise<void> {
@@ -99,7 +99,7 @@ onUnmounted(actions.dispose);
           <span>MemoFlow</span>
         </a>
         <div class="appearance-controls">
-          <ElSelect id="interface-language" v-model="language" :aria-label="t('language')" :disabled="!available.changeLanguage" @change="actions.languageChanged" class="language-select">
+          <ElSelect id="interface-language" v-model="language" :aria-label="t('language')" :disabled="!available.changeLanguage" class="language-select">
             <ElOption value="zh-CN" label="简体中文" /><ElOption value="en" label="English" />
           </ElSelect>
           <ElSelect id="theme" v-model="theme" :aria-label="t('theme')" class="theme-select">
@@ -152,13 +152,14 @@ onUnmounted(actions.dispose);
 
       <div v-else-if="model.session && available.editable" class="workspace">
         <ElForm id="config-fields" :disabled="!available.editable" label-position="top" inline-message class="form-column" tabindex="-1" @submit.prevent="actions.validate">
-          <ElCard id="audio_upload_id" shadow="never" header-class="section-heading" :class="{ 'needs-attention': invalid('audio_upload_id') }" tabindex="-1">
+          <ElCard id="audio_id" shadow="never" header-class="section-heading" :class="{ 'needs-attention': invalid('audio_id') }" tabindex="-1">
             <template #header><ElIcon class="section-icon" :size="20" aria-hidden="true"><Headset /></ElIcon><h2>{{ t('audioHeading') }}</h2><span class="section-aside">{{ t('oneFile') }}</span></template>
-            <UploadField :upload="model.uploads.audio" :disabled="!available.upload.audio" :accept="model.session.audio_suffixes.join(',')" :t="t" @select="actions.upload('audio', $event)" />
-            <p v-if="invalid('audio_upload_id')" class="field-error">{{ error?.message }}</p>
+            <AudioField :audio="model.audio" :disabled="!available.selectAudio" :selecting="model.picker?.kind === 'audio'" :t="t" @select="actions.selectAudio" />
+            <p v-if="invalid('audio_id')" class="field-error">{{ error?.message }}</p>
+            <div v-if="model.picker?.kind === 'audio'" class="picker-wait" role="status"><span>{{ t('audioWaiting') }}</span><ElButton :disabled="!available.cancelPicker" @click="actions.cancelPicker">{{ model.picker.cancelling ? t('cancelling') : t('cancelWaiting') }}</ElButton></div>
             <ElCollapse class="format-help">
               <ElCollapseItem :title="t('formatLimits')" name="formats"><p>{{ t('audioLimits', {
-                size: model.session.limits.audio_bytes / 1_000_000_000, hours: model.session.limits.audio_seconds / 3600,
+                hours: model.session.limits.audio_seconds / 3600,
                 upload: model.session.limits.upload_bytes / 1_000_000_000, formats: model.session.audio_suffixes.map(s => s.slice(1).toUpperCase()).join(', ') }) }}</p></ElCollapseItem>
             </ElCollapse>
           </ElCard>
@@ -196,12 +197,12 @@ onUnmounted(actions.dispose);
                 <ElSwitch id="hotwords-enabled" v-model="form.hotwordsEnabled" :aria-label="t('hotwords')" @change="actions.changed()" />
               </div>
               <div v-if="form.hotwordsEnabled" id="hotword_rows" class="expanded-option" :class="{ 'needs-attention': invalid('hotword_rows') }" tabindex="-1">
-                <HotwordEditor ref="hotwordEditor" :rows="form.hotwordRows" :validation="model.hotwords" :upload="model.uploads.hotwords"
+                <HotwordEditor ref="hotwordEditor" :rows="form.hotwordRows" :validation="model.hotwords" :imported="model.hotwordImport"
                   :disabled="!available.editHotwords" :template-disabled="!available.template" :downloading="model.downloadingTemplate"
                   :message="fieldMessage('hotword_rows')" :limit="model.session.limits.hotwords_count"
                   :file-limit="model.session.limits.hotwords_bytes / 1_000_000" :t="t"
-                  @upload="actions.upload('hotwords', $event)" @download="actions.downloadTemplate" @add="actions.addHotword"
-                  @remove="actions.removeHotword" @change="actions.changeHotword" @leave="actions.checkHotwords" />
+                  @import="actions.importHotwords" @download="actions.downloadTemplate" @add="actions.addHotword"
+                  @remove="actions.removeHotword" @change="actions.changeHotword" />
               </div>
             </div>
             <ElDivider />
@@ -214,7 +215,7 @@ onUnmounted(actions.dispose);
                 <ElFormItem :label="t('reference')" for="context-text" :error="fieldMessage('context')">
                   <ElInput id="context-text" v-model="form.context" type="textarea" :autosize="{ minRows: 4, maxRows: 10 }" :placeholder="t('contextPlaceholder')" @input="actions.changed()" />
                 </ElFormItem>
-                <div class="textarea-footer"><p class="helper">{{ t('contextHint', { count: model.session.limits.context_chars }) }}</p><span :class="{ 'field-error': contextLength > model.session.limits.context_chars }">{{ contextLength }} / {{ model.session.limits.context_chars }}</span></div>
+                <div class="textarea-footer"><p class="helper">{{ t('contextHint', { count: model.session.limits.context_chars }) }}</p><span>{{ contextLength }} / {{ model.session.limits.context_chars }}</span></div>
               </div>
             </div>
           </ElCard>
@@ -229,7 +230,7 @@ onUnmounted(actions.dispose);
               <p v-if="invalid(kind + '_directory')" class="field-error">{{ error?.message }}</p>
             </div>
             <div class="format-tags"><ElTag v-for="format in ['Word', 'Excel', 'Markdown']" :key="format" type="info" effect="plain">{{ format }}</ElTag><span>{{ t('timestamps') }}</span></div>
-            <div v-if="model.picker" class="picker-wait" role="status"><span>{{ t('folderWaiting') }}</span><ElButton :disabled="!available.cancelDirectory" @click="actions.cancelDirectory">{{ model.picker.cancelling ? t('cancelling') : t('cancelWaiting') }}</ElButton></div>
+            <div v-if="model.picker && model.picker.kind !== 'audio'" class="picker-wait" role="status"><span>{{ t('folderWaiting') }}</span><ElButton :disabled="!available.cancelPicker" @click="actions.cancelPicker">{{ model.picker.cancelling ? t('cancelling') : t('cancelWaiting') }}</ElButton></div>
           </ElCard>
 
           <ElCard id="auth_mode" shadow="never" header-class="section-heading" :class="{ 'needs-attention': invalid('auth_mode') }" tabindex="-1">

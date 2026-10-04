@@ -37,6 +37,13 @@ class ConfirmationReceipt {
   +str document_directory
   +bool execution_started
 }
+class SessionConnection {
+  <<TypedDict>>
+  +int port
+  +str token
+  +int pid
+  +float deadline
+}
 class SessionTerminal {
   <<TypedDict>>
   +SessionEndState state
@@ -60,7 +67,7 @@ class DeliveryReport {
 }
 TranscriptionSettings <|-- JobConfig
 Draft --> TranscriptionSettings : 已校验输入
-JobConfig ..> ConfirmationReceipt : Session.confirm发布后返回
+JobConfig ..> ConfirmationReceipt : 交接回执
 SessionTerminal --> ConfirmationReceipt : handed_off包含任务回执
 JobConfig ..> ExecutionReport : 仅一次执行
 ExecutionReport --> DeliveryReport : JSON成功后的文档结果
@@ -69,3 +76,5 @@ note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，�
 note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
 note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>没有heartbeat或云端状态字段"
 note for ExecutionReport "models.py<br/>result、error、record_error、delivery等为可选字段<br/>delivery.files各格式记录READY或FAILED、路径或错误<br/>documents_ready仅在COMPLETE时为true"
+
+note for SessionConnection "utils/session_files.py<br/>私有sessions/session_id/connection.json<br/>端口与令牌用于本机控制；PID与deadline用于残留回收<br/>结束清理后移除；正式交接回执仍保留"

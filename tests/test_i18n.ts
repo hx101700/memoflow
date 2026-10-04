@@ -27,7 +27,7 @@ test("英文使用Model Studio与speaker diarization术语", () => {
 
 test("文案替换保留用户文件名、花括号和Unicode原文", () => {
   const name = "<script>{count} & 😀.wav";
-  assert.equal(translate("en", "uploading", { name }), `Adding ${name}…`);
+  assert.equal(translate("en", "importedHotwords", { name }), `Imported: ${name}`);
 });
 
 test("文件大小与服务端十进制限制一致，时长跨语言一致", () => {

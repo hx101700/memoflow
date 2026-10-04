@@ -2,6 +2,8 @@
 
 import json
 import ctypes
+from collections.abc import Iterator
+from contextlib import contextmanager
 from ctypes import wintypes
 import os
 import re
@@ -9,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import sysconfig
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from .i18n import translate
@@ -20,6 +23,32 @@ class SetupError(Exception):
     def __init__(self, message: str) -> None:
         """按当前界面语言提供配置与运行环境提示。"""
         super().__init__(translate(message))
+
+
+def process_is_running(pid: int) -> bool | None:
+    """查询Windows进程是否存活，权限不足或状态未知时返回None。"""
+    if os.name != "nt" or type(pid) is not int or not 0 < pid <= 0xFFFFFFFF:
+        return None
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    synchronize = 0x00100000
+    handle = kernel.OpenProcess(synchronize, False, pid)
+    if not handle:
+        return False if ctypes.get_last_error() == 87 else None  # ERROR_INVALID_PARAMETER
+    try:
+        state = kernel.WaitForSingleObject(handle, 0)
+        if state == 0x00000102:  # WAIT_TIMEOUT：进程仍在运行。
+            return True
+        if state == 0:  # WAIT_OBJECT_0：进程已结束。
+            return False
+        return None
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def check_login_execution_context() -> None:
@@ -126,6 +155,22 @@ class Runtime:
             if path.exists() and path.read_text(encoding="utf-8").strip():
                 raise SetupError(f"隔离配置应为空，请检查：{path}")
             path.touch(exist_ok=True)
+
+
+@contextmanager
+def python_temporary_directory(runtime: Runtime) -> Iterator[None]:
+    """将当前Python进程的库临时文件集中到工作区并在退出时清理。"""
+    base = runtime.path(".runtime/tmp")
+    base.mkdir(parents=True, exist_ok=True)
+    previous = tempfile.tempdir
+    with tempfile.TemporaryDirectory(
+        prefix=f"python-{os.getpid()}-", dir=base, ignore_cleanup_errors=True,
+    ) as directory:
+        tempfile.tempdir = directory
+        try:
+            yield
+        finally:
+            tempfile.tempdir = previous
 
 
 def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dict[str, str]:

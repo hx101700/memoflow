@@ -112,19 +112,19 @@ class SessionControlTests(WebFixture):
         self.server.expire_session()
         self.assertEqual(self.terminal_event(stream), {"state": "expired", "receipt": None})
         self.thread.join(timeout=5)
-        self.assertFalse(self.session.upload_directory.exists())
+        self.assertTrue(self.audio.exists())
         self.assertFalse(self.runtime.path(".state/jobs").exists())
         self.assertTrue(self.audio.exists())
         self.assertTrue(key.exists())
 
     def test_cancel_sends_terminal_event_without_creating_a_job(self):
-        """验证显式取消结束编辑服务并清理未交接文件。"""
+        """验证显式取消结束编辑服务并清理会话暂存。"""
         stream = self.event_stream()
         result = control_session(self.runtime, self.session.session_id, "cancel")
         self.assertEqual(result, {"state": "cancelled", "receipt": None})
         self.assertEqual(self.terminal_event(stream), result)
         self.thread.join(timeout=5)
-        self.assertFalse(self.session.upload_directory.exists())
+        self.assertTrue(self.audio.exists())
         self.assertFalse(self.runtime.path(".state/jobs").exists())
 
     def test_lost_http_response_recovers_persisted_receipt(self):
@@ -139,7 +139,7 @@ class SessionControlTests(WebFixture):
         self.assertEqual(len(list(self.runtime.path(".state/jobs").iterdir())), 1)
 
     def test_failed_confirmation_still_closes_event_stream_and_cleans_audio(self):
-        """验证交接写盘失败后正常关闭仍结束事件流并清理未提交音频。"""
+        """验证交接写盘失败后正常关闭仍结束事件流并保留原始音频并清理会话记录。"""
         self.ready()
         stream = self.event_stream()
         with patch("asr_runtime.application.session.write_receipt", side_effect=OSError("synthetic write failure")):
@@ -150,7 +150,7 @@ class SessionControlTests(WebFixture):
         self.assertEqual(self.terminal_event(stream), {"state": "cancelled", "receipt": None})
         self.thread.join(timeout=5)
         self.assertFalse(self.thread.is_alive())
-        self.assertFalse(self.session.upload_directory.exists())
+        self.assertTrue(self.audio.exists())
 
     def test_cli_confirm_returns_same_job_after_web_service_exits(self):
         """验证公开命令按复制的会话编号交接，网页服务结束后也能恢复回执。"""

@@ -5,12 +5,12 @@ import json
 import socket
 import subprocess
 import sys
-import time
 import webbrowser
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 from asr_runtime import web
+from asr_runtime.utils.environment import SetupError
 from tests.support import RuntimeTestCase, SKILL_ROOT
 
 
@@ -20,6 +20,7 @@ class WebStartupTests(RuntimeTestCase):
         super().setUp()
         self.server = Mock(spec=web.LocalServer)
         self.server.server_port = 12345
+        self.server.recovery = {"removed_items": 0, "warnings": []}
         self.server.session = Mock(token="synthetic-session-token", session_id="a" * 32, expires_at="2026-10-04T12:00:00+00:00")
         self.server.serve_forever.side_effect = KeyboardInterrupt
 
@@ -75,8 +76,25 @@ class WebStartupTests(RuntimeTestCase):
         self.server.serve_forever.assert_not_called()
         self.server.server_close.assert_called_once()
 
-    def test_process_exit_cleans_an_unfinished_upload(self) -> None:
-        """验证服务正常关闭会等待未完成上传清理副本后再退出进程。"""
+    def test_connection_record_failure_releases_bound_socket(self) -> None:
+        """验证连接记录被路径规则拒绝时，已绑定端口仍被关闭。"""
+        closed = []
+        original = web.LocalServer.server_close
+
+        def close(server):
+            """执行实际收尾并记录待核对的服务器对象。"""
+            original(server)
+            closed.append(server)
+
+        with patch.object(web, "write_connection", side_effect=SetupError("synthetic invalid session path")), \
+             patch.object(web.LocalServer, "server_close", close):
+            with self.assertRaises(SetupError):
+                web.create_server(self.runtime)
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0].socket.fileno(), -1)
+
+    def test_process_exit_finishes_incomplete_memory_import(self) -> None:
+        """验证服务正常关闭等待未完成内存导入结束，Excel接收全程不落盘。"""
         code = '''
 import json, sys, threading
 from pathlib import Path
@@ -90,6 +108,12 @@ def setup(handler):
     original_setup(handler)
     handler.connection.settimeout(1)
 server.RequestHandlerClass.setup = setup
+original_receive = server.session.receive_hotwords
+def receive(*args):
+    """向测试报告导入已开始，再执行实际内存接收。"""
+    print("reading", flush=True)
+    return original_receive(*args)
+server.session.receive_hotwords = receive
 worker = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
 worker.start()
 print(json.dumps({"port": server.server_port, "token": server.session.token}), flush=True)
@@ -111,19 +135,19 @@ print("closed", flush=True)
             host = f"127.0.0.1:{ready['port']}"
             connection = socket.create_connection(("127.0.0.1", ready["port"]), timeout=3)
             headers = (
-                f"POST /api/upload-audio HTTP/1.0\r\nHost: {host}\r\nOrigin: http://{host}\r\n"
+                f"POST /api/import-hotwords HTTP/1.0\r\nHost: {host}\r\nOrigin: http://{host}\r\n"
                 f"X-ASR-Token: {ready['token']}\r\nContent-Type: application/octet-stream\r\n"
-                "X-File-Name: synthetic.wav\r\nContent-Length: 2000000\r\n\r\n"
+                "X-File-Name: synthetic.xlsx\r\nContent-Length: 2000000\r\n\r\n"
             )
             connection.sendall(headers.encode("ascii") + b"x" * 8192)
-            deadline = time.monotonic() + 5
-            while not list(self.runtime.root.rglob("*.part")) and time.monotonic() < deadline:
-                time.sleep(0.01)
-            self.assertTrue(list(self.runtime.root.rglob("*.part")))
+            self.assertEqual(process.stdout.readline().strip(), "reading")
+            self.assertFalse(list(self.runtime.root.rglob("*.xlsx*")))
+            self.assertFalse(list(self.runtime.root.rglob("*.part")))
             output, errors = process.communicate("close\n", timeout=5)
             self.assertEqual(process.returncode, 0, errors)
             self.assertEqual(output.strip(), "closed")
-            self.assertEqual(list(self.runtime.path(".state/web-uploads").iterdir()), [])
+            self.assertFalse(list(self.runtime.root.rglob("*.xlsx*")))
+            self.assertFalse(list(self.runtime.path(".state/sessions").iterdir()))
         finally:
             if connection is not None:
                 connection.close()

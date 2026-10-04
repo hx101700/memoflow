@@ -199,7 +199,10 @@ class BailianContractTests(RuntimeTestCase):
         data = content.getvalue()
         session = Session(self.runtime)
         self.addCleanup(session.cleanup)
-        upload = session.upload("audio", "合成样本.wav", io.BytesIO(data), len(data))
+        source = self.runtime.workspace / "合成样本.wav"
+        source.write_bytes(data)
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=source):
+            selection = session.select_audio("fixture-audio")
         hotword_rows = []
         if vocabulary is not None:
             workbook = Workbook()
@@ -211,9 +214,9 @@ class BailianContractTests(RuntimeTestCase):
             workbook.save(excel)
             workbook.close()
             content = excel.getvalue()
-            hotword_rows = session.upload("hotwords", "合成热词.xlsx", io.BytesIO(content), len(content))["rows"]
+            hotword_rows = session.receive_hotwords("合成热词.xlsx", io.BytesIO(content), len(content))["rows"]
         preview = session.validate({
-            "auth_mode": "api_key", "audio_upload_id": upload["upload_id"],
+            "auth_mode": "api_key", "audio_id": selection["audio_id"],
             "diarization_enabled": True, "language_hint": "zh", "speaker_count": 3,
             "enhancement_mode": "both" if vocabulary is not None else "context",
             "context": context, "hotword_rows": hotword_rows,

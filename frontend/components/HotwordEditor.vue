@@ -3,17 +3,17 @@ import { computed, nextTick, ref, watch } from "vue";
 import { ElAlert, ElButton, ElInput, ElPagination, ElTable, ElTableColumn, ElUpload } from "element-plus";
 import type { UploadFile } from "element-plus";
 import { Delete, Download, Plus, Upload } from "@element-plus/icons-vue";
-import type { EditorRow, ErrorDetail, HotwordField, Model, UploadState } from "../types";
+import type { EditorRow, ErrorDetail, HotwordField, ImportState, Model } from "../types";
 import type { Translate } from "../i18n";
 
 const props = defineProps<{
-  rows: EditorRow[]; validation: Model["hotwords"]; upload: UploadState;
+  rows: EditorRow[]; validation: Model["hotwords"]; imported: ImportState;
   disabled: boolean; downloading: boolean; templateDisabled: boolean;
   message: string; limit: number; fileLimit: number; t: Translate;
 }>();
 const emit = defineEmits<{
-  upload: [files: readonly File[]]; download: []; add: []; remove: [key: number];
-  change: [key: number, field: HotwordField, value: string]; leave: [];
+  import: [files: readonly File[]]; download: []; add: []; remove: [key: number];
+  change: [key: number, field: HotwordField, value: string];
 }>();
 const page = ref(1);
 const pageSize = 50;
@@ -35,11 +35,11 @@ const issuePages = computed(() => new Set(props.rows.flatMap((row, index) =>
 
 // 传递单个Excel文件，解析和规则检查由本机服务完成。
 function selected(file: UploadFile): void {
-  if (file.raw) emit("upload", [file.raw]);
+  if (file.raw) emit("import", [file.raw]);
 }
 
 // 将多文件选择交给统一规则返回可见提示。
-function exceeded(files: File[]): void { emit("upload", files); }
+function exceeded(files: File[]): void { emit("import", files); }
 
 // 使用公开行样式入口标红包含问题的词条。
 function rowClassName({ row }: { row: EditorRow }): string {
@@ -83,29 +83,22 @@ async function addRow(): Promise<void> {
   await focusRow(props.rows.at(-1)?.row);
 }
 
-// 焦点离开整个热词区域时通知用例检查已修改内容。
-function focusLeft(event: FocusEvent): void {
-  const region = event.currentTarget as HTMLElement;
-  if (event.relatedTarget instanceof Node && region.contains(event.relatedTarget)) return;
-  emit("leave");
-}
-
 watch(() => props.rows.length, () => { page.value = Math.min(page.value, Math.max(1, Math.ceil(props.rows.length / pageSize))); });
 defineExpose({ focusRow });
 </script>
 
 <template>
-  <div class="hotword-editor" @focusout="focusLeft">
+  <div class="hotword-editor">
     <div class="hotword-toolbar">
       <ElUpload :auto-upload="false" :show-file-list="false" :file-list="[]" :limit="1" accept=".xlsx"
         :disabled="disabled" :on-change="selected" :on-exceed="exceeded">
-        <ElButton :icon="Upload" :disabled="disabled" :loading="upload.status === 'uploading'">{{ t('importHotwords') }}</ElButton>
+        <ElButton :icon="Upload" :disabled="disabled" :loading="imported.status === 'importing'">{{ t('importHotwords') }}</ElButton>
       </ElUpload>
       <ElButton :icon="Plus" :disabled="disabled" @click="addRow">{{ t('addHotword') }}</ElButton>
       <ElButton text :icon="Download" :disabled="templateDisabled" :loading="downloading" @click="emit('download')">{{ t('template') }}</ElButton>
     </div>
     <p class="helper">{{ t('hotwordHelp', { count: limit }) }} {{ t('hotwordLimit', { size: fileLimit }) }}</p>
-    <p v-if="upload.name && upload.status === 'ready'" class="helper">{{ t('importedHotwords', { name: upload.name }) }}</p>
+    <p v-if="imported.name && imported.status === 'ready'" class="helper">{{ t('importedHotwords', { name: imported.name }) }}</p>
     <ElAlert v-if="message || validation.issues.length" id="hotword-issues" tabindex="-1" type="error" :closable="false" show-icon class="hotword-notice"
       :title="message || t('hotwordIssues', { count: validation.issues.length })">
       <p v-if="issueRows.length">{{ t('hotwordIssueHelp') }}</p>

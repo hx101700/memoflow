@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 
@@ -38,11 +39,15 @@ class HotwordEditorTests(RuntimeTestCase):
         return path
 
     def test_import_preserves_invalid_rows_and_edits_replace_file_input(self):
-        """验证非法权重和冲突行在网页修改后即可提交，原Excel保持原样。"""
+        """验证导入保留原值，词条问题在明确校验时报告。"""
         path = self.workbook([("术语", 4), ("另一个词", "错误"), ("术语", 5)])
         original = path.read_bytes()
-        report = import_hotwords(path)
-        self.assertEqual([(issue["row"], issue["field"]) for issue in report["issues"]],
+        with patch("asr_runtime.application.rules.build_vocabulary", side_effect=AssertionError("导入只读取原始行")):
+            report = import_hotwords(path.read_bytes())
+        self.assertNotIn("issues", report)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(report["rows"])
+        self.assertEqual([(issue["row"], issue["field"]) for issue in caught.exception.details],
                          [(1, "text"), (2, "weight"), (3, "text")])
         self.assertEqual(report["rows"][1]["weight"], "错误")
         self.assertEqual(path.read_bytes(), original)
@@ -56,14 +61,17 @@ class HotwordEditorTests(RuntimeTestCase):
 
     def test_formula_errors_belong_to_cells_and_disappear_after_edit(self):
         """验证公式原文及错误定位可见，改写后使用当前单元格值。"""
-        report = import_hotwords(self.workbook([("=1+1", 4), ("另一个词", "=2+2")]))
+        report = import_hotwords(self.workbook([("=1+1", 4), ("另一个词", "=2+2")]).read_bytes())
         self.assertEqual(report["rows"], [
             {"text": "=1+1", "weight": 4, "invalid_fields": ["text"]},
             {"text": "另一个词", "weight": "=2+2", "invalid_fields": ["weight"]},
         ])
-        self.assertEqual([(issue["row"], issue["field"]) for issue in report["issues"]],
+        self.assertNotIn("issues", report)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(report["rows"])
+        self.assertEqual([(issue["row"], issue["field"]) for issue in caught.exception.details],
                          [(1, "text"), (2, "weight")])
-        self.assertTrue(all("不接受公式" in issue["message"] for issue in report["issues"]))
+        self.assertTrue(all("不接受公式" in issue["message"] for issue in caught.exception.details))
         report["rows"][0].update(text="术语", invalid_fields=[])
         report["rows"][1].update(weight="4", invalid_fields=[])
         self.assertEqual(validate_hotword_rows(report["rows"])["count"], 2)
@@ -75,9 +83,12 @@ class HotwordEditorTests(RuntimeTestCase):
         workbook.active["A3"].data_type = "s"
         workbook.save(path)
         workbook.close()
-        report = import_hotwords(path)
-        self.assertEqual([issue["row"] for issue in report["issues"] if "公式" in issue["message"]], [1])
-        self.assertEqual([issue["row"] for issue in report["issues"] if "重复" in issue["message"]], [1, 2])
+        report = import_hotwords(path.read_bytes())
+        self.assertNotIn("issues", report)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(report["rows"])
+        self.assertEqual([issue["row"] for issue in caught.exception.details if "公式" in issue["message"]], [1])
+        self.assertEqual([issue["row"] for issue in caught.exception.details if "重复" in issue["message"]], [1, 2])
         self.assertNotIn("invalid_fields", report["rows"][1])
         self.assertEqual(validate_hotword_rows([report["rows"][1]])["vocabulary"], {"=1+1": 4})
         # 网页输入保存为固定文本，编辑动作会移除原Excel的类型标记。
@@ -95,7 +106,7 @@ class HotwordEditorTests(RuntimeTestCase):
 
     def test_dates_and_excel_errors_are_visible_serializable_and_require_edit(self):
         """验证日期和Excel错误保留可见值及格级标记，编辑后可重新校验。"""
-        report = import_hotwords(self.workbook([(datetime(2026, 1, 2), 4), ("另一个词", "#VALUE!")]))
+        report = import_hotwords(self.workbook([(datetime(2026, 1, 2), 4), ("另一个词", "#VALUE!")]).read_bytes())
         json.dumps(report, allow_nan=False)
         self.assertIn("2026-01-02", report["rows"][0]["text"])
         self.assertEqual(report["rows"][0]["invalid_fields"], ["text"])
@@ -122,8 +133,8 @@ class HotwordEditorTests(RuntimeTestCase):
 
     def test_empty_table_reports_a_cell_and_accepts_new_manual_row(self):
         """验证空模板保留添加词条的操作路径。"""
-        report = import_hotwords(self.workbook([]))
-        self.assertEqual(report["issues"][0]["field"], "text")
+        report = import_hotwords(self.workbook([]).read_bytes())
+        self.assertEqual(report, {"rows": [], "warnings": []})
         for rows in ([], [{"text": "", "weight": ""}]):
             with self.subTest(rows=rows), self.assertRaises(ValidationError) as caught:
                 validate_hotword_rows(rows)

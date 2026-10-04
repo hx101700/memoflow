@@ -1,8 +1,8 @@
 import { nextTick, reactive, shallowRef } from "vue";
 import { UiError, uiError } from "./api";
-import { availability, checkRequiredInputs, configuration, createModel, hotwordRows, invalidatePreview, receiveEnd, receiveValidation } from "./model";
+import { availability, checkRequiredInputs, configuration, createModel, invalidatePreview, receiveEnd, receiveValidation } from "./model";
 import type { Translate } from "./i18n";
-import type { Api, DirectoryKind, EditableSnapshot, FormValues, HotwordField, HotwordRow, SessionEnd, UploadKind } from "./types";
+import type { Api, DirectoryKind, EditableSnapshot, FormValues, HotwordField, HotwordRow, SessionEnd } from "./types";
 
 export interface ViewEffects {
   focus(target: string): void;
@@ -18,18 +18,17 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     contextEnabled: false, context: "", language: "", speaker: "", hotwordRows: [] });
   const error = shallowRef<UiError | null>(null);
   let rowKey = 0;
-  let checkingRevision: number | null = null;
   let stopListening: (() => void) | undefined;
 
   // 判断会话是否仍允许接收本机操作结果。
   function active(): boolean { return !["handed_off", "expired", "cancelled", "unavailable"].includes(model.phase); }
 
   // 保存可见错误，并按用户当前操作定位输入。
-  function fail(reason: unknown, field?: string, focus = true): void {
+  function fail(reason: unknown, field?: string): void {
     if (!active()) return;
     error.value = uiError(reason, t("failed"), field);
     if (error.value.field === "hotword_rows") model.hotwords.issues = error.value.details;
-    if (focus) view.focus(error.value.field ?? "error-panel");
+    view.focus(error.value.field ?? "error-panel");
   }
 
   // 接收终态、清除显示凭据并停止结束通知。
@@ -44,8 +43,6 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   // 为导入或恢复的数据分配稳定组件标识和当前序号。
   function setRows(rows: HotwordRow[]): void {
     form.hotwordRows = rows.map((row, index) => ({ ...row, row: index + 1, key: ++rowKey }));
-    model.hotwords.revision += 1;
-    model.hotwords.validatedRevision = model.hotwords.revision;
   }
 
   // 将后端保留的预览输入恢复到本机表单。
@@ -56,7 +53,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       contextEnabled: ["context", "both"].includes(config.enhancement_mode), context: config.context,
       language: config.language_hint ?? "", speaker: config.speaker_count === null ? "" : String(config.speaker_count) });
     setRows(config.hotword_rows);
-    model.uploads.audio = { status: "ready", id: result.audio.upload_id, name: result.audio.name, size: result.audio.size_bytes };
+    model.audio = { ...result.audio };
     model.directories = { json: config.json_directory, document: config.document_directory };
     Object.assign(model.hotwords, { issues: [], warnings: [] });
   }
@@ -121,9 +118,8 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     if (model.auth.status !== "failed") view.focus("config-fields");
   }
 
-  // 标记词表内容变化，使旧结果过期并等待离开整个区域后检查。
+  // 词表编辑后清除上一轮检查提示并作废旧预览。
   function hotwordsChanged(): void {
-    model.hotwords.revision += 1;
     model.hotwords.issues = [];
     model.hotwords.warnings = [];
     actions.changed();
@@ -219,66 +215,47 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       hotwordsChanged();
     },
 
-    // 区域失焦后检查已修改的词表，迟到结果按词表版本丢弃。
-    async checkHotwords(): Promise<void> {
-      if (model.phase !== "editing" || !availability(model).editHotwords) return;
-      const revision = model.hotwords.revision;
-      if (revision === model.hotwords.validatedRevision || revision === checkingRevision) return;
-      checkingRevision = revision;
-      model.hotwords.checking = true;
-      try {
-        const result = await api.request("/api/validate-hotwords", { rows: hotwordRows(form) });
-        if (revision !== model.hotwords.revision || model.phase !== "editing") return;
-        Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings, validatedRevision: revision });
-      } catch (reason) {
-        if (revision === model.hotwords.revision && model.phase === "editing") fail(reason, "hotword_rows", false);
-      } finally {
-        if (checkingRevision === revision) { checkingRevision = null; model.hotwords.checking = false; }
-      }
-    },
-
-    // 切换界面语言时清除编辑区旧语言的检查提示。
-    languageChanged(): void {
-      if (!availability(model).changeLanguage || !availability(model).editable) return;
-      error.value = null;
-      model.hotwords.issues = [];
-      model.hotwords.warnings = [];
-      model.hotwords.validatedRevision = -1;
-    },
-
-    // 将单个文件传入本机服务，保存音频引用或可编辑热词数组。
-    async upload(kind: UploadKind, files: readonly File[]): Promise<void> {
+    // 读取单份 Excel 的字节，取得可编辑热词数组。
+    async importHotwords(files: readonly File[]): Promise<void> {
       const session = model.session;
-      if (!session || !availability(model).upload[kind] || !files.length) return;
+      if (!session || !availability(model).importHotwords || !files.length) return;
       error.value = null;
       invalidatePreview(model);
-      model.uploads[kind] = { status: "empty", id: null, name: "", size: 0 };
-      const upload = model.uploads[kind];
-      const field = kind === "audio" ? "audio_upload_id" : "hotword_rows";
+      model.hotwordImport = { status: "empty", name: "", size: 0 };
+      const imported = model.hotwordImport;
       try {
-        if (files.length !== 1) throw new UiError(t("singleFile"), field);
+        if (files.length !== 1) throw new UiError(t("singleFile"), "hotword_rows");
         const file = files[0];
-        const suffixes = kind === "audio" ? session.audio_suffixes : [".xlsx"];
-        if (!suffixes.some(extension => file.name.toLowerCase().endsWith(extension))) {
-          throw new UiError(t(kind === "hotwords" ? "wrongHotwords" : "unsupportedFormat"), field);
+        if (!file.name.toLowerCase().endsWith(".xlsx")) throw new UiError(t("wrongHotwords"), "hotword_rows");
+        if (file.size > session.limits.hotwords_bytes) throw new UiError(t("tooLarge", { size: session.limits.hotwords_bytes / 1_000_000 }), "hotword_rows");
+        imported.status = "importing";
+        imported.name = file.name;
+        const result = await api.request("/api/import-hotwords", undefined, file);
+        if (!active()) return;
+        setRows(result.rows);
+        Object.assign(model.hotwords, { issues: [], warnings: result.warnings });
+        Object.assign(imported, { status: "ready", name: result.name, size: result.size_bytes });
+        view.focus("hotword_rows");
+      } catch (reason) { imported.status = "failed"; fail(reason, "hotword_rows"); }
+    },
+
+    // 打开系统文件窗口并记录服务端批准的原音频引用。
+    async selectAudio(): Promise<void> {
+      if (!model.session || !availability(model).selectAudio) return;
+      const id = makeRequestId();
+      model.picker = { id, kind: "audio", cancelling: false };
+      let failure: unknown;
+      try {
+        const result = await api.request("/api/select-audio", { picker_id: id });
+        if (model.picker?.id !== id || !active()) return;
+        if (!result.cancelled) {
+          model.audio = { audio_id: result.audio_id, name: result.name, path: result.path, size_bytes: result.size_bytes };
+          error.value = null;
+          invalidatePreview(model);
         }
-        const limit = session.limits[kind === "audio" ? "audio_bytes" : "hotwords_bytes"];
-        if (file.size > limit) throw new UiError(t("tooLarge", { size: limit / 1_000_000 }), field);
-        upload.status = "uploading";
-        upload.name = file.name;
-        if (kind === "audio") {
-          const result = await api.request("/api/upload-audio", undefined, file);
-          if (!active()) return;
-          Object.assign(upload, { status: "ready", id: result.upload_id, name: result.name, size: result.size_bytes });
-        } else {
-          const result = await api.request("/api/upload-hotwords", undefined, file);
-          if (!active()) return;
-          setRows(result.rows);
-          Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings });
-          Object.assign(upload, { status: "ready", name: result.name, size: result.size_bytes });
-          view.focus("hotword_rows");
-        }
-      } catch (reason) { upload.status = "failed"; fail(reason, field); }
+      } catch (reason) { failure = reason; }
+      finally { if (model.picker?.id === id) model.picker = null; }
+      if (failure) fail(failure, "audio_id");
     },
 
     // 等待系统目录选择结果，选定后更新已批准的保存位置。
@@ -300,12 +277,12 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       if (failure) fail(failure, `${kind}_directory`);
     },
 
-    // 取消当前目录选择，等待原请求结束后恢复按钮。
-    async cancelDirectory(): Promise<void> {
+    // 取消当前系统选择窗口，等待原请求结束后恢复按钮。
+    async cancelPicker(): Promise<void> {
       const picker = model.picker;
-      if (!picker || !availability(model).cancelDirectory) return;
+      if (!picker || !availability(model).cancelPicker) return;
       picker.cancelling = true;
-      try { await api.request("/api/cancel-directory", { picker_id: picker.id }); }
+      try { await api.request("/api/cancel-picker", { picker_id: picker.id }); }
       catch (reason) {
         if (model.picker?.id === picker.id) { picker.cancelling = false; fail(reason); }
       }
@@ -357,7 +334,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       let config;
       try {
         config = configuration(model, form, session.limits, t);
-        checkRequiredInputs(config, session.limits, t);
+        checkRequiredInputs(config, t);
       } catch (reason) { fail(reason); return; }
       const revision = model.revision;
       model.phase = "validating";
@@ -384,7 +361,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
           model.statusMessage = "changed";
           return;
         }
-        Object.assign(model.hotwords, { issues: [], warnings: [], validatedRevision: model.hotwords.revision });
+        Object.assign(model.hotwords, { issues: [], warnings: [] });
         await registerPreview();
       } catch (reason) {
         if (!active()) return;

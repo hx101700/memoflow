@@ -107,6 +107,14 @@ BL中间件会检查版本并可能写update-state.json；quiet阻止后续自�
 
 `pip download`先保存完整wheel，失败才换第二个来源；`pip install --no-index --find-links`只使用本机文件，本机安装错误不再次换源。跨来源或跨进程不保留未完成下载的断点；已有完整wheel可复用。这些策略仅用于依赖准备，云端转写仍不自动重试。Skill没有随包wheel。PyAV许可见[官方LICENSE](https://github.com/PyAV-Org/PyAV/blob/v18.1.0/LICENSE.txt)；项目自身LICENSE不替代第三方许可。
 
+## 本机进程与临时文件
+
+`utils/environment.py::process_is_running` 使用 [OpenProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocess) 获取进程句柄，再以 [WaitForSingleObject](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject) 的零毫秒等待读取状态。等待要求 [SYNCHRONIZE 权限](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights)。项目仅查询并关闭句柄；无法确认时保留文件，PID 被其他活动进程复用时也保留。
+
+`application/recovery.py` 在下次 serve 前根据会话截止时间、PID 和已发布配置回收自有残留。正常退出先等待请求线程，再清理会话目录。具体保留范围是项目文件协议，不是 BL 的云端资源删除能力；已上传临时 OSS 仍遵循 A06。
+
+serve、transcribe、export 用 Python 标准库 [TemporaryDirectory](https://docs.python.org/3.12/library/tempfile.html#tempfile.TemporaryDirectory) 管理工作目录内的进程临时文件。Key 仍通过 python-dotenv 修改，在会话目录暂存后替换正式 .env；不新增凭据解析器。
+
 ## 本机窗口与成品
 
 - [tkinter.askdirectory](https://docs.python.org/3.12/library/dialog.html#tkinter.filedialog.askdirectory)：选择现有目录。当前无人工总时限，取消与进程回收由项目处理；显示窗口需要正常交互桌面。

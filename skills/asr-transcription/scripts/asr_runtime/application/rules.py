@@ -40,14 +40,14 @@ class ValidationError(ValueError):
 def check_audio_limits(info: AudioInfo, diarization: bool) -> None:
     """根据模型和临时存储规格校验音频属性。"""
     if not set(info.format_name.split(",")) & SUPPORTED_CONTAINERS:
-        raise ValidationError("实际媒体格式不在固定模型支持范围内。", "audio_path")
+        raise ValidationError("实际媒体格式不在固定模型支持范围内。", "audio_id")
     duration = info.duration_seconds
     if duration is None or not math.isfinite(duration) or duration <= 0:
-        raise ValidationError("无法确定有效音频时长，不能完成上传前校验。", "audio_path")
+        raise ValidationError("无法确定有效音频时长，不能完成上传前校验。", "audio_id")
     if duration > MAX_DURATION_SECONDS:
-        raise ValidationError("音频时长超过模型允许的12小时。", "audio_path")
+        raise ValidationError("音频时长超过模型允许的12小时。", "audio_id")
     if not (diarization and info.channels > 1) and info.size_bytes > MAX_UPLOAD_BYTES:
-        raise ValidationError("待上传音频超过临时OSS的1 GB上限。", "audio_path")
+        raise ValidationError("待上传音频超过临时OSS的1 GB上限。", "audio_id")
 
 
 def validate_context(text: object) -> str:

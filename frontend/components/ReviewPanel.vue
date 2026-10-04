@@ -14,6 +14,7 @@ const rows = computed<[string, string][]>(() => {
   const { summary, configuration: config } = preview;
   const values: [string, string][] = [
     [t("audioFile"), summary.audio.name],
+    [t("audioLocation"), summary.audio.path],
     [t("duration"), durationText(summary.audio.duration_seconds)],
     [t("fileSize"), fileSize(summary.audio.size_bytes)],
     [t("formatChannels"), `${summary.audio.format_name} / ${t(summary.audio.channels === 1 ? "channel" : "channels", { count: summary.audio.channels })}`],

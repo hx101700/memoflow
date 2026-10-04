@@ -56,6 +56,8 @@ Caption: Provide hotwords and context for recognition. Use public terms and publ
 
 Choose “Confirm and preview” to check the details; you can return to editing before handing them over. When ready, select “Copy for Codex” and send the copied confirmation message in your conversation. Codex accepts those settings and starts processing. If Console authorization is needed, complete it in your system default browser and reply “done.” Codex waits for recognition and document generation, then provides the files and their locations for your review. Transcription sends the recording and enabled enhancement content to Model Studio in China (Beijing) and may incur charges.
 
+Audio is selected in the system file dialog and read from its original path. Excel hotword lists are parsed in memory. Keep the recording available until transcription finishes; a processed audio file is created only when channel merging is needed.
+
 **Stage two (planned)** will create meeting minutes from reviewed transcripts, document examples, and formatting requirements, then use corrections you confirm to improve later results. Preference storage and feedback adoption will be designed in that stage. The current Skill delivers transcripts for review.
 
 ## Contributing

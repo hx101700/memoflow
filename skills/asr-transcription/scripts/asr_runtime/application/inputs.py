@@ -4,20 +4,20 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import cast
 
-from ..models import AudioMetadata, AudioRecord, HotwordImport, HotwordIssue
+from ..models import AudioMetadata, AudioRecord, HotwordImport
 
 from ..utils.files import FileError, file_fingerprint, resolve_input
 from ..utils.hotwords import HotwordFileError, read_hotwords
 from ..utils.i18n import translate
 from ..utils.media import MediaError, probe_audio
-from .rules import AUDIO_SUFFIXES, ValidationError, check_audio_limits, validate_hotword_rows
+from .rules import AUDIO_SUFFIXES, ValidationError, check_audio_limits
 
 
-def validate_audio(input_root: Path, path: str | Path, diarization: object) -> AudioRecord:
+def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
     """校验音频，返回媒体属性、内容摘要和处理提示。"""
-    field = "audio_path"
+    field = "audio_id"
     try:
-        source = resolve_input(input_root, path, AUDIO_SUFFIXES)
+        source = resolve_input(path, AUDIO_SUFFIXES)
         if not isinstance(diarization, bool):
             raise ValidationError("说话人选项必须为开启或关闭。", "diarization")
         before = source.stat()
@@ -54,16 +54,10 @@ def validate_audio(input_root: Path, path: str | Path, diarization: object) -> A
         raise ValidationError("无法读取音频，请检查文件是否损坏及格式是否支持。", field) from exc
 
 
-def import_hotwords(path: Path) -> HotwordImport:
-    """导入Excel并保留错误单元格，供用户在网页表格中修正。"""
+def import_hotwords(content: bytes) -> HotwordImport:
+    """从Excel字节读取可编辑原始行及工作簿提示。"""
     try:
-        rows, warnings = read_hotwords(path)
+        rows, warnings = read_hotwords(content)
     except HotwordFileError as exc:
         raise ValidationError(str(exc), "hotword_rows", exc.details) from exc
-    issues: list[HotwordIssue] = []
-    try:
-        vocabulary = validate_hotword_rows(rows)
-        warnings.extend(vocabulary["warnings"])
-    except ValidationError as exc:
-        issues = exc.details
-    return {"rows": rows, "issues": issues, "warnings": warnings}
+    return {"rows": rows, "warnings": warnings}

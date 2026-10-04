@@ -42,7 +42,6 @@ skills/asr-transcription/          # Skill 安装资源，运行时只读
 │   └── .state/
 │       ├── bailian/
 │       ├── sessions/<session_id>/
-│       ├── web-uploads/<session_id>/
 │       └── jobs/<job_id>/
 └── transcriptions/               # 默认保存根
 ```
@@ -59,7 +58,8 @@ Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端�
 | --- | --- |
 | `__main__.py` / `web.py` | CLI 与 HTTP 分派、受保护的本机控制、事件连接和服务生命周期 |
 | `application/bootstrap.py` / `diagnostics.py` | 安装工作目录依赖、诊断本机条件 |
-| `application/session.py` | 编辑会话、上传、预览版本、交接和副本清理 |
+| `application/session.py` | 编辑会话、原音频选择、内存热词导入、预览与交接 |
+| `application/recovery.py` | 正常关闭及下次开页时回收可确认归属的临时文件 |
 | `application/inputs.py` / `rules.py` | 读取输入事实、统一应用模型规则；rules 无 I/O |
 | `application/transcription.py` | 一次执行、状态查询和重新导出 |
 | `application/delivery.py` | 三种 writer 的顺序调用与交付汇总 |
@@ -69,14 +69,14 @@ Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端�
 | `utils/files.py` / `job_files.py` / `session_files.py` | 文件摘要与原子替换、任务协议、会话连接与交接回执 |
 | `utils/hotwords.py` / `media.py` | Excel 导入/模板、媒体探测和单声道副本 |
 | `utils/results.py` / `documents.py` | 结果解析、文档生成与目标替换 |
-| `utils/directory_picker.py` / `_directory_dialog.py` | 原生目录窗口、取消与子进程回收 |
+| `utils/path_picker.py` / `_path_dialog.py` | 原生文件/目录窗口、共享取消与子进程回收 |
 | `models.py` / `utils/i18n.py` | 共享类型、请求范围的本机消息语言 |
 | `frontend/App.vue` / `components/` | 两步页面与 Element Plus 输入、表格、预览、结束提示 |
 | `frontend/useTranscription.ts` / `model.ts` | 页面用例编排、纯状态和输入版本 |
 | `frontend/api.ts` / `types.ts` | 本机 HTTP/事件传输与协议类型 |
 | `frontend/preferences.ts` / `i18n.ts` | 语言、外观偏好与文案 |
 
-Session、DirectoryPicker 持有实际生命周期；无状态操作使用模块函数。TypedDict 和 TypeScript 接口描述数据协议，不建立重复的运行时对象层。Python 保持入口 → application → utils；utils 不反向导入用例。
+Session、PathPicker 持有实际生命周期；无状态操作使用模块函数。TypedDict 和 TypeScript 接口描述数据协议，不建立重复的运行时对象层。Python 保持入口 → application → utils；utils 不反向导入用例。
 
 ## 编辑会话与执行任务
 
@@ -93,15 +93,36 @@ Session、DirectoryPicker 持有实际生命周期；无状态操作使用模块
 
 会话有效期为从创建起固定两小时，使用一次计时器及操作时截止时间检查。到期与交接共用状态保护，只有一个终态。没有活动上报、心跳、逐次草稿保存或云端进度轮询。页面通过单向事件连接收到交接、到期或取消结果，呈现结束提示，由用户关闭标签页。
 
-交接保留任务需要的音频和记录；取消、到期清理未提交副本，保留用户原文件和已保存的 Key。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
+音频从系统文件窗口登记的原路径读取，Excel 仅在内存解析；交接保存参数与来源引用。取消、到期只清理会话临时记录，原文件和已保存 Key 保留。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
 
-正常服务关闭先执行 Session 清理、取消目录选择，再由标准库服务器等待请求线程收尾。仍在接收的上传利用关闭标记或既有 socket 读写超时结束，并由自身 finally 清理临时文件；这不构成强制杀进程后的清理保证。
+### 临时文件回收
+
+正常关闭依次执行：`Session.cleanup()` 设置关闭状态并取消原生选择窗口 → HTTP 服务器等待请求线程结束 → `recovery.finish_session()` 回收磁盘暂存。热词接收在内存中完成；writer 的 finally 先处理自身临时文件，统一回收发生在请求线程结束后。
+
+若服务被强制终止，退出清理可能没有运行。下次同一工作目录启动 `serve` 时，`recover_workspace()` 读取有效任务配置以定位文档临时文件，并回收满足条件的会话残留。会话须同时达到原两小时截止时间、所属进程已确认结束；进程仍存活或状态未知时保留对应临时文件，任务配置不可读时保留该任务的文件。进程编号复用时也按仍存活处理。它是开页前的一次检查，不是后台定时任务，也不恢复或重传识别。
+
+| 文件类别 | 处理与依据 |
+| --- | --- |
+| 输入音频与热词 Excel | 音频直接读取原路径；Excel 内存解析；不产生输入文件副本，原文件不属于清理范围 |
+| 未发布配置与候选回执 | 按所属会话清理 config.json.tmp、config.sha256、候选 receipt；存在执行/交付记录或其他归属异常时保留 |
+| 会话内 Key 暂存 | .env 及 python-dotenv 的同目录临时文件随会话回收；正式运行根 .env 始终保留 |
+| JSON / 文档原子写入临时文件 | 文件名记录 PID。下次 serve 只删除所属进程已结束的临时文件，保留正式 status.json 和成品 |
+| Python 库临时目录 | serve、transcribe、export 使用私有 .runtime/tmp/python-PID-随机值，正常退出清理；死进程目录在下次 serve 回收 |
+| 原录音、mono.flac、原始 JSON、成品、任务与执行占用 | 保留，供执行、核对、状态查询或重导 |
+| 正式 API Key、BL 凭据、安装包缓存及无归属旧文件 | 保留；不扫描系统 Temp 或任意用户目录 |
+
+`connection.json` 保存 port、token、pid、deadline，既用于本机控制，也提供会话回收依据。启动回执的 `cleanup` 返回已回收数量和警告；正常关闭未能完全清理时输出 `cleanup_warning`。会话记录不全、权限不足或会话目录含未知文件时保留并报告；不属于本工具命名规则的旧临时文件保持原样。
+
+`process_is_running()` 通过 Windows 进程句柄作即时状态查询，权限不足返回未知；不枚举整机进程、不终止别的进程。依据见 [model.md](../skills/asr-transcription/references/model.md#本机进程与临时文件)。
 
 ## 输入检查
 
+音频使用系统文件窗口取得真实路径。浏览器普通文件输入不提供原始完整路径，参见 [MDN 文件输入说明](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file)。因此页面发送选择请求，由 PathPicker 登记原文件，随后仅提交 audio_id。音频与目录共用一个选择器及取消入口。原录音在转写完成前需要保持可访问；只有声道合并创建 mono.flac。
+
 | 时机 | 行为 | 消费者 |
 | --- | --- | --- |
-| 上传 | 名称、用途、大小、实际接收字节 | 会话音频引用或热词导入结果 |
+| 选择音频 | 系统窗口确认普通文件并返回规范路径，登记 audio_id | 原文件引用与页面展示 |
+| 导入热词 | 有界接收 Excel 字节，在内存读取工作表 | 热词数据数组 |
 | 预览 | 选项与增强规则、音频探测和 SHA、输出根目录 | 内存预览快照与版本 |
 | 交接 | 预览就绪、截止时间、音频 size/mtime | 不可变授权配置 |
 | 执行 | 配置协议/摘要、音频完整摘要、当前凭据 | 本次 BL 命令 |
@@ -109,7 +130,7 @@ Session、DirectoryPicker 持有实际生命周期；无状态操作使用模块
 
 热词从 Excel 去除表头、忽略完全空白行，保留无效单元格及原值供修正。网页行序号按当前数组从 1 连续编号，删除后重排，与用于组件复用的稳定键分开；错误定位使用当前数据位置。分页不改变编号含义。
 
-导入、改动后整个热词区域失焦、最终整单检查都调用同一后端路径：`validate_hotword_rows()` → `build_vocabulary()`。自动检查不锁住编辑；输入版本使过期响应失效。相同文本的所有重复行报错，由用户保留一行，权重问题单独定位。没有“检查词表”按钮或检查通过标签。
+Excel 使用 BytesIO 在内存读取并填充数据数组，文件不可读、表头或结构不符时提示导入问题。热词与上下文内容仅在点击“确认并预览”后通过 `/api/validate` 校验：热词调用 `validate_hotword_rows()` → `build_vocabulary()`，上下文调用 `validate_context()`。编辑、导入成功、失焦和语言切换均不触发内容校验。相同文本的重复行与权重问题在最终检查后定位标红；输入原值保留供修改。
 
 上下文按 400 个 Unicode 字符及可传输字符检查，错误指出具体长度或字符位置并保留原文；本机不推断其是否与录音语义相关。热词与上下文可同时使用。Excel 只是导入来源，执行消费确认快照的 vocabulary。
 
@@ -117,7 +138,7 @@ Session、DirectoryPicker 持有实际生命周期；无状态操作使用模块
 
 ## 认证与执行
 
-API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输入；专用受保护请求加载/保存私有 `.env`，配置只记录认证方式。预览前按需保存，执行时读取当前值。Key 不进入任务配置、日志、聊天或浏览器持久存储。
+API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输入；专用受保护请求加载/保存私有 `.env`，配置只记录认证方式。预览前按需保存，执行时读取当前值。保存复用 python-dotenv，在会话目录的 .env 副本完成修改后替换正式 .env，使中断残留具有明确归属。Key 不进入任务配置、日志、聊天或浏览器持久存储。
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
@@ -155,7 +176,8 @@ results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把
 | API Key / BL 配置 | 私有运行目录 `.env` / `.state/bailian/` |
 | 活动连接信息 | `.state/sessions/<session_id>/connection.json` |
 | 交接回执 | 同一 session 目录的 `receipt.json` |
-| 音频副本 | `.state/web-uploads/<session_id>/` |
+| 音频来源 | 用户通过系统窗口选择的原始绝对路径，任务只保存引用 |
+| 热词来源 | 浏览器发送的 Excel 字节在内存读取，任务保存词典 |
 | 配置与摘要 | `.state/jobs/<job_id>/config.json`、`config.sha256` |
 | 执行 / 导出记录 | 同一 job 目录的 `execution/status.json` / `delivery/status.json` |
 | 原始 JSON | `<json_root>/<job_id>/json/transcription.json` |

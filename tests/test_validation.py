@@ -49,12 +49,12 @@ class ValidationTests(RuntimeTestCase):
         workbook.close()
         return path
 
-    def test_resolve_accepts_absolute_local_copy(self):
-        """验证接受输入根内的绝对文件路径。"""
+    def test_resolve_accepts_absolute_original_file(self):
+        """验证接受用户原始音频的绝对文件路径。"""
         path = self.audio()
-        self.assertEqual(resolve_input(self.runtime.root, path, AUDIO_SUFFIXES), path)
+        self.assertEqual(resolve_input(path, AUDIO_SUFFIXES), path)
 
-    def test_resolve_rejects_relative_outside_missing_and_wrong_kind(self):
+    def test_resolve_rejects_relative_missing_and_wrong_kind(self):
         """验证非法路径或文件类型返回输入错误。"""
         self.audio()
         unsupported = self.data / "unsupported.txt"
@@ -62,10 +62,10 @@ class ValidationTests(RuntimeTestCase):
         for value in ("", "data/合成.wav", self.runtime.root.parent / "outside.wav",
                       self.data, self.data / "missing.wav", unsupported):
             with self.subTest(value=value), self.assertRaises(FileError):
-                resolve_input(self.runtime.root, value, AUDIO_SUFFIXES)
+                resolve_input(value, AUDIO_SUFFIXES)
 
-    def test_resolve_rejects_junction_or_symlink_outside_input_root(self):
-        """验证指向输入根外的链接或联接被拒绝。"""
+    def test_resolve_canonicalizes_junction_or_symlink(self):
+        """验证原生窗口选中的链接解析为原文件的规范路径。"""
         scoped_root = self.runtime.path("scoped")
         scoped_root.mkdir()
         outside = self.data
@@ -77,8 +77,7 @@ class ValidationTests(RuntimeTestCase):
             self.assertEqual(result.returncode, 0)
         else:
             link.symlink_to(outside, target_is_directory=True)
-        with self.assertRaises(FileError):
-            resolve_input(scoped_root, link / "合成.wav", AUDIO_SUFFIXES)
+        self.assertEqual(resolve_input(link / "合成.wav", AUDIO_SUFFIXES), (outside / "合成.wav").resolve())
 
     def test_fingerprint_detects_same_size_content_change(self):
         """验证同大小文件内容变化会改变指纹。"""
@@ -94,15 +93,15 @@ class ValidationTests(RuntimeTestCase):
     def test_audio_mono_uses_original_and_stereo_only_plans_conversion(self):
         """验证单声道引用原文件且立体声预览包含转换计划。"""
         path = self.audio()
-        mono = validate_audio(self.runtime.root, path, True)
+        mono = validate_audio(path, True)
         self.assertFalse(mono["requires_mono"])
         self.assertEqual(mono["metadata"]["duration_seconds"], 1.0)
         path = self.audio(channels=2)
         before = path.read_bytes()
-        stereo = validate_audio(self.runtime.root, path, True)
+        stereo = validate_audio(path, True)
         self.assertTrue(stereo["requires_mono"])
         self.assertIn("保留原文件", stereo["warnings"][0])
-        self.assertFalse(validate_audio(self.runtime.root, path, False)["requires_mono"])
+        self.assertFalse(validate_audio(path, False)["requires_mono"])
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(list(self.data.iterdir()), [path])
 
@@ -113,7 +112,7 @@ class ValidationTests(RuntimeTestCase):
             path = self.data / name
             path.write_bytes(contents)
             with self.subTest(name=name), self.assertRaises(ValidationError):
-                validate_audio(self.runtime.root, path, True)
+                validate_audio(path, True)
 
     def test_audio_rejects_same_length_modification_during_probe(self):
         """验证探测期间同长度改写音频会被发现。"""
@@ -129,7 +128,7 @@ class ValidationTests(RuntimeTestCase):
 
         with patch("asr_runtime.application.inputs.probe_audio", side_effect=changing_probe):
             with self.assertRaisesRegex(ValidationError, "校验期间发生变化"):
-                validate_audio(self.runtime.root, path, True)
+                validate_audio(path, True)
 
     def test_audio_duration_and_actual_container_boundaries(self):
         """验证时长和实际容器格式的边界规则。"""
@@ -139,13 +138,14 @@ class ValidationTests(RuntimeTestCase):
             with self.subTest(duration=duration), patch("asr_runtime.application.inputs.probe_audio",
                     return_value=replace(normal, duration_seconds=duration)):
                 with self.assertRaises(ValidationError):
-                    validate_audio(self.runtime.root, path, True)
+                    validate_audio(path, True)
         with patch("asr_runtime.application.inputs.probe_audio", return_value=replace(normal, format_name="aiff")):
-            with self.assertRaisesRegex(ValidationError, "实际媒体格式"):
-                validate_audio(self.runtime.root, path, False)
+            with self.assertRaisesRegex(ValidationError, "实际媒体格式") as caught:
+                validate_audio(path, False)
+            self.assertEqual(caught.exception.field, "audio_id")
         with patch("asr_runtime.application.inputs.probe_audio",
                    return_value=replace(normal, duration_seconds=43200, audio_tracks=2)):
-            result = validate_audio(self.runtime.root, path, True)
+            result = validate_audio(path, True)
             self.assertEqual(len(result["warnings"]), 2)
             self.assertTrue(any("索引0" in text for text in result["warnings"]))
 
@@ -155,11 +155,11 @@ class ValidationTests(RuntimeTestCase):
         big = AudioInfo(2, 8000, 1.0, MAX_UPLOAD_BYTES + 1, "wav", 1)
         with patch("asr_runtime.application.inputs.probe_audio", return_value=big):
             with self.assertRaisesRegex(ValidationError, "1 GB"):
-                validate_audio(self.runtime.root, path, False)
+                validate_audio(path, False)
             with patch("asr_runtime.application.inputs.file_fingerprint",
                        return_value={"size_bytes": big.size_bytes, "mtime_ns": path.stat().st_mtime_ns,
                                      "sha256": "synthetic"}):
-                self.assertTrue(validate_audio(self.runtime.root, path, True)["requires_mono"])
+                self.assertTrue(validate_audio(path, True)["requires_mono"])
 
     def test_context_counts_unicode_characters_and_preserves_text(self):
         """验证上下文按Unicode字符计数且保留原文。"""
@@ -177,8 +177,11 @@ class ValidationTests(RuntimeTestCase):
                              headers=("热词", "权重"))
         before = path.read_bytes()
         with patch("asr_runtime.application.inputs.file_fingerprint", side_effect=AssertionError("热词导入不计算文件SHA")):
-            result = import_hotwords(path)
-        self.assertEqual([issue["row"] for issue in result["issues"]], [1, 2])
+            result = import_hotwords(path.read_bytes())
+        self.assertNotIn("issues", result)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(result["rows"])
+        self.assertEqual([issue["row"] for issue in caught.exception.details], [1, 2])
         self.assertEqual(len(result["rows"]), 3)
         result["rows"].pop(1)
         checked = validate_hotword_rows(result["rows"])
@@ -193,57 +196,66 @@ class ValidationTests(RuntimeTestCase):
             ("first", 4), ("first", 3), ("=1+1", 4), (None, 2), ("word", True),
             ("second", 2.5), ("third", "4.0"), (" 热词", 3), ("tab\tword", 2),
         ])
-        imported = import_hotwords(path)
-        details = imported["issues"]
-        self.assertEqual({error["row"] for error in details}, set(range(1, 10)))
-        self.assertTrue(all(set(error) == {"row", "field", "message"} for error in details))
+        imported = import_hotwords(path.read_bytes())
+        self.assertNotIn("issues", imported)
         with self.assertRaises(ValidationError) as caught:
             validate_hotword_rows(imported["rows"])
         self.assertEqual(caught.exception.field, "hotword_rows")
-        self.assertEqual(caught.exception.details, details)
+        details = caught.exception.details
+        self.assertEqual({error["row"] for error in details}, set(range(1, 10)))
+        self.assertTrue(all(set(error) == {"row", "field", "message"} for error in details))
 
     def test_hotword_length_rules(self):
         """验证中英文热词长度规则。"""
         valid = self.hotwords([("汉" * 15, 1), ("a b c d e f g", 5)])
-        self.assertEqual(validate_hotword_rows(import_hotwords(valid)["rows"])["count"], 2)
+        self.assertEqual(validate_hotword_rows(import_hotwords(valid.read_bytes())["rows"])["count"], 2)
         invalid = self.hotwords([("汉" * 16, 1), ("a b c d e f g h", 5)])
-        self.assertEqual([error["row"] for error in import_hotwords(invalid)["issues"]], [1, 2])
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(import_hotwords(invalid.read_bytes())["rows"])
+        self.assertEqual([error["row"] for error in caught.exception.details], [1, 2])
 
     def test_fixed_model_accepts_super_words_and_limits_their_count(self):
         """验证固定模型支持超级热词并限制其数量。"""
         path = self.hotwords([(f"term{i}", 50) for i in range(50)])
-        self.assertEqual(validate_hotword_rows(import_hotwords(path)["rows"])["vocabulary"],
+        self.assertEqual(validate_hotword_rows(import_hotwords(path.read_bytes())["rows"])["vocabulary"],
                          {f"term{i}": 50 for i in range(50)})
         path = self.hotwords([(f"term{i}", 50) for i in range(51)])
-        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 51)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(import_hotwords(path.read_bytes())["rows"])
+        self.assertEqual(caught.exception.details[0]["row"], 51)
 
     def test_hotword_count_limit(self):
         """验证即时热词总数量上限。"""
         path = self.hotwords([(f"term{i}", 4) for i in range(2000)])
-        self.assertEqual(validate_hotword_rows(import_hotwords(path)["rows"])["count"], 2000)
+        self.assertEqual(validate_hotword_rows(import_hotwords(path.read_bytes())["rows"])["count"], 2000)
         path = self.hotwords([(f"term{i}", 4) for i in range(2001)])
-        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 2001)
+        imported = import_hotwords(path.read_bytes())
+        self.assertEqual(len(imported["rows"]), 2001)
+        self.assertNotIn("issues", imported)
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(imported["rows"])
+        self.assertEqual(caught.exception.details[0]["row"], 2001)
 
     def test_hotwords_rejects_invalid_header_extra_columns_and_corrupt_file(self):
         """验证异常表头、多列和损坏词表在导入时被拒绝。"""
         for headers, rows in [(("word", "weight"), [("hello", 4)]),
                               (("text", "weight", "extra"), [("hello", 4, "x")])]:
             with self.subTest(headers=headers, row_count=len(rows)), self.assertRaises(ValidationError):
-                import_hotwords(self.hotwords(rows, headers=headers))
+                import_hotwords(self.hotwords(rows, headers=headers).read_bytes())
         path = self.data / "bad.xlsx"
         path.write_text("not a spreadsheet")
         with self.assertRaises(ValidationError):
-            import_hotwords(path)
+            import_hotwords(path.read_bytes())
 
     def test_hotwords_bounds_archive_size_and_decompressed_size(self):
         """验证词表原始大小与解压大小上限。"""
         path = self.hotwords([("test", 4)])
         with patch("asr_runtime.utils.hotwords.MAX_XLSX_BYTES", 1):
             with self.assertRaisesRegex(ValidationError, "文件上限"):
-                import_hotwords(path)
+                import_hotwords(path.read_bytes())
         with patch("asr_runtime.utils.hotwords.MAX_XLSX_UNCOMPRESSED_BYTES", 1):
             with self.assertRaisesRegex(ValidationError, "解压内容"):
-                import_hotwords(path)
+                import_hotwords(path.read_bytes())
 
     def test_hotwords_rejects_xml_entities(self):
         """验证Excel中的XML实体被拒绝。"""
@@ -260,8 +272,7 @@ class ValidationTests(RuntimeTestCase):
             for name, contents in entries.items():
                 modified.writestr(name, contents)
         with self.assertRaises(ValidationError):
-            import_hotwords(path)
-        path.unlink()  # 解析被拒绝后，不依赖GC才释放Windows文件占用。
+            import_hotwords(path.read_bytes())
 
     def test_hotwords_rejects_ambiguous_sheets_and_discloses_explicit_selection(self):
         """验证多工作表选择规则并说明选定工作表。"""
@@ -271,18 +282,18 @@ class ValidationTests(RuntimeTestCase):
         workbook.create_sheet("two")
         workbook.save(path)
         with self.assertRaisesRegex(ValidationError, "多个工作表"):
-            import_hotwords(path)
+            import_hotwords(path.read_bytes())
         sheet = workbook.create_sheet("热词")
         sheet.append(["text", "weight"])
         sheet.append(["test", 4])
         workbook.save(path)
         workbook.close()
-        result = import_hotwords(path)
+        result = import_hotwords(path.read_bytes())
         self.assertEqual(validate_hotword_rows(result["rows"])["vocabulary"], {"test": 4})
         self.assertTrue(any("其他工作表" in warning for warning in result["warnings"]))
 
-    def test_hotwords_rejects_chart_sheet_with_field_error_and_releases_file(self) -> None:
-        """验证图表工作表返回双语热词字段错误，并立即释放Excel文件。"""
+    def test_hotwords_rejects_chart_sheet_with_field_error_and_preserves_source(self) -> None:
+        """验证图表工作表返回双语热词字段错误，原Excel保持不变。"""
         path = self.data / "chart-sheet.xlsx"
         workbook = Workbook()
         sheet = workbook.active
@@ -295,13 +306,14 @@ class ValidationTests(RuntimeTestCase):
         workbook.save(path)
         workbook.close()
 
+        original = path.read_bytes()
         for language, message in (
             ("zh-CN", "请使用普通工作表填写热词，不支持图表工作表。"),
             ("en", "Enter hotwords in a regular worksheet. Chart sheets are not supported."),
         ):
             with self.subTest(language=language), language_scope(language):
                 with self.assertRaises(ValidationError) as caught:
-                    import_hotwords(path)
+                    import_hotwords(original)
                 self.assertEqual(caught.exception.field, "hotword_rows")
                 self.assertEqual(str(caught.exception), message)
-        path.unlink()  # Windows上仍被解析器占用的文件不能删除。
+        self.assertEqual(path.read_bytes(), original)

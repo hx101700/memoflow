@@ -1,4 +1,4 @@
-"""管理本机会话的文件上传、配置预览和确认流程。"""
+"""管理本机会话的原文件选择、热词导入、配置预览和交接。"""
 
 import secrets
 import tempfile
@@ -8,22 +8,22 @@ import uuid
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from datetime import datetime, timezone
-from io import BufferedIOBase
+from io import BufferedIOBase, BytesIO
 from pathlib import Path
 from typing import BinaryIO, TypedDict, cast
 
 from .. import MODEL
 from ..models import (
-    AuthMode, ConfirmationReceipt, EnhancementMode, JobConfig, SessionEndState,
+    AudioSelection, AuthMode, ConfirmationReceipt, EnhancementMode, JobConfig, SessionEndState,
     SessionPhase, SessionTerminal, TranscriptionSettings,
 )
 from ..utils.auth import read_api_key, write_api_key
-from ..utils.directory_picker import DirectoryPicker
+from ..utils.path_picker import PathPicker
 from ..utils.environment import Runtime, SetupError
 from ..utils.files import FileError, check_file_unchanged, resolve_input
 from ..utils.hotwords import MAX_XLSX_BYTES
 from ..utils.job_files import job_directory, publish_config
-from ..utils.session_files import write_receipt
+from ..utils.session_files import session_directory, write_receipt
 from .inputs import import_hotwords, validate_audio
 from .rules import (
     AUDIO_SUFFIXES, ValidationError, validate_context, validate_hotword_rows, LANGUAGE_CODES, validate_options,
@@ -31,7 +31,6 @@ from .rules import (
     MAX_DURATION_SECONDS, MAX_HOTWORDS,
 )
 
-MAX_LOCAL_AUDIO_BYTES = 2_000_000_000
 SESSION_LIFETIME_SECONDS = 2 * 60 * 60
 
 
@@ -58,13 +57,6 @@ def output_directory(runtime: Runtime, value: object, field: str, approved: Path
         raise ValidationError("此文件夹无法保存文件，请选择其他位置。", field) from exc
 
 
-class UploadRecord(TypedDict):
-    """保存当前会话已完整接收音频的本机位置。"""
-
-    path: str
-    name: str
-
-
 class Draft(TypedDict):
     """关联一次成功预览及其待确认的配置快照。"""
 
@@ -78,7 +70,7 @@ class Draft(TypedDict):
 
 class Session:
     def __init__(self, runtime: Runtime, *, clock: Callable[[], float] = time.time) -> None:
-        """创建两小时编辑会话及其上传、预览和结束状态。"""
+        """创建两小时编辑会话及其输入、预览和结束状态。"""
         self.runtime = runtime
         self.session_id = uuid.uuid4().hex
         self.token = secrets.token_urlsafe(32)
@@ -91,12 +83,11 @@ class Session:
         self._terminal: SessionTerminal | None = None
         self.draft: Draft | None = None
         self.receipt: ConfirmationReceipt | None = None
-        self.upload_directory = runtime.root.resolve() / ".state/web-uploads" / self.session_id
-        self.uploads: dict[str, UploadRecord] = {}
+        self.selected_audio: AudioSelection | None = None
         self.output_directories: dict[str, Path] = {}
-        self._picker = DirectoryPicker()
+        self._picker = PathPicker()
         self._closed = threading.Event()
-        self._pending_uploads: set[str] = set()
+        self._receiving_hotwords = False
 
     def _require_open(self) -> None:
         """检查截止时间和会话终态，拒绝继续操作已结束的会话。"""
@@ -149,12 +140,33 @@ class Session:
                 return deepcopy(self._terminal)
             return deepcopy(self._finish("cancelled"))
 
-    def _require_uploads_complete(self) -> None:
-        """检查上传完成状态，报告仍在接收的文件类型。"""
-        if self._pending_uploads:
-            kind = next(iter(self._pending_uploads))
-            field = "audio_upload_id" if kind == "audio" else "hotword_rows"
-            raise ValidationError("文件仍在添加，请稍候。", field)
+    def _require_import_complete(self) -> None:
+        """在热词仍接收时阻止预览与交接。"""
+        if self._receiving_hotwords:
+            raise ValidationError("文件仍在添加，请稍候。", "hotword_rows")
+
+    def select_audio(self, picker_id: object) -> dict[str, object]:
+        """打开原生音频窗口并登记用户选中的原始文件。"""
+        with self._state_lock:
+            self._require_editable()
+            initial = Path(self.selected_audio["path"]).parent if self.selected_audio else self.runtime.workspace
+        if not initial.is_dir():
+            initial = self.runtime.workspace
+        try:
+            selected = self._picker.select(initial, picker_id, mode="audio", audio_suffixes=tuple(sorted(AUDIO_SUFFIXES)))
+            if selected is None:
+                return {"ok": True, "cancelled": True}
+            path = selected
+            size = path.stat().st_size
+        except (SetupError, OSError) as exc:
+            message = str(exc) if isinstance(exc, SetupError) else "无法读取指定文件，请检查路径和访问权限。"
+            raise ValidationError(message, "audio_id") from exc
+        with self._state_lock:
+            self._require_editable()
+            self.selected_audio = {"audio_id": uuid.uuid4().hex, "path": str(path), "name": path.name,
+                                   "size_bytes": size}
+            self.draft = None
+            return {"ok": True, "cancelled": False, **self.selected_audio}
 
     def select_directory(self, kind: object, picker_id: object) -> dict[str, object]:
         """打开原生目录窗口，校验并登记所选保存位置。"""
@@ -167,7 +179,7 @@ class Session:
         if not initial.is_dir():
             initial = self.runtime.workspace
         try:
-            selected = self._picker.select(initial, picker_id)
+            selected = self._picker.select(initial, picker_id, mode="directory")
         except SetupError as exc:
             raise ValidationError(str(exc), f"{kind}_directory") from exc
         if selected is None:
@@ -188,8 +200,8 @@ class Session:
             self.draft = None
         return {"ok": True, "cancelled": False, "path": str(path)}
 
-    def cancel_directory(self, picker_id: object) -> dict[str, bool]:
-        """取消指定请求的目录选择等待。"""
+    def cancel_picker(self, picker_id: object) -> dict[str, bool]:
+        """取消指定原生文件或目录窗口的等待。"""
         # 取消仅经过选择器自己的短锁，不等待文件接收、指纹或Excel校验。
         try:
             self._picker.cancel(picker_id)
@@ -212,7 +224,7 @@ class Session:
         with self._state_lock:
             self._require_editable()
             try:
-                write_api_key(self.runtime, value)
+                write_api_key(self.runtime, value, staging_directory=session_directory(self.runtime, self.session_id))
             except (SetupError, OSError, UnicodeError) as exc:
                 message = str(exc) if isinstance(exc, SetupError) else "无法保存 API Key，请检查工作目录的访问权限。"
                 raise ValidationError(message, "auth_mode") from exc
@@ -232,42 +244,29 @@ class Session:
                                         "document": str(self.runtime.output_root)},
                     "languages": LANGUAGE_CODES,
                     "audio_suffixes": sorted(AUDIO_SUFFIXES),
-                    "limits": {"audio_bytes": MAX_LOCAL_AUDIO_BYTES, "hotwords_bytes": MAX_XLSX_BYTES,
+                    "limits": {"hotwords_bytes": MAX_XLSX_BYTES,
                                "upload_bytes": MAX_UPLOAD_BYTES, "audio_seconds": MAX_DURATION_SECONDS,
                                "hotwords_count": MAX_HOTWORDS,
                                "context_chars": MAX_CONTEXT_CHARS, "speaker_min": MIN_SPEAKERS,
                                "speaker_max": MAX_SPEAKERS},
                     "preview": deepcopy(preview), "terminal": deepcopy(self._terminal)}
 
-    def upload(self, kind: str, name: str, source: BinaryIO | BufferedIOBase, size: int) -> dict[str, object]:
-        """接收音频副本或导入热词，返回页面所需数据。"""
-        if kind not in ("audio", "hotwords"):
-            raise ValidationError("不支持的文件用途。", "upload")
-        field = "audio_upload_id" if kind == "audio" else "hotword_rows"
-        suffixes = AUDIO_SUFFIXES if kind == "audio" else {".xlsx"}
-        maximum = MAX_LOCAL_AUDIO_BYTES if kind == "audio" else MAX_XLSX_BYTES
+    def receive_hotwords(self, name: str, source: BinaryIO | BufferedIOBase, size: int) -> dict[str, object]:
+        """在内存中接收Excel并返回可编辑的原始词条。"""
+        field = "hotword_rows"
         if (not name or len(name) > 255 or any(char in name for char in "/\\\0")
-                or any(ord(char) < 32 for char in name) or Path(name).suffix.lower() not in suffixes):
+                or any(ord(char) < 32 for char in name) or Path(name).suffix.lower() != ".xlsx"):
             raise ValidationError("所选文件名或格式不符合要求。", field)
-        if not 0 < size <= maximum:
+        if not 0 < size <= MAX_XLSX_BYTES:
             raise ValidationError("文件为空或超过本机接收上限。", field)
-        identifier = uuid.uuid4().hex
-        destination = self.upload_directory / (identifier + Path(name).suffix.lower())
-        partial = destination.with_suffix(destination.suffix + ".part")
         with self._state_lock:
             self._require_editable()
-            if kind in self._pending_uploads:
+            if self._receiving_hotwords:
                 raise ValidationError("此类文件正在添加，请稍候。", field)
-            if self.upload_directory.resolve() != self.upload_directory:
-                raise ValidationError("本地文件暂存目录不能重定向。", field)
-            self.upload_directory.mkdir(parents=True, exist_ok=True)
-            # 在关闭标记和暂存文件之间保持原子登记；cleanup不删除活动上传拥有的文件。
-            output = partial.open("xb")
-            self._pending_uploads.add(kind)
+            self._receiving_hotwords = True
             self.draft = None
-        published = False
         try:
-            with output:
+            with BytesIO() as content:
                 remaining = size
                 while remaining:
                     with self._state_lock:
@@ -275,74 +274,38 @@ class Session:
                     chunk = source.read(min(1024 * 1024, remaining))
                     if not chunk:
                         raise ValidationError("传入的文件不完整，请重新选择。", field)
-                    output.write(chunk)
+                    content.write(chunk)
                     remaining -= len(chunk)
-            if kind == "hotwords":
-                result = import_hotwords(partial)
-                with self._state_lock:
-                    self._require_editable()
-                # Excel只作导入来源，编辑后的行随预览提交；读取完成即清理副本。
-                return {"ok": True, "name": name, "size_bytes": size, **result}
+                result = import_hotwords(content.getvalue())
             with self._state_lock:
                 self._require_editable()
-                partial.replace(destination)
-                # 新文件完整后再替换旧副本；失败也不会恢复已废弃的旧预览。
-                for old_id, old in list(self.uploads.items()):
-                    Path(old["path"]).unlink(missing_ok=True)
-                    del self.uploads[old_id]
-                self.uploads[identifier] = {"path": str(destination), "name": name}
-                published = True
-            return {"ok": True, "upload_id": identifier, "name": name, "size_bytes": size}
+            return {"ok": True, "name": name, "size_bytes": size, **result}
         finally:
-            try:
-                if not published:
-                    partial.unlink(missing_ok=True)
-                    destination.unlink(missing_ok=True)
-            finally:
-                with self._state_lock:
-                    self._pending_uploads.remove(kind)
-                    if self._closed.is_set():
-                        self._remove_empty_upload_directory()
+            with self._state_lock:
+                self._receiving_hotwords = False
 
-    def uploaded_audio(self, identifier: object) -> UploadRecord:
-        """按会话上传编号查找已完成的音频副本。"""
-        if not isinstance(identifier, str) or identifier not in self.uploads:
-            raise ValidationError("请选择音频文件。", "audio_upload_id")
-        return self.uploads[identifier]
-
-    def _remove_empty_upload_directory(self) -> None:
-        """移除上传结束后的空会话目录。"""
-        if (not self._pending_uploads and self.upload_directory.exists()
-                and not any(self.upload_directory.iterdir())):
-            self.upload_directory.rmdir()
+    def audio_selection(self, identifier: object) -> AudioSelection:
+        """按当前会话选择编号取得原始音频信息。"""
+        if not self.selected_audio or identifier != self.selected_audio["audio_id"]:
+            raise ValidationError("请选择音频文件。", "audio_id")
+        return self.selected_audio
 
     def cleanup(self) -> None:
-        """关闭会话和目录窗口，清理临时副本并保留已确认音频。"""
-        # 与发布上传结果使用同一短锁，不能在“检查开放→发布”之间插入关闭标记。
+        """关闭编辑会话和原生窗口，并通知热词接收请求结束。"""
+        # 状态关闭与输入结果登记使用同一短锁，迟到结果会被拒绝。
         with self._state_lock:
             self._closed.set()
             if self._terminal is None:
                 self._finish("cancelled")
         self._picker.close()
-        with self._state_lock:
-            keep: set[str] = set()
-            if self.receipt and self.draft:
-                config = self.draft["config"]
-                keep.add(config["audio"]["path"])
-            if self.upload_directory.resolve() != self.upload_directory:
-                return
-            for record in self.uploads.values():
-                if record["path"] not in keep:
-                    Path(record["path"]).unlink(missing_ok=True)
-            self._remove_empty_upload_directory()
 
     def validate(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """读取已上传内容并应用规则，生成确认快照和面向网页的预览。"""
+        """读取所选原音频并检查当前表单，生成预览快照。"""
         with self._state_lock:
             self._require_editable()
-            self._require_uploads_complete()
+            self._require_import_complete()
             self.draft = None  # 即使新校验失败，旧预览也不再可确认。
-            allowed = {"auth_mode", "audio_upload_id", "diarization_enabled", "enhancement_mode",
+            allowed = {"auth_mode", "audio_id", "diarization_enabled", "enhancement_mode",
                        "hotword_rows", "context", "json_directory", "document_directory",
                        "language_hint", "speaker_count"}
             if set(payload) - allowed:
@@ -364,8 +327,8 @@ class Session:
             if enhancement in ("context", "both"):
                 context = validate_context(payload.get("context"))
             # 先报告可直接修改的文本问题，再读取可能较大的录音。
-            source = self.uploaded_audio(payload.get("audio_upload_id"))
-            audio = validate_audio(self.upload_directory, source["path"], diarization)
+            source = self.audio_selection(payload.get("audio_id"))
+            audio = validate_audio(source["path"], diarization)
             audio["name"] = source["name"]
             warnings = [*audio["warnings"], *(hotwords["warnings"] if hotwords else [])]
 
@@ -379,7 +342,7 @@ class Session:
             }
             summary: dict[str, object] = {
                 "auth_mode": mode,
-                "audio": {"name": audio["name"], **{
+                "audio": {"name": audio["name"], "path": audio["path"], **{
                     field: value for field, value in audio["metadata"].items() if field != "audio_tracks"}},
                 "enhancement": {"mode": enhancement, "count": hotwords["count"] if hotwords else 0,
                                 "context_chars": len(context) if context else 0},
@@ -391,25 +354,13 @@ class Session:
                           "summary": summary, "json_base": json_base, "document_base": document_base}
             return {"ok": True, "validation_id": self.draft["id"], "summary": summary}
 
-    def check_hotwords(self, rows: object) -> dict[str, object]:
-        """检查可编辑词表，返回行级问题供表格定位与标红。"""
-        with self._state_lock:
-            self._require_editable()
-        try:
-            result = validate_hotword_rows(rows)
-            return {"ok": True, "count": result["count"], "issues": [], "warnings": result["warnings"]}
-        except ValidationError as exc:
-            if not exc.details:
-                raise
-            return {"ok": True, "count": 0, "issues": exc.details, "warnings": []}
-
     def _restored_form(self) -> dict[str, object]:
         """整理当前预览的输入快照及网页需要的音频显示信息。"""
         assert self.draft is not None
         form = self.draft["form"]
         audio = self.draft["config"]["audio"]
         return {"configuration": deepcopy(form),
-                "audio": {"upload_id": form["audio_upload_id"], "name": audio["name"],
+                "audio": {"audio_id": form["audio_id"], "name": audio["name"], "path": audio["path"],
                           "size_bytes": audio["fingerprint"]["size_bytes"]}}
 
     def preview_ready(self, validation_id: object) -> dict[str, bool]:
@@ -438,18 +389,18 @@ class Session:
             if self.receipt:
                 return deepcopy(self.receipt)
             self._require_open()
-            self._require_uploads_complete()
+            self._require_import_complete()
             if self._phase != "preview" or not self.draft:
                 raise ValidationError("请先在网页完成填写并进入预览页，再回到 Codex 确认。", "confirmation")
             # 确认复用预览快照；执行前再比较完整摘要。
             audio = self.draft["config"]["audio"]
             try:
-                path = resolve_input(self.upload_directory, audio["path"], AUDIO_SUFFIXES)
+                path = resolve_input(audio["path"], AUDIO_SUFFIXES)
                 check_file_unchanged(path, audio["fingerprint"])
             except FileError as exc:
                 self.draft = None
                 self._phase = "editing"
-                raise ValidationError(str(exc), "audio_path") from exc
+                raise ValidationError(str(exc), "audio_id") from exc
             self._require_open()
             job_id = uuid.uuid4().hex
             config: JobConfig = {

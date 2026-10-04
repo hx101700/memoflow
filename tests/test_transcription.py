@@ -18,6 +18,7 @@ from asr_runtime.utils.bailian import BailianFailure
 from asr_runtime.utils.environment import SetupError
 from asr_runtime.utils.media import probe_audio
 from asr_runtime.application.session import Session
+from asr_runtime.application.recovery import finish_session
 from asr_runtime.application.transcription import export_job, job_status, transcribe
 from asr_runtime.utils.job_files import save_record
 from asr_runtime.utils.files import file_fingerprint
@@ -53,7 +54,7 @@ class TranscriptionTests(RuntimeTestCase):
         self.addCleanup(execution.stop)
 
     def make_job(self, *, channels=1, diarization=True, enhancement="none", **options):
-        """上传合成音频、确认任务并关闭网页会话。"""
+        """选择合成音频原文件、确认任务并关闭网页会话。"""
         session = Session(self.runtime)
         audio_bytes = io.BytesIO()
         with wave.open(audio_bytes, "wb") as audio:
@@ -62,9 +63,13 @@ class TranscriptionTests(RuntimeTestCase):
             audio.setframerate(16000)
             audio.writeframes(b"\0" * 32000 * channels)
         content = audio_bytes.getvalue()
-        upload = session.upload("audio", "合成录音.wav", io.BytesIO(content), len(content))
+        source = self.runtime.workspace / session.session_id / "合成录音.wav"
+        source.parent.mkdir()
+        source.write_bytes(content)
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=source):
+            selection = session.select_audio("fixture-audio")
         payload = {
-            "auth_mode": "api_key", "audio_upload_id": upload["upload_id"],
+            "auth_mode": "api_key", "audio_id": selection["audio_id"],
             "diarization_enabled": diarization, "enhancement_mode": enhancement,
             "hotword_rows": [], "context": "",
             "json_directory": "default", "document_directory": "default",
@@ -79,7 +84,7 @@ class TranscriptionTests(RuntimeTestCase):
             workbook.save(stream)
             workbook.close()
             data = stream.getvalue()
-            words = session.upload("hotwords", "合成热词.xlsx", io.BytesIO(data), len(data))
+            words = session.receive_hotwords("合成热词.xlsx", io.BytesIO(data), len(data))
             payload["hotword_rows"] = words["rows"]
         if enhancement in ("context", "both"):
             payload["context"] = "讨论合成术语与Qwen的识别效果。"
@@ -91,6 +96,7 @@ class TranscriptionTests(RuntimeTestCase):
             return receipt["job_id"], config
         finally:
             session.cleanup()
+            finish_session(self.runtime, session.session_id)
 
     @staticmethod
     def output_path(arguments):
@@ -332,7 +338,7 @@ class TranscriptionTests(RuntimeTestCase):
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.cli.assert_not_called()
 
-    def test_stereo_is_converted_once_and_original_copy_is_preserved(self):
+    def test_stereo_is_converted_once_and_original_file_is_preserved(self):
         """验证多声道生成单声道FLAC并保留源内容和采样率。"""
         job_id, config = self.make_job(channels=2)
         original = Path(config["audio"]["path"])
