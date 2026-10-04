@@ -20,7 +20,7 @@ class WebStartupTests(RuntimeTestCase):
         super().setUp()
         self.server = Mock(spec=web.LocalServer)
         self.server.server_port = 12345
-        self.server.session = Mock(token="synthetic-session-token")
+        self.server.session = Mock(token="synthetic-session-token", session_id="a" * 32, expires_at="2026-10-04T12:00:00+00:00")
         self.server.serve_forever.side_effect = KeyboardInterrupt
 
     def start(self, *, automatic: bool, browser_result: bool | Exception = True) -> dict[str, object]:
@@ -34,15 +34,17 @@ class WebStartupTests(RuntimeTestCase):
                 launch.return_value = browser_result
             web.serve(self.runtime, open_browser=automatic)
         if automatic:
-            launch.assert_called_once_with("http://127.0.0.1:12345/#token=synthetic-session-token")
+            launch.assert_called_once_with("http://127.0.0.1:12345/")
         else:
             launch.assert_not_called()
         self.server.serve_forever.assert_called_once()
         self.server.server_close.assert_called_once()
         receipt = json.loads(output.getvalue())
         self.assertEqual(receipt["event"], "listening")
-        self.assertEqual(receipt["url"], "http://127.0.0.1:12345/#token=synthetic-session-token")
+        self.assertEqual(receipt["url"], "http://127.0.0.1:12345/")
         self.assertIsInstance(receipt["pid"], int)
+        self.assertEqual(receipt["session_id"], "a" * 32)
+        self.assertNotIn("synthetic-session-token", output.getvalue())
         return receipt
 
     def test_browser_tool_mode_leaves_opening_to_the_caller(self) -> None:

@@ -31,7 +31,7 @@ class DeliveryTests(RuntimeTestCase):
         base = self.runtime.output_root / self.job_id
         self.config = {"schema_version": 1, "job_id": self.job_id, "model": MODEL,
                        "region": "cn-beijing", "status": "CONFIGURED",
-                       "execution_authorized": False, "confirmed_at": "synthetic-time",
+                       "execution_authorized": True, "confirmed_at": "synthetic-time",
                        "json_directory": str(base / "json"),
                        "document_directory": str(base / "documents"),
                        "audio": {"name": "合成录音.wav"}}
@@ -97,7 +97,7 @@ class DeliveryTests(RuntimeTestCase):
         self.assertNotIn("private transcript", json.dumps(report))
         for extension in ("xlsx", "md"):
             self.assertTrue(Path(report["delivery"]["files"][extension]["path"]).is_file())
-        self.assertEqual(transcribe(self.runtime, self.job_id, authorize_upload=True), report)
+        self.assertEqual(transcribe(self.runtime, self.job_id), report)
         self.cloud.assert_not_called()
 
     def test_known_document_error_and_filesystem_error_have_specific_messages(self):

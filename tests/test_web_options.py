@@ -45,6 +45,11 @@ class OptionsFixture(RuntimeTestCase):
             "json_directory": "default", "document_directory": "default",
         }
 
+    def confirm(self, session, validation_id):
+        """登记已呈现的预览，再由代码交接执行任务。"""
+        session.preview_ready(validation_id)
+        return session.confirm()
+
     def select(self, session, kind, destination):
         """模拟原生目录选择并返回登记结果。"""
         with patch("asr_runtime.utils.directory_picker.choose_directory", return_value=destination) as picker:
@@ -70,11 +75,11 @@ class DirectoryOptionTests(OptionsFixture):
             **self.payload, "json_directory": str(self.selected),
             "document_directory": str(self.selected),
         })
-        receipt = self.session.confirm(preview["validation_id"])
+        receipt = self.confirm(self.session, preview["validation_id"])
         config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
         for field in ("json_directory", "document_directory"):
             self.assertTrue(Path(config[field]).is_relative_to(self.selected))
-        self.assertFalse(config["execution_authorized"])
+        self.assertTrue(config["execution_authorized"])
         self.assertFalse(receipt["execution_started"])
         self.assertEqual(list(self.selected.iterdir()), [])
         self.assertFalse(self.runtime.output_root.exists())
@@ -157,14 +162,14 @@ class DirectoryOptionTests(OptionsFixture):
         self.assertTrue(result["cancelled"])
         self.assertEqual(self.session.output_directories["json"], self.selected)
         self.assertEqual(self.session.draft["id"], preview["validation_id"])
-        self.assertTrue(self.session.confirm(preview["validation_id"])["ok"])
+        self.assertTrue(self.confirm(self.session, preview["validation_id"])["ok"])
 
     def test_directory_write_probe_runs_only_when_user_selects_directory(self):
         """验证目录选择检查一次可写性并供预览确认复用。"""
         with patch("asr_runtime.application.session.tempfile.TemporaryFile", wraps=tempfile.TemporaryFile) as probe:
             self.select(self.session, "json", self.selected)
             preview = self.session.validate({**self.payload, "json_directory": str(self.selected)})
-            self.session.confirm(preview["validation_id"])
+            self.confirm(self.session, preview["validation_id"])
         probe.assert_called_once_with(dir=self.selected)
         self.assertEqual(list(self.selected.iterdir()), [])
 
@@ -175,7 +180,7 @@ class DirectoryOptionTests(OptionsFixture):
         self.select(self.session, "json", self.other)
         self.assertEqual(self.session.output_directories["json"], self.other)
         with self.assertRaises(ValidationError):
-            self.session.confirm(preview["validation_id"])
+            self.confirm(self.session, preview["validation_id"])
         self.assertFalse(self.runtime.path(".state/jobs").exists())
 
     def test_cancel_waiting_picker_keeps_previous_preview_and_releases_lock(self):
@@ -229,12 +234,12 @@ class DirectoryOptionTests(OptionsFixture):
         })
         expected = {"language_hints": ["zh"], "speaker_count": 3}
         self.assertEqual(preview["summary"]["enhancement"]["mode"], "both")
-        receipt = self.session.confirm(preview["validation_id"])
+        receipt = self.confirm(self.session, preview["validation_id"])
         config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
         self.assertEqual(config["recognition_options"], expected)
         self.assertEqual(config["enhancement"]["hotwords"]["count"], 1)
         self.assertEqual(config["enhancement"]["context"], "本次会议讨论测试术语。")
-        self.assertFalse(config["execution_authorized"])
+        self.assertTrue(config["execution_authorized"])
         self.assertFalse(list(self.session.upload_directory.glob("*.xlsx*")))
         self.session.cleanup()
         self.assertTrue(Path(config["audio"]["path"]).is_file())
@@ -325,9 +330,10 @@ class ProtectedOptionsEndpointTests(OptionsFixture):
         self.assertEqual(status, 200)
         self.assertNotIn(secret.encode("utf-8"), body)
         preview = json.loads(body)
-        status, _, body = self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
+        status, _, body = self.request("POST", "/api/confirm", {})
         self.assertEqual(status, 200)
         self.assertNotIn(secret.encode("utf-8"), body)
         config = Path(json.loads(body)["config_path"]).read_text(encoding="utf-8")
         self.assertNotIn(secret, config)
-        self.assertNotIn(secret.encode("utf-8"), self.request("GET", "/api/session")[2])
+        self.assertNotIn(secret, json.dumps(self.server.session.description()))

@@ -8,6 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 
 SKILL_DIRECTORY = Path("skills/asr-transcription")
+REPOSITORY_FILES = ("README.md", "README.en.md")
 REQUIRED_FILES = (
     "SKILL.md", "agents/openai.yaml", "LICENSE", "assets/env.example",
     "references/usage.md", "references/errors.md", "references/model.md",
@@ -37,6 +38,7 @@ REQUIRED_FILES = (
     "scripts/asr_runtime/utils/_directory_dialog.py",
     "scripts/asr_runtime/utils/files.py",
     "scripts/asr_runtime/utils/job_files.py",
+    "scripts/asr_runtime/utils/session_files.py",
     "scripts/asr_runtime/utils/hotwords.py",
     "scripts/asr_runtime/utils/i18n.py",
     "scripts/asr_runtime/static/index.html",
@@ -56,9 +58,10 @@ class BuildReport(TypedDict):
     files: list[str]
 
 
-def release_files(skill_root: Path) -> dict[str, Path]:
-    """核对 Skill 固定文件清单并返回归档路径映射。"""
-    files = {name: skill_root / name for name in REQUIRED_FILES}
+def release_files(root: Path) -> dict[str, Path]:
+    """核对运行资源和仓库使用说明，返回固定归档路径映射。"""
+    files = {name: root / SKILL_DIRECTORY / name for name in REQUIRED_FILES}
+    files.update({name: root / name for name in REPOSITORY_FILES})
     for name, path in files.items():
         if path.resolve(strict=True) != path or not path.is_file():
             raise ValueError(f"发行文件不是普通文件：{name}")
@@ -68,7 +71,7 @@ def release_files(skill_root: Path) -> dict[str, Path]:
 def build_zip(root: Path, destination: Path | None = None) -> BuildReport:
     """从仓库的 Skill 源文件创建 ZIP 并返回包清单。"""
     root = root.resolve(strict=True)
-    files = release_files(root / SKILL_DIRECTORY)
+    files = release_files(root)
     destination = (destination or root / "dist/asr-transcription.zip").resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(destination, "x", compression=ZIP_DEFLATED) as archive:

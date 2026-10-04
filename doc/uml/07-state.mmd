@@ -1,52 +1,62 @@
 stateDiagram-v2
 direction TB
-state "CONFIGURED<br/>确认配置已保存" as Configured
-state "PREPARING<br/>本次取得执行占用" as Preparing
-state "RUNNING<br/>准备进入BL进程调用" as Running
-state "STOPPED<br/>本次操作停止" as Stopped
-state "JSON_READY<br/>原JSON结构和正文检查通过" as JsonReady
-[*] --> Configured : confirm成功 / 发布配置及摘要
-Configured --> Preparing : transcribe明确授权、配置有效且execution不存在 / 独占创建目录
-Configured --> Stopped : reopen先取得execution且写入成功 / LOCAL_CONFIG_REOPENED，not_started
-Preparing --> Running : prepare_input完成 / 内存设置RUNNING与unknown
-Preparing --> Stopped : 准备失败或首次记录保存失败 / not_started
-Running --> Stopped : RUNNING保存失败或BL进程启动失败 / not_started
-Running --> Stopped : BL执行失败或结果读取/校验失败 / unknown
-Running --> JsonReady : BL结束且结果结构与正文通过检查 / result_received
-JsonReady --> JsonReady : 成功记录已保存 / 附加delivery
-note right of Configured
-  配置文件保持CONFIGURED与execution_authorized=false
-  执行授权和状态另记入execution/status.json
-  授权或配置错误发生在占用之前
+state "editing<br/>填写与校验，尚无任务编号" as Editing
+state "preview<br/>当前版本已在页面展示" as Preview
+state "handed_off<br/>交接回执持久保存" as HandedOff
+state "expired<br/>打开满两小时" as Expired
+state "cancelled<br/>用户取消或正常收尾" as Cancelled
+[*] --> Editing : serve创建session_id
+Editing --> Preview : validate成功＋preview_ready登记
+Preview --> Editing : edit获准 / 旧预览失效
+Editing --> Expired : 到期且尚未交接
+Preview --> Expired : 到期与确认共用状态锁
+Editing --> Cancelled : cancel
+Preview --> Cancelled : cancel
+Preview --> HandedOff : confirm / 创建唯一job_id并保存授权配置与回执
+HandedOff --> HandedOff : 重复confirm / 返回原回执
+note right of Preview
+  session_id定位编辑会话
+  用户发送含编号的确认消息后由Codex调用代码
+  尚未展示的校验结果不能交接
+  config.json原子发布标记完成
+  未提交的候选回执不算成功
 end note
-note right of Running
-  先设置RUNNING；记录保存成功后调用BL
-  磁盘RUNNING是保守记录，不证明进程存活或云端受理
-  unknown表示当前可证实的云端范围未知
+note right of Expired
+  ended事件通知页面，由用户关闭标签页
+  清理未提交副本及临时连接凭据
+  不影响已交接的任务、登录或转写
+end note
+
+state "CONFIGURED<br/>不可变授权配置" as Configured
+state "PREPARING<br/>取得一次执行占用" as Preparing
+state "RUNNING<br/>准备进入BL调用" as Running
+state "STOPPED<br/>本次执行停止" as Stopped
+state "JSON_READY<br/>原始JSON通过结构检查" as JsonReady
+HandedOff --> Configured : 任务生命周期独立继续
+Configured --> Preparing : transcribe核对配置、授权与模型 / 独占execution目录
+Preparing --> Running : 本机准备完成并保存保守执行记录
+Preparing --> Stopped : 准备或记录保存失败 / not_started
+Running --> Stopped : BL启动、执行或结果检查失败
+Running --> JsonReady : 原JSON已保存且通过检查 / result_received
+JsonReady --> JsonReady : 成功记录已保存 / 生成delivery
+note right of Configured
+  job_id只在交接时生成
+  config.execution_authorized=True
+  配置固定，没有恢复为可编辑任务的转换
 end note
 note right of Stopped
-  execution目录永久保留，同job最多取得一次执行占用
-  授权与配置通过后的重复调用读取既有记录
-  reopen与transcribe竞争同一execution目录
-  已执行或已占用任务拒绝reopen
-  撤回后恢复网页表单；重新确认产生新job_id
-  旧job不返回CONFIGURED，也不会再启动BL
-  业务异常由error.phase定位
-  记录保存失败由record_error.phase说明
+  保留execution占用，失败不自动重传
+  error.phase与cloud_outcome说明已知范围
+  记录不足时读取为OUTCOME_UNKNOWN
 end note
 note right of JsonReady
-  当次JSON_READY回执与磁盘记录分开理解
-  成功记录保存失败则提前返回，documents_ready=false
-  磁盘仍可能为RUNNING，当前export因此拒绝
-  成功记录已保存后才开始导出
-  delivery为COMPLETE时documents_ready=true
+  成功记录写盘失败时保留JSON并在导出前返回
+  delivery单独记录EXPORTING／COMPLETE／PARTIAL／FAILED
+  COMPLETE时documents_ready=true
 end note
 note left of Preparing
-  本图建模dict中的状态字符串，代码没有State类
-  delivery/status.json另记EXPORTING、COMPLETE、PARTIAL、FAILED
-  读取损坏记录或导出中断可合成OUTCOME_UNKNOWN
-  reopen记录写入失败也保留占用，旧job禁止执行
-  源码：scripts/asr_runtime/application/transcription.py、delivery.py
-  重新编辑：scripts/asr_runtime/application/session.py::reopen
-  文件协议：scripts/asr_runtime/utils/job_files.py
+  本图描述普通字典的状态值，代码没有State类
+  Session：application/session.py
+  执行／交付：application/transcription.py、delivery.py
+  文件协议：utils/session_files.py、job_files.py
 end note

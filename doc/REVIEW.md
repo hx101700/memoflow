@@ -1,100 +1,48 @@
-# 代码审查
+# 代码与指令审查
 
-日期：2026-10-04。本轮重新阅读全文，并交换前后端审阅分工，重点检查用户连续操作、进程退出、失败后的交接，以及Skill和UML与代码的一致性。先对候选问题做最小复现，再修改必要实现；实际结果见[ACCEPTANCE](ACCEPTANCE.md)，历史修正通过Git追溯。
+日期：2026-10-04。本轮按用户确认的会话交接设计修改源码与说明。此文记录需要核对的边界及设计取舍，实际测试结果见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-## 阅读覆盖
+## 审查方向
 
-Python 代码路径相对于 `skills/asr-transcription/`；前端与开发配置路径相对于仓库根。阅读范围按模块职责记录，避免把文件数量当作审查充分性的依据。
+以一份配置由用户编辑、预览、明确交给 Codex，再执行一次为主线。每项检查应服务当前消费者，不为猜测的故障增加新层。
 
-| 范围 | 完整阅读的文件 |
+| 边界 | 当前设计及核对点 |
 | --- | --- |
-| 入口与共享定义 | scripts/asr.py；scripts/asr_runtime下的__init__.py、__main__.py、models.py、error_catalog.json |
-| 应用用例 | application下的__init__、bootstrap、diagnostics、inputs、rules、session、transcription、delivery |
-| 本机能力 | utils下的__init__、environment、installation、auth、bailian、files、job_files、results、media、hotwords、documents、directory_picker、_directory_dialog、i18n |
-| 网页 | web.py；frontend下的App.vue、main.ts、useTranscription.ts、model.ts、api.ts、types.ts、preferences.ts、i18n.ts、style.css、index.html，以及UploadField、KeyDisplay、ReviewPanel、HotwordEditor组件 |
-| 技能与依赖 | SKILL.md、agents/openai.yaml、assets/env.example、references全部；scripts/requirements.txt、bailian/package.json和package-lock.json全部锁项 |
-| 开发与交付 | scripts/build_zip.py、probe_bl.py、console-browser.cts及其构建产物；前端package/lock、vite/tsconfig配置和Python静态检查配置；README/AGENTS双语、doc文档、全部10份UML源稿与图、Release说明；相关运行、权限、媒体、文档、HTTP、前端和打包测试 |
+| 编辑与任务 | Session 管理两小时编辑生命周期；成功交接才创建 job。返回修改不创建或停止任务 |
+| 用户确认 | 预览复制明确请求和 session_id；Skill 仅接收当前用户消息中的编号。编号定位页面，令牌保护控制请求 |
+| 预览版本 | 前端展示后登记版本；返回编辑先撤销后端就绪状态，防止陈旧预览被接管 |
+| 并发 | 复用 Session 状态锁处理确认、返回和到期；没有跨进程配置写锁或可变任务协议 |
+| 交接恢复 | 持久化 session_id 到 job_id 回执；相同确认恢复原任务，服务退出不影响读取 |
+| 会话结束 | 单次计时器、截止时间和单向通知；清理副本、取消目录窗口、等待请求收尾 |
+| 热词检查 | 同一规则服务 Excel 导入、改动后区域失焦和整单预览；显示位置与组件行键分开 |
+| 凭据 | Key 独立于任务快照，运行时读取；console 本地状态与实际云端有效性分开 |
+| BL 能力 | Python 调用官方 CLI，BL 负责云端协议；既有 Windows 登录适配限定固定上游问题 |
+| 文件生成 | 输入/配置/结果摘要各有实际消费者，文档共享结果解析和 writer，不产生导出编号 |
+| 发行 | 固定清单取 Skill 资源及仓库根 README；不把开发 doc、测试、环境或私有数据入包 |
 
-第三方BL及Python依赖按锁定版本使用。本审查核对其公开接口、安装边界和实际调用，不把对项目源码的审查称为第三方全部代码审计。
+交接回执先保存，config.json 在摘要落盘后原子发布，作为完成标记。未提交配置的候选回执不代表成功；无需额外的半完成会话状态。历史变化由 Git 追溯。
 
-## 本次变更与核对
+## 模块与数据
 
-| 位置 | 问题与处理 |
-| --- | --- |
-| `web.LocalServer.server_close` | 未完成上传期间正常关闭服务，daemon请求线程随进程退出，留下.part文件。真实子进程复现退出码0但副本仍在。改为先Session.cleanup，再由基类关闭并等待非daemon线程；复用上传finally与已有socket超时 |
-| `useTranscription.validate` | 保存Key时修改其他设置，Key保存失败被总表单revision当成过期错误丢掉，用户看不到原因。将凭据保存和表单校验改为两个顺序阶段，凭据错误保持可见，真正的旧表单回执仍丢弃 |
-| `Session.reopen`提示 | 任何已有execution占用都拒绝撤回，原提示却要求等待任务结束；已完成、已停止或撤回写盘失败的任务并无可等待的执行。改为回Codex查看状态并按需重新配置，不改变占用或停机语义 |
-| Skill凭据分支 | 单独保存Key只有HTTP回执，没有configured事件。补充用户看到保存成功后回Codex发送完成/继续，结束本次serve；无需录音或额外状态查询 |
+Python 的入口、application、utils 分别负责分派、用例与能力，utils 不反向导入用例。Session 与 DirectoryPicker 的类用于真实生命周期，规则和文件操作保持函数模块。新增 session_files 专门保存会话连接及交接回执，与 job_files 的任务文件协议区分。
 
-改动沿用既有会话、执行占用、原子文件替换和Element Plus组件。没有新增依赖、云端调用层、后台轮询、任务状态或兼容分支。历史任务保留真实模型标签仍是必要的数据含义。
+Vue 组件负责视图，useTranscription 编排用例，model 处理纯状态，api 负责本机传输。Element Plus 提供输入、表格、按钮、分页和反馈，不重复实现组件默认交互。稳定行键服务组件复用，序号和错误位置服务当前数组。
 
-没有为未经证实的候选问题改代码：普通UTF-8和带BOM的.env均由当前python-dotenv正确替换Key；旧Key不残留、赋值项只有一条。Filetrans官方channel_id确指音轨索引，现有术语和默认第一个音轨的边界成立。原任务停止后不自动重试、历史结果标签与各项摘要仍有实际消费者。
+任务配置只在交接发布一次。API Key 不在配置中；确认后的录音与即时词典作为执行快照。job-status 只读记录，不声称查询了云端或进程存活。
 
-关闭顺序影响01A对象职责图和03配置时序图，按当前源码同步；其余图的转写与交付协议保持不变。审查结论限定于已阅读的代码和本机验证范围，真实云端与人工验收另行记录。
+## Skill 编写
 
-## 职责判断
+按本机 skill-creator 指导保持必需的 name/description、简洁入口及按需参考。触发范围为录音转写、凭据配置和已有任务重导。新录音路径必须完整说明网页 → 明确会话确认 → 必要认证 → 等待交付，恢复与参数细节分放 references。
 
-保留一个录音转写Skill。它是一个明确用户任务，Codex负责流程选择与授权；utils/bailian.py是官方CLI适配模块，映射参数、准备子进程、解释错误。BL负责鉴权、临时上传、提交、轮询和结果下载。本机JSON解析与文档排版由本项目完成。
+所参考的方向是任务型、附带脚本或外部 CLI 的 Skill：
 
-现在没有第二项独立BL业务用例需要跨Skill交接认证或工作目录。出现真实的新用例时，再根据共同消费者提取共享调用代码；不为未知能力增加通用Agent、动态工具注册或新的云客户端。
+- [OpenAI transcribe](https://github.com/openai/skills/blob/main/skills/.curated/transcribe/SKILL.md)：明确转写意图、固定脚本与交付；本项目保留 BL 模型和网页输入。
+- [OpenAI gh-fix-ci](https://github.com/openai/skills/blob/main/skills/.curated/gh-fix-ci/SKILL.md)：复用现有 CLI、区分上下文与状态；不照搬其审批流程。
 
-安装下载的恢复策略独立于云端任务。安装器只比较两个固定来源的短时文件吞吐、安排下载和本机安装；完整文件下载、续传与摘要验证直接使用锁定pip的公开CLI。安装失败的有限换源不影响转写的一次执行约束。
+参考用于确定指令组织方向，不表示这些外部 Skill 的全部规则适用于本项目。格式校验也不证明实际人机操作已通过；新对话验收单独记录。
 
-utils是Python包内的能力分组。application协调步骤，utils执行具体操作；没有反向导入用例。通用安装/诊断进程与BL进程在凭据、输出和生命周期上不同，保持各自入口有实际依据。
+本轮独立文本演练覆盖裸继续、提供编号、等待登录、登录完成、重复确认、会话到期及只换 Key。补清用户随后只发送编号时沿用先前开始意图；已知原进程运行时直接等待，执行情况未知时才查询记录。演练不执行实际登录或识别。
 
-Vue 组件负责呈现和浏览器操作，useTranscription编排页面用例，model管理纯状态规则，api处理本机会话HTTP；界面偏好与任务配置分开。Python TypedDict和TypeScript接口说明现有数据协议，静态检查放在开发环境，用户ZIP交付运行代码和构建资源。
+## 仍需关注
 
-以下检查有当前消费者，保留在各自边界：
-
-- 登录后的`auth status`区分模型凭据存在与单纯进程退出；固定BL闲置超时也可能退出0。Windows浏览器适配在第一次开页前转交完整URL，保留原BL授权会话。
-- 预览SHA建立用户确认基线，确认只检查文件属性，执行SHA确认实际上传内容；重导使用配置及原JSON摘要。热词执行不再读取Excel。
-- 前端输入检查提供即时定位，后端约束HTTP输入；上传与目录请求的短锁、请求编号用于实际并发和取消。
-- Excel/Word运行时回读是现有交付判定的一部分，验证库实际写入的内容；删除它会改变交付语义，不作为无行为变化的精简处理。
-
-## 写入与执行边界
-
-| 场景 | 当前约束 |
-| --- | --- |
-| 私有运行目录与Skill重叠 | Runtime在构造及解析运行根时拒绝两者任意方向重叠，常规项目内Skill布局仍可用 |
-| 原生选择Skill为输出目录 | 在选择探测前、预览和最终JSON/文档创建前复用check_output_path拒绝，保留用户选择其它目录的能力 |
-| 工作目录同名Python模块 | 版本检查、依赖检查、ensurepip和pip使用-I；真实子进程回归确认工作目录中的json.py/sysconfig.py不参与这些操作 |
-| 凭据与上传 | 用户在密码输入框编辑Key，检查时按需通过专用接口保存到工作目录私有.env；转写执行读取该文件，console独立使用BL配置；网页保存与云端执行授权分开，失败不自动重试 |
-| 文件与原文 | 上传由会话ID引用；预览/确认/执行的摘要用途各不重复；导出失败保留已有目标，记录失败保留当次已知事实 |
-
-这些是本工具入口的路径和进程约束，不代替Windows文件系统ACL；本地管理员仍拥有操作系统授予的权限。调用时若操作系统拒绝写入，程序报告实际失败，不修改系统权限。
-
-## 变量与接口
-
-- Runtime.workspace是用户工作目录，skill_root是程序资源；root是私有运行目录，output_root是默认结果位置。
-- audio_tracks/channel_id描述音轨，channels描述音轨内声道；单声道转换使用已确认AudioInfo，没有混用。
-- config是已确认输入，execution是执行记录，delivery是文档交付。job-status读取记录，不能表示云端实时状态或进程仍存活。
-- export_documents(runtime, config, transcript)自行派生任务目录，避免调用者同时传入可能不一致的运行上下文与任务根。
-- result_path(config)负责解析和读取位置；实际写入位置在prepare_result/prepare_documents检查，不增加重复写权限层。
-- 前端Language与Theme描述界面偏好，FormValues.language描述音频语言，配置中的region固定cn-beijing；切换界面语言不会改变识别参数或文档格式。
-- Key仅由KeyDisplay组件的局部ref持有，通过ViewEffects在需要读取或保存时传递；Model只记录凭据状态，localStorage只保存语言与主题。
-
-## 验证
-
-针对性复现、安装、完整回归与发行核对的实际结果集中记录在[ACCEPTANCE](ACCEPTANCE.md)。未覆盖的真实云端、原生桌面和Office人工场景见[ISSUES](ISSUES.md)。
-
-## Skill 指令审查
-
-本轮按本机skill-creator指导及已核实的[OpenAI Skill文档](https://learn.chatgpt.com/docs/build-skills)、[脚本使用建议](https://developers.openai.com/plugins/build/skills)核对指令与实现。当前结构包含必需的SKILL.md及name/description，scripts、references、assets按用途组织；agents/openai.yaml是可选展示元数据，隐式调用保持默认开启。
-
-参考方向限定为带本机脚本或外部CLI的任务型Skill：
-
-| 官方范例 | 借鉴点 | 本项目取舍 |
-| --- | --- | --- |
-| [transcribe](https://github.com/openai/skills/blob/main/skills/.curated/transcribe/SKILL.md) | 描述对应录音转写意图，固定脚本入口，说明输出和引用资料 | 保留BL与网页选文件；不采用其OpenAI模型、默认参数或重复识别策略 |
-| [gh-fix-ci](https://github.com/openai/skills/blob/main/skills/.curated/gh-fix-ci/SKILL.md) | 使用现有CLI，给出输入默认值、任务边界及可操作结果 | 认证按本项目已知状态选择，避免每次重复检查；不引入其计划审批流程 |
-
-入口先区分新录音与已有任务，正常路径保留必要的回执、授权及人工交接；安装、错误修复和模型限制按需加载。交付使用json_path和各READY文件的path，减少额外查找。范例用于设计参照，不表示外部Skill的全部规定都适用于本项目。
-
-独立审查完整阅读 Skill 与引用资料，并核对实际 CLI 帮助和代码。入口与实现一致，条件分支明确以下操作：
-
-- 网页保存成功而终端回执丢失时，通过同一网页或用户保留的确切任务编号及 `job-status` 核对，避免继续无条件等待或猜测最新任务。
-- 控制台模式复用当前工作目录的 BL 模型凭据；以 `configured` 区分模型 Key 与单独的控制台登录状态。
-- 虚拟环境解释器不可运行时，使用首次准备环境的 CPython 3.12 执行 `doctor`。
-- 新录音从本机网页文件选择器进入；取得监听回执后通过宿主打开一次URL，立即让用户操作。computer-use和页面自动检查不属于正常使用依赖；工作目录与录音路径分别处理。
-
-格式校验和情境评审用于核对指令明确性与实现一致性；完整使用效果仍需目标用户环境验证。
+交接写盘失败、结束事件连接断开、服务强制退出、长音频资源开销与 Office 视觉均应按实际证据说明，不从单元测试推断全部真实场景。当前限制与操作方式见 [ISSUES](ISSUES.md)。

@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { ElAlert, ElButton, ElInput, ElPagination, ElTable, ElTableColumn, ElTag, ElUpload } from "element-plus";
+import { ElAlert, ElButton, ElInput, ElPagination, ElTable, ElTableColumn, ElUpload } from "element-plus";
 import type { UploadFile } from "element-plus";
-import { Check, Delete, Download, Plus, Upload } from "@element-plus/icons-vue";
-import type { ErrorDetail, HotwordField, HotwordRow, Model, UploadState } from "../types";
+import { Delete, Download, Plus, Upload } from "@element-plus/icons-vue";
+import type { EditorRow, ErrorDetail, HotwordField, Model, UploadState } from "../types";
 import type { Translate } from "../i18n";
 
 const props = defineProps<{
-  rows: HotwordRow[]; validation: Model["hotwords"]; upload: UploadState;
+  rows: EditorRow[]; validation: Model["hotwords"]; upload: UploadState;
   disabled: boolean; downloading: boolean; templateDisabled: boolean;
   message: string; limit: number; fileLimit: number; t: Translate;
 }>();
 const emit = defineEmits<{
-  upload: [files: readonly File[]]; download: []; add: []; remove: [row: number];
-  change: [row: number, field: HotwordField, value: string]; check: [];
+  upload: [files: readonly File[]]; download: []; add: []; remove: [key: number];
+  change: [key: number, field: HotwordField, value: string]; leave: [];
 }>();
 const page = ref(1);
 const pageSize = 50;
@@ -42,11 +42,11 @@ function selected(file: UploadFile): void {
 function exceeded(files: File[]): void { emit("upload", files); }
 
 // 使用公开行样式入口标红包含问题的词条。
-function rowClassName({ row }: { row: HotwordRow }): string {
+function rowClassName({ row }: { row: EditorRow }): string {
   return rowIssues.value.has(row.row) ? "hotword-error-row" : "";
 }
 
-// 返回指定单元格的问题说明，保留原始行号。
+// 返回当前序号对应单元格的问题说明。
 function cellIssues(row: number, field: HotwordField): ErrorDetail[] {
   return (rowIssues.value.get(row) ?? []).filter(issue => issue.field === field || field === "text" && issue.field !== "weight");
 }
@@ -83,12 +83,19 @@ async function addRow(): Promise<void> {
   await focusRow(props.rows.at(-1)?.row);
 }
 
+// 焦点离开整个热词区域时通知用例检查已修改内容。
+function focusLeft(event: FocusEvent): void {
+  const region = event.currentTarget as HTMLElement;
+  if (event.relatedTarget instanceof Node && region.contains(event.relatedTarget)) return;
+  emit("leave");
+}
+
 watch(() => props.rows.length, () => { page.value = Math.min(page.value, Math.max(1, Math.ceil(props.rows.length / pageSize))); });
 defineExpose({ focusRow });
 </script>
 
 <template>
-  <div class="hotword-editor">
+  <div class="hotword-editor" @focusout="focusLeft">
     <div class="hotword-toolbar">
       <ElUpload :auto-upload="false" :show-file-list="false" :file-list="[]" :limit="1" accept=".xlsx"
         :disabled="disabled" :on-change="selected" :on-exceed="exceeded">
@@ -111,46 +118,43 @@ defineExpose({ focusRow });
       <ElButton v-if="issuePages.size > 1" link type="danger" @click="nextIssue">{{ t('nextIssuePage') }}</ElButton>
     </ElAlert>
     <ElAlert v-for="warning in validation.warnings" :key="warning" :title="warning" type="warning" :closable="false" show-icon class="hotword-notice" />
-    <ElTable :data="pageRows" row-key="row" :row-class-name="rowClassName" border max-height="520" class="hotword-table"
+    <ElTable :data="pageRows" row-key="key" :row-class-name="rowClassName" border max-height="520" class="hotword-table"
       :empty-text="t('hotwordEmpty')" :aria-label="t('hotwordFile')">
       <ElTableColumn prop="row" :label="t('rowNumber')" width="66" />
-      <!-- @vue-generic {HotwordRow} -->
+      <!-- @vue-generic {EditorRow} -->
       <ElTableColumn :label="t('textColumn')" min-width="190">
         <template #default="{ row }">
           <ElInput :id="`hotword-${row.row}-text`" :model-value="String(row.text ?? '')" :disabled="disabled"
             :aria-label="t('hotwordCell', { row: row.row })" :aria-invalid="cellIssues(row.row, 'text').length > 0"
             :aria-describedby="cellIssues(row.row, 'text').length ? `hotword-${row.row}-text-errors` : undefined"
-            @update:model-value="emit('change', row.row, 'text', $event)" />
+            @update:model-value="emit('change', row.key, 'text', $event)" />
           <div v-if="cellIssues(row.row, 'text').length" :id="`hotword-${row.row}-text-errors`">
             <p v-for="(issue, index) in cellIssues(row.row, 'text')" :key="index" class="field-error">{{ issue.message }}</p>
           </div>
         </template>
       </ElTableColumn>
-      <!-- @vue-generic {HotwordRow} -->
+      <!-- @vue-generic {EditorRow} -->
       <ElTableColumn :label="t('weightColumn')" min-width="125">
         <template #default="{ row }">
           <ElInput :id="`hotword-${row.row}-weight`" :model-value="String(row.weight ?? '')" :disabled="disabled" inputmode="numeric"
             :aria-label="t('weightCell', { row: row.row })" :aria-invalid="cellIssues(row.row, 'weight').length > 0"
             :aria-describedby="cellIssues(row.row, 'weight').length ? `hotword-${row.row}-weight-errors` : undefined"
-            @update:model-value="emit('change', row.row, 'weight', $event)" />
+            @update:model-value="emit('change', row.key, 'weight', $event)" />
           <div v-if="cellIssues(row.row, 'weight').length" :id="`hotword-${row.row}-weight-errors`">
             <p v-for="(issue, index) in cellIssues(row.row, 'weight')" :key="index" class="field-error">{{ issue.message }}</p>
           </div>
         </template>
       </ElTableColumn>
-      <!-- @vue-generic {HotwordRow} -->
+      <!-- @vue-generic {EditorRow} -->
       <ElTableColumn width="80" :label="t('actions')" align="center">
         <template #default="{ row }">
-          <ElButton text :icon="Delete" :disabled="disabled" :aria-label="t('removeHotword', { row: row.row })" @click="emit('remove', row.row)" />
+          <ElButton text :icon="Delete" :disabled="disabled" :aria-label="t('removeHotword', { row: row.row })" @click="emit('remove', row.key)" />
         </template>
       </ElTableColumn>
     </ElTable>
     <div class="hotword-footer">
       <ElPagination v-if="rows.length > pageSize" v-model:current-page="page" :page-size="pageSize" :total="rows.length" layout="prev, pager, next" :pager-count="5" small />
       <span v-else class="helper">{{ t('hotwordRows', { count: rows.length }) }}</span>
-      <ElButton :icon="Check" :disabled="disabled" :loading="validation.checking" @click="emit('check')">{{ t('checkHotwords') }}</ElButton>
     </div>
-    <ElTag v-if="validation.checked && !validation.issues.length" type="success" effect="plain">{{ t(validation.count === 1 ? 'hotwordValid' : 'hotwordsValid', { count: validation.count }) }}</ElTag>
-    <p v-else-if="rows.length" class="helper">{{ t('hotwordCheckHelp') }}</p>
   </div>
 </template>

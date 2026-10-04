@@ -1,4 +1,4 @@
-import type { Api, Endpoints, ErrorDetail, ErrorPayload, Language } from "./types";
+import type { Api, Endpoints, ErrorDetail, ErrorPayload, Language, SessionEnd } from "./types";
 import type { Translate } from "./i18n";
 
 export class UiError extends Error {
@@ -18,11 +18,12 @@ export function uiError(error: unknown, fallback: string, field?: string): UiErr
   return new UiError(error instanceof Error ? error.message : fallback, field);
 }
 
-// 创建仅访问当前本机会话的接口，凭据令牌保留在闭包中。
-export function createApi(fetchRequest: typeof fetch, sessionToken: string, language: () => Language, t: Translate): Api {
+// 创建使用同源会话 Cookie 的本机接口与一次性结束通知。
+export function createApi(fetchRequest: typeof fetch, language: () => Language, t: Translate,
+  eventSource: (url: string) => EventSource = url => new EventSource(url)): Api {
   // 构造本机请求头和缓存策略。
   function options(): RequestInit {
-    return { headers: { ...(sessionToken ? { "X-ASR-Token": sessionToken } : {}), "Accept-Language": language() },
+    return { headers: { "Accept-Language": language() },
       cache: "no-store", credentials: "same-origin" };
   }
   return {
@@ -59,6 +60,17 @@ export function createApi(fetchRequest: typeof fetch, sessionToken: string, lang
         if (!response.ok) throw new UiError(t("templateFailed"));
         return await response.blob();
       } catch { throw new UiError(t("templateFailed")); }
+    },
+    // 读取会话结束事件，结束或断开后关闭连接。
+    listen(ended, disconnected): () => void {
+      const source = eventSource("/api/events");
+      source.addEventListener("ended", event => {
+        source.close();
+        try { ended(JSON.parse((event as MessageEvent<string>).data) as SessionEnd); }
+        catch { disconnected(); }
+      });
+      source.onerror = () => { source.close(); disconnected(); };
+      return () => source.close();
     },
   };
 }

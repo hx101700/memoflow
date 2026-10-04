@@ -74,8 +74,8 @@ def read_hotwords(path: Path) -> tuple[list[HotwordRow], list[str]]:
         if header != ["text", "weight"]:
             warnings.append(translate("已按中文别名读取表头：热词对应text，权重对应weight。"))
         rows: list[HotwordRow] = []
-        for number, cells in enumerate(sheet.iter_rows(min_row=2, max_col=2), start=2):
-            row: HotwordRow = {"row": number, "text": None, "weight": None}
+        for cells in sheet.iter_rows(min_row=2, max_col=2):
+            row: HotwordRow = {"text": None, "weight": None}
             invalid_fields: list[HotwordField] = []
             for field, cell in zip(("text", "weight"), cells):
                 name = cast(HotwordField, field)
@@ -89,6 +89,8 @@ def read_hotwords(path: Path) -> tuple[list[HotwordRow], list[str]]:
                     row[name] = cast(HotwordValue, value)
             if invalid_fields:
                 row["invalid_fields"] = invalid_fields
+            if row["text"] in (None, "") and row["weight"] in (None, "") and not invalid_fields:
+                continue
             rows.append(row)
         return rows, warnings
     except (OSError, zipfile.BadZipFile, InvalidFileException, ParseError,

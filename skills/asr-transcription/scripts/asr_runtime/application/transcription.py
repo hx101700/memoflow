@@ -40,8 +40,8 @@ def job_status(runtime: Runtime, job_id: str) -> ExecutionReport:
     report = read_execution(root)
     if report is None:
         read_config(runtime, job_id)
-        return {"job_id": job_id, "status": "CONFIGURED", "execution_authorized": False,
-                "message": "设置已保存，尚未授权执行。"}
+        return {"job_id": job_id, "status": "CONFIGURED", "execution_authorized": True,
+                "message": "转写任务已确认，等待开始执行。"}
     if report["status"] == "OUTCOME_UNKNOWN":
         return report
     if report["status"] in ("PREPARING", "RUNNING"):
@@ -94,11 +94,11 @@ def _check_input(runtime: Runtime, record: AudioRecord) -> Path:
     base = runtime.path(".state/web-uploads")
     if (not path.is_absolute() or not path.is_relative_to(base)
             or len(path.relative_to(base).parts) != 2 or path.resolve() != path):
-        raise SetupError("输入文件不是网页保存的本机会话副本，请重新选择。")
+        raise SetupError("输入文件不是网页保存的本机会话副本，请重新配置并确认新任务。")
     current = file_fingerprint(path)
     expected = record["fingerprint"]
     if (current["size_bytes"], current["sha256"]) != (expected["size_bytes"], expected["sha256"]):
-        raise SetupError("保存设置后的输入文件已改变，请重新选择并确认；未上传。")
+        raise SetupError("交接后的输入文件已改变，请重新配置并确认新任务；未上传。")
     return path
 
 
@@ -126,14 +126,12 @@ def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple
     return command, private, destination
 
 
-def transcribe(runtime: Runtime, job_id: str, *, authorize_upload: bool = False) -> ExecutionReport:
+def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
     """按确认快照执行一次BL识别及本地导出，返回已知结果与失败阶段。"""
-    if not authorize_upload:
-        raise SetupError("保存设置不等于授权上传。需用户明确同意后，使用--authorize-upload执行本次任务。")
     config = read_config(runtime, job_id)
     if config["model"] != MODEL:
         raise SetupError(
-            f"已保存设置的模型与当前固定模型{MODEL}不一致，请在网页重新检查并保存设置。"
+            f"已确认任务的模型与当前固定模型{MODEL}不一致，请重新配置并确认新任务。"
             "未更改原配置、未占用执行，也未上传；已有结果仍可本地查看或重导。"
         )
     try:
@@ -142,7 +140,7 @@ def transcribe(runtime: Runtime, job_id: str, *, authorize_upload: bool = False)
     except FileExistsError:
         return job_status(runtime, job_id)
     report: ExecutionReport = {"job_id": job_id, "status": "PREPARING", "execution_authorized": True,
-              "authorization_source": "explicit_cli_flag", "cloud_outcome": "not_started",
+              "authorization_source": "session_handoff", "cloud_outcome": "not_started",
               "started_at": datetime.now(timezone.utc).isoformat(),
               "executor_pid": os.getpid(), "documents_ready": False}
     if not _save_status(execution, report):

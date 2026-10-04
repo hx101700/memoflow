@@ -15,13 +15,12 @@ from tests.support import RuntimeTestCase
 class HotwordEditorTests(RuntimeTestCase):
     def test_duplicate_words_mark_every_row_even_when_weights_are_invalid(self):
         """验证整组重复词都标错，非法权重同时保留独立提示。"""
-        rows = [{"row": row, "text": "IPO", "weight": weight}
-                for row, weight in ((2, 4), (3, -1000), (4, 3), (5, 4))]
+        rows = [{"text": "IPO", "weight": weight} for weight in (4, -1000, 3, 4)]
         with self.assertRaises(ValidationError) as caught:
             validate_hotword_rows(rows)
         details = caught.exception.details
-        self.assertEqual([item["row"] for item in details if item["field"] == "text"], [2, 3, 4, 5])
-        self.assertEqual([item["row"] for item in details if item["field"] == "weight"], [3])
+        self.assertEqual([item["row"] for item in details if item["field"] == "text"], [1, 2, 3, 4])
+        self.assertEqual([item["row"] for item in details if item["field"] == "weight"], [2])
         self.assertTrue(all("重复" in item["message"] for item in details if item["field"] == "text"))
         self.assertEqual(validate_hotword_rows(rows[:1])["vocabulary"], {"IPO": 4})
 
@@ -44,7 +43,7 @@ class HotwordEditorTests(RuntimeTestCase):
         original = path.read_bytes()
         report = import_hotwords(path)
         self.assertEqual([(issue["row"], issue["field"]) for issue in report["issues"]],
-                         [(2, "text"), (3, "weight"), (4, "text")])
+                         [(1, "text"), (2, "weight"), (3, "text")])
         self.assertEqual(report["rows"][1]["weight"], "错误")
         self.assertEqual(path.read_bytes(), original)
 
@@ -59,11 +58,11 @@ class HotwordEditorTests(RuntimeTestCase):
         """验证公式原文及错误定位可见，改写后使用当前单元格值。"""
         report = import_hotwords(self.workbook([("=1+1", 4), ("另一个词", "=2+2")]))
         self.assertEqual(report["rows"], [
-            {"row": 2, "text": "=1+1", "weight": 4, "invalid_fields": ["text"]},
-            {"row": 3, "text": "另一个词", "weight": "=2+2", "invalid_fields": ["weight"]},
+            {"text": "=1+1", "weight": 4, "invalid_fields": ["text"]},
+            {"text": "另一个词", "weight": "=2+2", "invalid_fields": ["weight"]},
         ])
         self.assertEqual([(issue["row"], issue["field"]) for issue in report["issues"]],
-                         [(2, "text"), (3, "weight")])
+                         [(1, "text"), (2, "weight")])
         self.assertTrue(all("不接受公式" in issue["message"] for issue in report["issues"]))
         report["rows"][0].update(text="术语", invalid_fields=[])
         report["rows"][1].update(weight="4", invalid_fields=[])
@@ -77,8 +76,8 @@ class HotwordEditorTests(RuntimeTestCase):
         workbook.save(path)
         workbook.close()
         report = import_hotwords(path)
-        self.assertEqual([issue["row"] for issue in report["issues"] if "公式" in issue["message"]], [2])
-        self.assertEqual([issue["row"] for issue in report["issues"] if "重复" in issue["message"]], [2, 3])
+        self.assertEqual([issue["row"] for issue in report["issues"] if "公式" in issue["message"]], [1])
+        self.assertEqual([issue["row"] for issue in report["issues"] if "重复" in issue["message"]], [1, 2])
         self.assertNotIn("invalid_fields", report["rows"][1])
         self.assertEqual(validate_hotword_rows([report["rows"][1]])["vocabulary"], {"=1+1": 4})
         # 网页输入保存为固定文本，编辑动作会移除原Excel的类型标记。
@@ -87,9 +86,9 @@ class HotwordEditorTests(RuntimeTestCase):
 
     def test_limits_report_all_excess_rows_at_once(self):
         """验证总词数和超级词超限时一次返回全部超限行。"""
-        for count, weight, expected in ((53, 50, [(52, "weight"), (53, "weight"), (54, "weight")]),
-                                         (2002, 4, [(2002, "text"), (2003, "text")])):
-            rows = [{"row": index + 2, "text": f"term{index}", "weight": weight} for index in range(count)]
+        for count, weight, expected in ((53, 50, [(51, "weight"), (52, "weight"), (53, "weight")]),
+                                         (2002, 4, [(2001, "text"), (2002, "text")])):
+            rows = [{"text": f"term{index}", "weight": weight} for index in range(count)]
             with self.subTest(count=count, weight=weight), self.assertRaises(ValidationError) as caught:
                 validate_hotword_rows(rows)
             self.assertEqual([(issue["row"], issue["field"]) for issue in caught.exception.details], expected)
@@ -112,34 +111,46 @@ class HotwordEditorTests(RuntimeTestCase):
         """验证直接填写的整数权重可用且错误原值保持可修改。"""
         for weight in (1, 4.0, "1", "4", "50"):
             with self.subTest(weight=weight):
-                self.assertEqual(validate_hotword_rows([{"row": 1, "text": "术语", "weight": weight}])["count"], 1)
+                self.assertEqual(validate_hotword_rows([{"text": "术语", "weight": weight}])["count"], 1)
         for weight in (True, False, "04", "4.0", " 4", "4 ", "5e1", "４", "", None, 6, 2.5):
-            row = {"row": 7, "text": "术语", "weight": weight}
+            row = {"text": "术语", "weight": weight}
             with self.subTest(weight=weight), self.assertRaises(ValidationError) as caught:
                 validate_hotword_rows([row])
             self.assertEqual(row["weight"], weight)
-            self.assertEqual(caught.exception.details[0]["row"], 7)
+            self.assertEqual(caught.exception.details[0]["row"], 1)
             self.assertEqual(caught.exception.details[0]["field"], "weight")
 
     def test_empty_table_reports_a_cell_and_accepts_new_manual_row(self):
         """验证空模板保留添加词条的操作路径。"""
         report = import_hotwords(self.workbook([]))
         self.assertEqual(report["issues"][0]["field"], "text")
-        for rows in ([], [{"row": 9, "text": "", "weight": ""}]):
+        for rows in ([], [{"text": "", "weight": ""}]):
             with self.subTest(rows=rows), self.assertRaises(ValidationError) as caught:
                 validate_hotword_rows(rows)
             self.assertEqual(caught.exception.details[0]["field"], "text")
-        result = validate_hotword_rows([{"row": 1, "text": "Kubernetes", "weight": "4"}])
+        result = validate_hotword_rows([{"text": "Kubernetes", "weight": "4"}])
         self.assertEqual(result["vocabulary"], {"Kubernetes": 4})
 
-    def test_row_protocol_rejects_ambiguous_identity_and_non_scalar_values(self):
-        """验证错误行协议给出可操作错误并限制表格处理规模。"""
-        valid = {"row": 1, "text": "术语", "weight": 4}
-        for rows in (None, {}, [valid, valid], [{**valid, "row": True}],
+    def test_row_protocol_uses_array_position_and_rejects_extra_fields(self):
+        """验证当前数组就是行号来源，额外标识和非单元格内容被拒绝。"""
+        valid = {"text": "术语", "weight": 4}
+        for rows in (None, {}, [{**valid, "row": 1}], [{**valid, "key": "client-id"}],
                      [{**valid, "text": ["术语"]}], [{**valid, "invalid_fields": ["other"]}],
                      [valid] * (MAX_HOTWORD_ROWS + 1)):
             with self.subTest(rows_type=type(rows).__name__), self.assertRaises(ValidationError):
                 validate_hotword_rows(rows)
+
+    def test_removing_rows_repositions_errors_using_current_array(self):
+        """验证删除前序词条后，剩余错误使用连续的新序号定位。"""
+        rows = [{"text": f"term{index}", "weight": 4} for index in range(51)]
+        rows[-1]["weight"] = "incorrect"
+        with self.assertRaises(ValidationError) as before:
+            validate_hotword_rows(rows)
+        self.assertEqual(before.exception.details[0]["row"], 51)
+        del rows[:2]
+        with self.assertRaises(ValidationError) as after:
+            validate_hotword_rows(rows)
+        self.assertEqual(after.exception.details[0]["row"], 49)
 
     def test_context_messages_name_empty_length_and_character_problems(self):
         """验证参考文本错误说明具体问题并支持中英文。"""

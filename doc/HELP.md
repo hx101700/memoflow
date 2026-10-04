@@ -1,15 +1,15 @@
 # 使用资料
 
-asr-transcription 的安装、认证、网页操作、文件要求及重新导出说明集中维护在 Skill 的 [usage.md](../skills/asr-transcription/references/usage.md)。
+安装、认证、网页配置、文件要求和重导集中维护在 Skill 的 [usage.md](../skills/asr-transcription/references/usage.md)。
 
-- 第一次使用：阅读[项目介绍](../README.md)，再按 [usage.md](../skills/asr-transcription/references/usage.md)准备工作目录与环境；网页中可以直接填写或修改 API Key。
-- 界面设置：在页面右上角切换中文/English和主题，音频语言在转写设置中另行选择。
-- 热词：在网页表格直接填写，或导入Excel；错误行标红。重复词的所有相关行都需处理，确认后只保留一行；权重错误单独提示。上下文检查会保留原文并指出具体问题。
-- 填错设置：保存后点击“修改设置”，撤回尚未执行的旧编号并恢复原输入；重新保存后告诉Codex“继续”。撤回响应中断时可刷新原页面，在同一服务的缓存仍有效时恢复原确认内容；恢复后新增的未保存编辑不会保留。
-- 只更换Key：在网页选择“使用指定 API Key”，填写后点击“保存 API Key”，无需添加录音。看到保存成功后回Codex发送“完成”或“继续”，让它结束本次网页服务；鉴权失败按[凭据修复](../skills/asr-transcription/references/errors.md#鉴权失败与重新配置)处理。
-- 保存位置：点击“选择文件夹”更换目录；原位置不存在或被文件占用时，窗口从当前工作目录打开。
-- 操作失败：根据 [errors.md](../skills/asr-transcription/references/errors.md)保留回执、定位阶段并处理问题。
-- 查询参数依据：参阅 [model.md](../skills/asr-transcription/references/model.md)中的官方来源。
-- 当前模型：新识别使用Qwen-Audio-3.1-ASR-Flash-Filetrans。历史成功结果可本地重导并保留原模型标签；模型不同的待执行配置需要在当前网页重新确认。
+- 第一次使用：从[项目介绍](../README.md)了解安装入口，录音和 API Key 可在网页选择或填写。
+- 热词：直接填写或导入 Excel，当前序号连续；错误单元格标红，编辑后离开整个区域自动检查。最终预览使用同一规则。
+- 核对与修改：点击“确认并预览”，需要调整时“返回修改”。预览不创建任务。
+- 交给 Codex：预览确认无误后点“复制给 Codex”，发送带会话编号的确认消息。交接后设置固定，Codex 完成认证、识别和三种文档交付。
+- 会话期限：从打开起两小时；交接、取消或到期显示结束提示，用户自行关闭页面。已交接任务不受编辑期限影响。
+- 只更换 Key：保存 API Key 后告知 Codex 完成，无需录音或创建任务；凭据问题见[修复说明](../skills/asr-transcription/references/errors.md#鉴权失败与重新配置)。
+- 结果查询与重导：使用确切 job_id，先另存人工修改的文件。历史成功任务保持原模型标签。
+- 失败处理：参阅 [errors.md](../skills/asr-transcription/references/errors.md)，保留回执和已生成文件；失败不自动重传。
+- 参数依据：参阅 [model.md](../skills/asr-transcription/references/model.md) 的官方来源。
 
-Skill 中的 `SKILL.md` 是 Codex 执行入口；仓库的 `AGENTS.md` 是维护者指令。使用时的凭据、环境、任务和结果存放在用户选择的工作目录。
+Skill 指令与用户工作目录分别承担操作指导和运行数据存储；仓库开发文档不进入安装包。

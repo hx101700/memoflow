@@ -85,7 +85,8 @@ class TranscriptionTests(RuntimeTestCase):
             payload["context"] = "讨论合成术语与Qwen的识别效果。"
         try:
             preview = session.validate(payload)
-            receipt = session.confirm(preview["validation_id"])
+            session.preview_ready(preview["validation_id"])
+            receipt = session.confirm()
             config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
             return receipt["job_id"], config
         finally:
@@ -102,14 +103,15 @@ class TranscriptionTests(RuntimeTestCase):
             json.dumps(transcript_result(), ensure_ascii=False), encoding="utf-8"
         )
 
-    def test_saved_configuration_requires_separate_upload_authorization(self):
-        """验证缺少上传授权时返回执行授权错误。"""
-        job_id, _ = self.make_job()
-        with self.assertRaises(SetupError):
-            transcribe(self.runtime, job_id)
-        self.cli.assert_not_called()
-        self.assertFalse(self.runtime.path(f".state/jobs/{job_id}/execution").exists())
-        self.assertFalse(job_status(self.runtime, job_id)["execution_authorized"])
+    def test_handoff_authorization_executes_without_a_second_flag(self):
+        """验证交接授权直接用于执行，配置阶段不再单独索取授权。"""
+        job_id, config = self.make_job()
+        self.assertTrue(config["execution_authorized"])
+        self.assertTrue(job_status(self.runtime, job_id)["execution_authorized"])
+        report = transcribe(self.runtime, job_id)
+        self.assertEqual(report["status"], "JSON_READY")
+        self.assertEqual(report["authorization_source"], "session_handoff")
+        self.cli.assert_called_once()
 
     def test_confirmation_checksum_matches_the_saved_utf8_bytes(self):
         """验证确认摘要对应实际保存的UTF-8配置字节。"""
@@ -134,7 +136,7 @@ class TranscriptionTests(RuntimeTestCase):
                 path = self.runtime.path(f".state/jobs/{job_id}/config.json")
                 path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
                 with self.assertRaisesRegex(SetupError, "配置发生变化"):
-                    transcribe(self.runtime, job_id, authorize_upload=True)
+                    transcribe(self.runtime, job_id)
                 self.assertFalse(path.parent.joinpath("execution").exists())
                 self.cli.assert_not_called()
 
@@ -144,7 +146,7 @@ class TranscriptionTests(RuntimeTestCase):
         path = self.runtime.path(f".state/jobs/{job_id}/config.sha256")
         path.unlink()
         with self.assertRaisesRegex(SetupError, "缺少确认摘要"):
-            transcribe(self.runtime, job_id, authorize_upload=True)
+            transcribe(self.runtime, job_id)
         self.assertFalse(path.exists())
         self.assertFalse(path.parent.joinpath("execution").exists())
         self.cli.assert_not_called()
@@ -153,20 +155,20 @@ class TranscriptionTests(RuntimeTestCase):
         """验证成功任务交付三格式并复用执行记录。"""
         job_id, config = self.make_job()
         self.assertEqual(config["model"], "qwen-audio-3.1-asr-flash-filetrans")
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertEqual(report["cloud_outcome"], "result_received")
         self.assertTrue(report["documents_ready"])
         self.assertTrue(Path(report["json_path"]).is_file())
         self.assertEqual(job_status(self.runtime, job_id), report)
-        self.assertEqual(transcribe(self.runtime, job_id, authorize_upload=True), report)
+        self.assertEqual(transcribe(self.runtime, job_id), report)
         self.cli.assert_called_once()
         config_text = self.runtime.path(f".state/jobs/{job_id}/config.json").read_text(encoding="utf-8")
-        self.assertFalse(json.loads(config_text)["execution_authorized"])
+        self.assertTrue(json.loads(config_text)["execution_authorized"])
         self.assertNotIn(self.secret, config_text + json.dumps(report))
 
     def test_different_confirmed_model_is_not_uploaded_or_changed(self):
-        """验证模型更新后旧确认配置必须重新保存，不静默换模型上传。"""
+        """验证模型更新后旧任务需重新配置，原任务及结果保持不变。"""
         job_id, config = self.make_job()
         config["model"] = "qwen-audio-3.0-asr-flash-filetrans"
         path = self.runtime.path(f".state/jobs/{job_id}/config.json")
@@ -174,8 +176,8 @@ class TranscriptionTests(RuntimeTestCase):
         checksum = hashlib.sha256(content).hexdigest().encode("ascii")
         path.write_bytes(content)
         path.with_suffix(".sha256").write_bytes(checksum)
-        with self.assertRaisesRegex(SetupError, "重新检查并保存"):
-            transcribe(self.runtime, job_id, authorize_upload=True)
+        with self.assertRaisesRegex(SetupError, "重新配置并确认新任务"):
+            transcribe(self.runtime, job_id)
         self.assertFalse(path.parent.joinpath("execution").exists())
         self.assertEqual(path.read_bytes(), content)
         self.assertEqual(path.with_suffix(".sha256").read_bytes(), checksum)
@@ -203,7 +205,7 @@ class TranscriptionTests(RuntimeTestCase):
         audio = Path(config["audio"]["path"])
         self.assertTrue(audio.is_file())
         self.assertFalse(list(audio.parent.glob("*.xlsx")))
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertEqual(report["cloud_outcome"], "result_received")
         self.assertTrue(audio.is_file())
@@ -232,7 +234,7 @@ class TranscriptionTests(RuntimeTestCase):
                         patch("asr_runtime.utils.media.probe_audio", side_effect=only_probe_new_copy) as probe, \
                         patch("asr_runtime.utils.hotwords.load_workbook", side_effect=AssertionError("重复解析Excel")), \
                         patch("asr_runtime.application.transcription.file_fingerprint", wraps=file_fingerprint) as fingerprint:
-                    report = transcribe(self.runtime, job_id, authorize_upload=True)
+                    report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "JSON_READY")
                 self.assertEqual(probe.call_count, 1 if channels == 2 else 0)
                 fingerprint.assert_called_once_with(source)
@@ -245,7 +247,7 @@ class TranscriptionTests(RuntimeTestCase):
         """验证命令准备读取一次Key并隐藏对象表示中的凭据。"""
         job_id, _ = self.make_job()
         with patch("asr_runtime.utils.auth.read_api_key", wraps=read_api_key) as read_key:
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         read_key.assert_called_once_with(self.runtime)
         command = self.cli.call_args.args[1]
@@ -258,7 +260,7 @@ class TranscriptionTests(RuntimeTestCase):
         with patch("asr_runtime.utils.bailian.console_status", side_effect=AssertionError("重复查询鉴权状态")), \
                 patch("asr_runtime.utils.bailian._run_bl", side_effect=AssertionError("执行识别前启动了额外BL命令")), \
                 patch("asr_runtime.utils.auth.read_api_key", side_effect=AssertionError("控制台模式读取了.env")):
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertNotIn("DASHSCOPE_API_KEY", self.cli.call_args.args[1].env)
         self.cli.assert_called_once()
@@ -277,10 +279,10 @@ class TranscriptionTests(RuntimeTestCase):
 
         self.cli.side_effect = block_cli
         with ThreadPoolExecutor(max_workers=2) as pool:
-            first = pool.submit(transcribe, self.runtime, job_id, authorize_upload=True)
+            first = pool.submit(transcribe, self.runtime, job_id)
             try:
                 self.assertTrue(entered.wait(5))
-                second = pool.submit(transcribe, self.runtime, job_id, authorize_upload=True)
+                second = pool.submit(transcribe, self.runtime, job_id)
                 observed = second.result(timeout=5)
                 self.assertEqual(observed["status"], "RUNNING")
                 self.assertEqual(self.cli.call_count, 1)
@@ -292,7 +294,7 @@ class TranscriptionTests(RuntimeTestCase):
         """验证执行记录缺失时返回云端结果未知状态。"""
         job_id, _ = self.make_job()
         self.runtime.path(f".state/jobs/{job_id}/execution").mkdir()
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "OUTCOME_UNKNOWN")
         self.assertEqual(report["cloud_outcome"], "unknown")
         self.cli.assert_not_called()
@@ -306,7 +308,7 @@ class TranscriptionTests(RuntimeTestCase):
         content[-1] ^= 1
         path.write_bytes(content)
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.cli.assert_not_called()
@@ -317,7 +319,7 @@ class TranscriptionTests(RuntimeTestCase):
         path = Path(config["audio"]["path"])
         before = path.stat()
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.cli.assert_called_once()
 
@@ -325,7 +327,7 @@ class TranscriptionTests(RuntimeTestCase):
         """验证运行Key缺失时返回准备阶段的停止状态。"""
         job_id, _ = self.make_job()
         self.runtime.path(".env").write_text("DASHSCOPE_API_KEY=\n", encoding="utf-8")
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.cli.assert_not_called()
@@ -335,7 +337,7 @@ class TranscriptionTests(RuntimeTestCase):
         job_id, config = self.make_job(channels=2)
         original = Path(config["audio"]["path"])
         original_bytes = original.read_bytes()
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         arguments = self.cli.call_args.args[1].argv
         uploaded = Path(arguments[arguments.index("--url") + 1])
@@ -354,7 +356,7 @@ class TranscriptionTests(RuntimeTestCase):
             with self.subTest(channels=channels, diarization=diarization):
                 self.cli.reset_mock()
                 job_id, config = self.make_job(channels=channels, diarization=diarization)
-                report = transcribe(self.runtime, job_id, authorize_upload=True)
+                report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "JSON_READY")
                 arguments = self.cli.call_args.args[1].argv
                 self.assertEqual(arguments[arguments.index("--url") + 1], config["audio"]["path"])
@@ -367,7 +369,7 @@ class TranscriptionTests(RuntimeTestCase):
         job_id, _ = self.make_job(channels=2)
         # 降低阈值以覆盖超限，不创建1GB测试文件；探测和FLAC转换仍真实执行。
         with patch("asr_runtime.application.rules.MAX_UPLOAD_BYTES", 1):
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         converted = self.runtime.path(f".state/jobs/{job_id}/execution/mono.flac")
@@ -377,7 +379,7 @@ class TranscriptionTests(RuntimeTestCase):
     def test_dual_enhancement_and_recognition_options_reach_the_same_request(self):
         """验证热词、上下文、语言和人数共同进入识别命令。"""
         job_id, config = self.make_job(enhancement="both", language_hint="zh", speaker_count=3)
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         _, command, private = self.cli.call_args.args
         arguments = command.argv
@@ -399,7 +401,7 @@ class TranscriptionTests(RuntimeTestCase):
         destination = Path(config["json_directory"]) / "transcription.json"
         destination.parent.mkdir(parents=True)
         destination.write_text("previous result", encoding="utf-8")
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.assertEqual(destination.read_text(encoding="utf-8"), "previous result")
@@ -414,7 +416,7 @@ class TranscriptionTests(RuntimeTestCase):
         content = json.dumps(config, ensure_ascii=False).encode("utf-8")
         path.write_bytes(content)
         path.with_suffix(".sha256").write_text(hashlib.sha256(content).hexdigest(), encoding="ascii")
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.assertIn("Skill安装目录", report["message"])
@@ -438,7 +440,7 @@ class TranscriptionTests(RuntimeTestCase):
                         self.output_path(command.argv).write_text(content, encoding="utf-8")
 
                 self.cli.side_effect = save_unusable
-                report = transcribe(self.runtime, job_id, authorize_upload=True)
+                report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "STOPPED")
                 self.assertEqual(report["cloud_outcome"], "unknown")
                 self.assertFalse(report["documents_ready"])
@@ -461,7 +463,7 @@ class TranscriptionTests(RuntimeTestCase):
                     self.output_path(command.argv).write_text(json.dumps(result), encoding="utf-8")
 
                 self.cli.side_effect = write_invalid
-                report = transcribe(self.runtime, job_id, authorize_upload=True)
+                report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "STOPPED")
                 self.assertTrue(Path(report["json_path"]).is_file())
 
@@ -477,7 +479,7 @@ class TranscriptionTests(RuntimeTestCase):
             self.output_path(command.argv).write_text(text, encoding="utf-8")
 
         self.cli.side_effect = write_tracks
-        report = transcribe(self.runtime, job_id, authorize_upload=True)
+        report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertEqual(report["result"]["audio_tracks"], 2)
         self.assertEqual(report["result"]["sentences"], 2)
@@ -493,11 +495,11 @@ class TranscriptionTests(RuntimeTestCase):
                     {"source": "local", "code": code, "explanation": "合成的BL边界故障"},
                     started=started,
                 )
-                report = transcribe(self.runtime, job_id, authorize_upload=True)
+                report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "STOPPED")
                 self.assertEqual(report["cloud_outcome"], "unknown" if started else "not_started")
                 self.assertEqual(report["error"]["code"], code)
-                self.assertEqual(transcribe(self.runtime, job_id, authorize_upload=True), report)
+                self.assertEqual(transcribe(self.runtime, job_id), report)
                 self.cli.assert_called_once()
 
     def test_verified_result_does_not_need_another_existence_probe(self):
@@ -513,7 +515,7 @@ class TranscriptionTests(RuntimeTestCase):
             return original_is_file(path)
 
         with patch.object(Path, "is_file", reject_result_probe):
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertTrue(report["documents_ready"])
         self.assertEqual(report["json_path"], str(destination))
@@ -535,7 +537,7 @@ class TranscriptionTests(RuntimeTestCase):
                     save_record(directory, report)
 
                 with patch("asr_runtime.application.transcription.save_record", side_effect=save_until_failure):
-                    report = transcribe(self.runtime, job_id, authorize_upload=True)
+                    report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "STOPPED")
                 self.assertEqual(report["cloud_outcome"], "not_started")
                 self.assertFalse(report["documents_ready"])
@@ -544,7 +546,7 @@ class TranscriptionTests(RuntimeTestCase):
                 self.assertEqual(report["record_error"]["error_type"], "PermissionError")
                 self.assertNotIn("private synthetic", json.dumps(report))
                 self.assertEqual(attempts, ["PREPARING"] if failed_status == "PREPARING" else ["PREPARING", "RUNNING"])
-                transcribe(self.runtime, job_id, authorize_upload=True)
+                transcribe(self.runtime, job_id)
                 self.cli.assert_not_called()
 
     def test_success_record_failure_preserves_json_and_does_not_restart(self):
@@ -561,7 +563,7 @@ class TranscriptionTests(RuntimeTestCase):
 
         with patch("asr_runtime.application.transcription.save_record", side_effect=fail_success_record), \
              patch("asr_runtime.application.transcription.export_documents") as export:
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")
         self.assertEqual(report["cloud_outcome"], "result_received")
         self.assertEqual(report["record_error"]["attempted_status"], "JSON_READY")
@@ -575,7 +577,7 @@ class TranscriptionTests(RuntimeTestCase):
         self.assertEqual(job_status(self.runtime, job_id)["status"], "RUNNING")
         with self.assertRaisesRegex(SetupError, "尚无"):
             export_job(self.runtime, job_id)
-        transcribe(self.runtime, job_id, authorize_upload=True)
+        transcribe(self.runtime, job_id)
         self.cli.assert_called_once()
 
     def test_local_failure_explains_phase_and_type_without_private_text(self):
@@ -592,7 +594,7 @@ class TranscriptionTests(RuntimeTestCase):
                 self.cli.reset_mock()
                 job_id, _ = self.make_job()
                 with patch(f"asr_runtime.application.transcription.{function}", side_effect=error):
-                    report = transcribe(self.runtime, job_id, authorize_upload=True)
+                    report = transcribe(self.runtime, job_id)
                 self.assertEqual(report["status"], "STOPPED")
                 self.assertEqual(report["cloud_outcome"], outcome)
                 self.assertEqual(report["error"]["phase"], "read_result" if function == "load_transcript" else "prepare_input")
@@ -613,7 +615,7 @@ class TranscriptionTests(RuntimeTestCase):
 
         with patch("asr_runtime.application.transcription.prepare_input", side_effect=SetupError("已知输入错误")), \
              patch("asr_runtime.application.transcription.save_record", side_effect=fail_stopped_record):
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "STOPPED")
         self.assertEqual(report["cloud_outcome"], "not_started")
         self.assertEqual(report["error"]["explanation"], "已知输入错误")

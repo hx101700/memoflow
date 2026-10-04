@@ -219,7 +219,8 @@ class BailianContractTests(RuntimeTestCase):
             "context": context, "hotword_rows": hotword_rows,
             "json_directory": "default", "document_directory": "default",
         })
-        job_id = session.confirm(preview["validation_id"])["job_id"]
+        session.preview_ready(preview["validation_id"])
+        job_id = session.confirm()["job_id"]
 
         def local_recognition(runtime, command, private):
             # 仅fixture改端点和输入URL；产品入口不开放端点覆盖，也不使用真实音频URL。
@@ -236,9 +237,9 @@ class BailianContractTests(RuntimeTestCase):
 
         with patch("asr_runtime.utils.bailian.bl_command", side_effect=installed_command), \
                 patch("asr_runtime.application.transcription.run_recognition", side_effect=local_recognition):
-            report = transcribe(self.runtime, job_id, authorize_upload=True)
+            report = transcribe(self.runtime, job_id)
             calls = len(self.calls)
-            repeated = transcribe(self.runtime, job_id, authorize_upload=True)
+            repeated = transcribe(self.runtime, job_id)
         self.assertEqual(len(self.calls), calls)
         self.assertEqual(repeated, job_status(self.runtime, job_id))
         return report

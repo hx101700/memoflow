@@ -1,243 +1,175 @@
 # 开发说明
 
-本文说明 MemoFlow 的产品边界、当前 Skill 的模块职责和任务协议。操作说明集中在 [usage.md](../skills/asr-transcription/references/usage.md)，对象与调用关系见 [UML](UML.md)，实际验证见 [ACCEPTANCE](ACCEPTANCE.md)。
+本文说明 MemoFlow 第一阶段的职责、接口和数据生命周期。用户操作见 [usage.md](../skills/asr-transcription/references/usage.md)，对象与调用关系见 [UML](UML.md)，实际验证见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-## 业务与角色
+## 业务与职责
 
-MemoFlow 是整个产品，目标是从语音输入生成符合用户习惯、重点要求和指定格式的会议纪要，并根据用户提供的范例与确认的修改反馈持续改善。`asr-transcription` 是当前已实现的第一阶段 Skill，承担录音转写与校对稿交付；项目名称与这个具体能力的名称分开维护。
+MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的会议纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON、Word、Excel 和 Markdown，交给用户校对。第二阶段的纪要生成、偏好存储及反馈学习尚未实现。
 
-| 名称 | 作用与位置 |
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，BL 2.1.0 临时 OSS 上传。
+
+| 参与者 | 职责 |
 | --- | --- |
-| `MemoFlow` | 项目与产品名称 |
-| `asr-transcription` | Codex 使用的录音转写 Skill，位于 `skills/asr-transcription/` |
-| `asr_runtime` | Skill 内部的 Python 执行包，位于 `scripts/asr_runtime/`，由 `scripts/asr.py` 调用 |
+| Codex 与 Skill | 选择工作目录、打开页面、根据用户明确指定的会话交接、处理认证、执行工具并交付结果 |
+| Vue 页面 | 文件选择、表格编辑、配置与预览、复制确认消息、显示结束状态 |
+| Python | 管理本机会话、保存确认快照、媒体准备、调用 BL、解析结果和生成文档 |
+| BL | 鉴权、临时上传、识别提交、轮询、下载与原始 JSON 落盘 |
 
-第一阶段将单个本地录音转为原始 JSON、Excel、Word、Markdown，交给用户检查。模型固定为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，通过 BL 的临时 OSS 上传。
+一个完整转写任务对应一个 Skill。共享 CLI 能力集中在 `utils/bailian.py`；有独立的新 BL 用户任务时再评估拆分，当前不引入通用工具注册、云客户端、数据库或消息队列。
 
-Codex 读取 Skill，选择工作目录、执行工具并解释回执。网页接收本机文件、编辑选项并保存配置。BL 负责鉴权、上传、提交、轮询、下载和原始 JSON 落盘。Python 负责本机文件、媒体处理、结果解析与文档生成。
-
-第二阶段处于规划中，将以用户校对稿、文档范例、格式要求、重点说明及确认后的修改反馈为输入，生成个性化会议纪要。“学习”指从这些材料中提取并应用用户认可的偏好；偏好的保存方式与反馈采纳规则在该阶段设计，当前尚未实现。
-
-当前重新导出仍从原始转写 JSON 生成文档，会覆盖同名成品；用户校对修改应另存，作为后续会议纪要阶段的输入。
-
-## 资源与工作目录
+## 资源边界与结构
 
 ```text
-frontend/                     # 开发时维护的 Vue / TypeScript 前端
-├── App.vue                   # 页面与交互区域
-├── components/               # 上传、热词编辑、凭据输入与核对面板
-├── useTranscription.ts       # 页面用例编排
-├── api.ts / model.ts         # HTTP 与纯状态规则
-├── types.ts                  # 前端输入和回执协议
-└── preferences.ts / i18n.ts  # 界面偏好与中英文文案
-
-skills/asr-transcription/       # 独立安装的 Skill，运行时只读
-├── SKILL.md                   # 触发范围与任务操作
-├── agents/openai.yaml         # Codex 展示信息
+frontend/                         # Vue / TypeScript 开发源码
+skills/asr-transcription/          # Skill 安装资源，运行时只读
+├── SKILL.md
+├── agents/openai.yaml
 ├── scripts/
-│   ├── asr.py                 # CLI 入口
-│   ├── requirements.txt       # Python 固定版本与摘要
-│   ├── bailian/               # BL npm 依赖锁
-│   └── asr_runtime/           # Python 模块与网页
-├── references/                # 按需读取的操作、模型和错误说明
-├── assets/env.example         # 空 Key 配置模板
+│   ├── asr.py
+│   ├── requirements.txt
+│   ├── bailian/
+│   └── asr_runtime/
+├── references/
+├── assets/env.example
 └── LICENSE
 
-用户选择的工作目录/
-├── .asr-transcription/        # 私有运行文件
+工作目录/
+├── .asr-transcription/
 │   ├── .env
 │   ├── .venv/
 │   ├── .tools/bailian/
 │   ├── .runtime/
 │   └── .state/
-└── transcriptions/            # 默认结果保存根
+│       ├── bailian/
+│       ├── sessions/<session_id>/
+│       ├── web-uploads/<session_id>/
+│       └── jobs/<job_id>/
+└── transcriptions/               # 默认保存根
 ```
 
-`Runtime(workspace, skill_root)` 传递这两种目录的边界：`resource(relative)` 读取 Skill 内的文件，`path(relative)` 定位私有运行目录中的文件，`output_root` 给出默认结果目录，`check_output_path(path)` 检查输出位置。Skill优先复用会话中已约定的工作目录，否则采用当前任务目录；该目录须已存在且位于Skill安装目录之外。私有运行目录与 Skill 目录互不包含。CLI仍显式接收`--workspace`，按该参数定位文件。录音输入由网页选择，不作为工作目录选择或服务启动的前提。
+`Runtime(workspace, skill_root)` 区分用户工作目录与 Skill 资源。`resource()` 读安装资源，`path()` 定位私有运行文件，`output_root` 给出默认输出根，`check_output_path()` 保护 Skill 资源。私有运行目录与 Skill 目录互不包含。CLI 使用脚本绝对路径并显式传入同一 `--workspace`；凭据、环境、录音和任务不写回 Skill。
 
-同一 Skill 可以服务不同工作目录。凭据和任务按工作目录分开，Skill 移动不改变既有工作目录里的任务文件。这里的“私有运行目录”表示当前工作区单独使用的存储位置；实际读写仍受 Windows 文件权限和执行工具权限约束。
-
-## Skill结构与Codex元数据
-
-`SKILL.md` 的 name、description 和任务指令构成技能入口，scripts、references 与 assets 按实际用途提供代码、按需资料和模板。`agents/openai.yaml` 是 OpenAI 支持的可选元数据，由 Codex 读取显示名称、简短说明和默认提示词。仓库的 `AGENTS.md` 维护开发规则。依据见[官方 Skill 文档](https://learn.chatgpt.com/docs/build-skills#optional-metadata)。
-
-Python 包内的 `utils/` 集中提供文件、媒体、文档和 CLI 操作，application 编排多步骤用例。安装与诊断进程返回版本或安装输出，BL 执行进程管理凭据、用户登录和识别等待；两者分别保持适合其生命周期的调用函数。
-
-## BL 能力边界
-
-当前只有“录音转写并交付校对文档”这一项完整用户任务，因此由一个 Skill 提供入口，`utils/bailian.py` 集中适配官方 CLI。认证、临时上传、任务提交、轮询、结果下载和原始 JSON 落盘由 BL 完成；Python 读取本机配置、准备媒体、解析结果并生成文档。热词与上下文的本地检查服务于网页反馈，参数序列化服务于 CLI 调用，云端权限由 BL 验证。
-
-只有新增了可独立触发的 BL 用户任务，且确实需要自己的使用指令、输入和交付标准时，才评估建立另一个 Skill；多个已实现用例需要相同进程能力时再提取共享代码。第二阶段的模型、Skill 划分与调用方式按会议纪要和反馈学习的实际需求确定。
+`SKILL.md` 的 name、description 和正文为技能入口。`agents/openai.yaml` 是可选展示元数据，scripts、references、assets 分别存放可执行工具、按需资料及模板。根 README 面向使用者，AGENTS 面向源码维护者；安装包的 README 直接取自仓库根。
 
 ## 模块职责
 
-Python 运行模块位于 `skills/asr-transcription/scripts/asr_runtime/`。多步骤用例按入口 → application → utils 组织，单一操作允许入口直接分派。下表中 `frontend/` 路径相对于仓库根目录，其余代码路径相对于 Python 包目录。
+Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端路径相对于仓库根。
 
 | 模块 | 职责 |
 | --- | --- |
-| `__main__.py` / `web.py` | 分派 CLI 与 HTTP 请求，创建 Runtime，输出回执 |
-| `application/bootstrap.py` / `diagnostics.py` | 根据 Skill 的依赖锁准备工作目录环境，检查本机运行条件 |
-| `application/session.py` | 管理本次网页上传、热词导入、保存目录、预览、确认、撤回与清理 |
-| `application/inputs.py` / `rules.py` | 读取输入事实、应用模型规则；rules 不执行 I/O |
-| `application/transcription.py` | 编排一次执行、已知结果与重新导出 |
-| `application/delivery.py` | 顺序调用三格式 writer 并汇总交付状态 |
-| `utils/environment.py` / `auth.py` | 提供 Runtime、子进程环境、依赖检查及本机凭据读取 |
-| `utils/installation.py` | 固定安装工具与来源、比较文件采样速度、持续记录安装进度并回收子进程 |
-| `utils/bailian.py` | 映射公开 CLI 参数，启动 BL，转交登录链接并解释脱敏错误 |
-| `utils/files.py` / `job_files.py` | 文件身份、原子状态写入、配置发布及任务目录协议 |
-| `utils/hotwords.py` / `media.py` | Excel 模板与读取，音频探测与单声道副本 |
-| `utils/results.py` / `documents.py` | 官方结果 JSON 的唯一解析边界，三种格式生成与目标替换 |
-| `utils/directory_picker.py` / `_directory_dialog.py` | 原生目录窗口子进程、选择、取消与回收 |
-| `models.py` | 媒体与转写 dataclass，以及配置、执行、导出的 TypedDict 协议 |
-| `utils/i18n.py` | 按当前 HTTP 请求语言查找本机提示，结束后恢复语言上下文 |
-| `frontend/App.vue` / `components/` | 页面、Element Plus 控件及音频上传、热词编辑、Key输入、核对信息组件 |
-| `frontend/useTranscription.ts` / `model.ts` | 页面用例编排与纯状态规则，管理上传、预览、保存及操作可用性 |
-| `frontend/api.ts` / `types.ts` | HTTP 传输和端点输入、回执类型 |
-| `frontend/preferences.ts` / `i18n.ts` | 界面语言、系统/浅色/深色主题及中英文显示文案 |
+| `__main__.py` / `web.py` | CLI 与 HTTP 分派、受保护的本机控制、事件连接和服务生命周期 |
+| `application/bootstrap.py` / `diagnostics.py` | 安装工作目录依赖、诊断本机条件 |
+| `application/session.py` | 编辑会话、上传、预览版本、交接和副本清理 |
+| `application/inputs.py` / `rules.py` | 读取输入事实、统一应用模型规则；rules 无 I/O |
+| `application/transcription.py` | 一次执行、状态查询和重新导出 |
+| `application/delivery.py` | 三种 writer 的顺序调用与交付汇总 |
+| `utils/environment.py` / `auth.py` | Runtime、隔离进程环境和运行凭据 |
+| `utils/installation.py` | 固定来源测速、pip 下载与本机安装、日志与子进程回收 |
+| `utils/bailian.py` | 公开 CLI 参数映射、BL 进程、登录链接转交和脱敏错误 |
+| `utils/files.py` / `job_files.py` / `session_files.py` | 文件摘要与原子替换、任务协议、会话连接与交接回执 |
+| `utils/hotwords.py` / `media.py` | Excel 导入/模板、媒体探测和单声道副本 |
+| `utils/results.py` / `documents.py` | 结果解析、文档生成与目标替换 |
+| `utils/directory_picker.py` / `_directory_dialog.py` | 原生目录窗口、取消与子进程回收 |
+| `models.py` / `utils/i18n.py` | 共享类型、请求范围的本机消息语言 |
+| `frontend/App.vue` / `components/` | 两步页面与 Element Plus 输入、表格、预览、结束提示 |
+| `frontend/useTranscription.ts` / `model.ts` | 页面用例编排、纯状态和输入版本 |
+| `frontend/api.ts` / `types.ts` | 本机 HTTP/事件传输与协议类型 |
+| `frontend/preferences.ts` / `i18n.ts` | 语言、外观偏好与文案 |
 
-有生命周期的 `Session` 和 `DirectoryPicker` 使用类；无状态能力使用模块函数。Runtime 管理资源边界。PreparedCommand 只服务一次 BL 调用，包含私有参数与环境，保留在内存中。
+Session、DirectoryPicker 持有实际生命周期；无状态操作使用模块函数。TypedDict 和 TypeScript 接口描述数据协议，不建立重复的运行时对象层。Python 保持入口 → application → utils；utils 不反向导入用例。
 
-Python 的 TypedDict 描述已有 JSON 字段和允许的状态，数据在运行时保持普通字典；业务规则和外部输入仍由现有解析边界检查。TypeScript 定义表单、页面状态、端点回执和组件接口，开发时通过 `vue-tsc` 核对 Vue 单文件组件及脚本。类型声明与实际验证各自承担明确职责。
+## 编辑会话与执行任务
 
-## 页面与界面偏好
+| 对象 | 何时创建 | 状态与结束 | 持久数据 |
+| --- | --- | --- | --- |
+| `session_id` | 启动网页服务时 | 编辑、预览；交接、取消或打开满两小时后结束 | 活动连接信息；成功交接回执 |
+| `job_id` | 有效预览被代码交接时 | 配置固定；一次执行，结果与记录保留 | 配置/摘要、执行记录、文档交付记录 |
 
-`serve`持续运行并输出`event=listening`、URL、PID及`browser_request`。`skipped`表示由宿主打开链接；`requested`表示系统接受打开请求；`failed`表示返回失败或抛出浏览器异常。浏览器失败时仍保持HTTP服务供调用方打开同一URL；启动输出失败时关闭服务器。
+页面只负责“填写 → 预览”，往返不生成任务编号。前端完成预览展示后登记当前版本；后端可确认“当前预览已就绪”，不把成功校验直接等同页面状态。返回修改先通知后端，成功后才恢复可编辑表单。
 
-有宿主打开链接能力时，Codex使用`serve --no-browser`并打开完整URL一次，随后立即让用户操作；只有系统浏览器可用时才调用默认打开方式。正常路径不加载computer-use、不枚举浏览器、不额外验证页面。发生打开错误或用户反馈异常时才检查同一服务。新转写从配置页的文件选择器开始，本机配置页与BL授权页分属配置和认证两个阶段。
+预览有“复制给 Codex”按钮，复制明确开始请求及 `session_id`。Skill 必须从当前用户确认消息读取编号；仅“继续”不能选择会话，不从启动回执、历史或目录代替用户选择。会话编号是定位信息，保护请求的令牌是另一数据。
 
-用户填写页面或完成授权时，Skill保留持久进程句柄并结束当前回复。页面提示保存后发送“继续”；收到后读取同一serve的最新配置事件，或同一login结束后的BL结果，衔接下一步。`configured`提供当前编号，`configuration_reopened`表示旧编号已撤回，应等用户重新保存。登录结果以BL回执/本地状态判断，不要求用户口头确认成功。
+`confirm --session ID` 定位私有连接信息并调用受保护的本机 HTTP。Session 锁内检查截止时间、预览状态和版本，核对音频 size/mtime，生成任务编号，先保存候选回执，再写配置及摘要，最后原子发布 config.json 作为完成标记。读取回执时，只有对应配置已发布才视为交接成功；成功后配置不可修改，重复确认读取同一份回执。CLI 先读持久回执，因此响应丢失、网页服务已经结束时仍可恢复原编号。
 
-热词编辑使用Element Plus的Table、Input、Upload和Pagination。导入Excel即解析为带原行号的`HotwordRow`，行级问题与原值一起返回，在对应单元格下说明并标红；用户也可直接新增行。Excel日期、错误值和真实公式通过`invalid_fields`保留格级问题，编辑对应格后解除该标记，普通字面量不执行公式。文件只作为导入来源，解析结束就删除本机临时副本，预览使用`hotword_rows`，执行仍使用确认后的vocabulary。
+会话有效期为从创建起固定两小时，使用一次计时器及操作时截止时间检查。到期与交接共用状态保护，只有一个终态。没有活动上报、心跳、逐次草稿保存或云端进度轮询。页面通过单向事件连接收到交接、到期或取消结果，呈现结束提示，由用户关闭标签页。
 
-`validate_hotword_rows`只核对JSON行协议，`build_vocabulary`统一处理词条规则；导入、“检查词表”和最终预览共用这条路径。表格每页50行，错误可定位到原行号。JSON请求上限512KiB用于容纳2000条词语及行号等编辑字段，这是本机传输限制。上下文按400个Unicode字符及可传输字符检查，保留原文并指出长度或字符位置；内容与录音是否相关没有可靠的本机语义判定。
+交接保留任务需要的音频和记录；取消、到期清理未提交副本，保留用户原文件和已保存的 Key。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
 
-词条重复检测在权重校验之前登记全部文本行，结束时为整组重复行生成text错误；同一行可同时带有weight错误。程序按原文精确比较，所有重复都要求用户保留一行，不输出合并后的词典作为成功结果。该规则属于明确的产品输入约束，官方text、weight、prefix规则及依据分别记录在model.md。
+正常服务关闭先执行 Session 清理、取消目录选择，再由标准库服务器等待请求线程收尾。仍在接收的上传利用关闭标记或既有 socket 读写超时结束，并由自身 finally 清理临时文件；这不构成强制杀进程后的清理保证。
 
-页面使用Element Plus组件及其默认蓝色强调色，搭配灰白黑页面背景。优先使用组件公开参数和插槽：卡片用`ElCard`，摘要用`ElDescriptions`，保存结果用`ElResult`，说明折叠用`ElCollapse`，核对区滚动用`ElScrollbar`。图标直接使用`@element-plus/icons-vue`，精度增强用靶心、Excel导入用上传、词表用书本。
+## 输入检查
 
-`style.css`负责页面布局、响应式适配和少量主题配置：区分控件与卡片底色，将警告映射为红色，标记需要修正的字段。悬停、聚焦、禁用等交互沿用Element Plus默认行为。调整第三方组件前先确认公开参数是否满足具体需求，避免维护重复的组件外观或行为。
-
-顶部标识MemoFlow，正文只保留一个录音转写标题。主按钮用于检查与保存，辅助操作使用文字按钮。
-
-开启热词后，展开区提供带下载图标的“下载模板”入口；复用`actions.downloadTemplate`、`GET /api/hotwords-template`和`hotwords_template()`，由浏览器保存Excel工作簿。浅深色的文字按钮保持与背景可区分，避免用主按钮样式突出辅助下载操作。
-
-`App.vue`组合Element Plus控件及上传、密钥、摘要组件。`useTranscription()` 保存页面用例所需的响应式状态，`model.ts` 计算操作权限、构造配置并处理预览与回执；`ReviewPanel.vue` 从同一表单或已检查快照派生摘要。`ViewEffects` 将焦点、模板下载和 Key 控件读写留在视图侧。
-
-`main.ts` 从启动 URL 取得会话令牌后清理地址栏，并把令牌保留在 `createApi()` 的闭包中。HTTP 请求携带当前界面语言，后端以 `language_scope()` 为每次请求设置语言；公共校验提示和已登记的本机消息按该语言返回，CLI 默认使用中文。语音识别的语言参数仍由转写设置决定。
-
-`GET /api/session`的`languages`只提供有序语言代码列表；前端复用`Intl.DisplayNames`显示当前界面语言的名称，菲律宾语沿用百炼称呼。后端参数检查和页面选项共用同一组代码。
-
-`usePreferences()` 使用浏览器语言作为默认界面语言、系统配色作为默认主题。页面通过 Element Plus 的 ConfigProvider 和 `html.dark` 类同步组件语言与配色；localStorage 中的 `asr-ui-preferences` 只保存语言、主题。保存作用域是当前网页来源，随机端口变化时可能使用新的默认偏好。
-
-切换界面语言保留音频引用与输入，并使已检查预览失效；用户重新检查后取得当前语言的提示。上传、凭据处理、目录选择、检查和保存期间按状态限制语言切换，主题选择独立工作。配置、音频、Key 和增强正文不写入浏览器持久存储。
-
-实现依据：[Vue 的 TypeScript 支持](https://vuejs.org/guide/typescript/overview.html)、[Element Plus 国际化](https://element-plus.org/en-US/guide/i18n.html)及[深色模式](https://element-plus.org/en-US/guide/dark-mode.html)。
-
-## 输入与确认
-
-| 阶段 | 检查与读取 | 产出 |
+| 时机 | 行为 | 消费者 |
 | --- | --- | --- |
-| 添加音频 | 文件用途、文件名、大小和接收字节数 | 会话副本与 `upload_id` |
-| 预览 | 编辑表格及上下文规则、音频探测与SHA基线、识别选项及保存目录 | 内存 draft 与 `validation_id` |
-| 确认 | 复用 draft，核对音频 size/mtime | `config.json`、`config.sha256` 与 `job_id` |
-| 执行 | 配置协议与摘要、音频实际大小与 SHA、执行时凭据 | 执行记录与原始 JSON |
-| 重导 | 配置、已保存成功记录、原始 JSON 摘要 | 固定任务目录的三种成品 |
+| 上传 | 名称、用途、大小、实际接收字节 | 会话音频引用或热词导入结果 |
+| 预览 | 选项与增强规则、音频探测和 SHA、输出根目录 | 内存预览快照与版本 |
+| 交接 | 预览就绪、截止时间、音频 size/mtime | 不可变授权配置 |
+| 执行 | 配置协议/摘要、音频完整摘要、当前凭据 | 本次 BL 命令 |
+| 重导 | 已保存成功记录与原始 JSON 摘要 | 固定任务目录的三种文件 |
 
-热词在预览时转为即时 `vocabulary` 保存到配置，执行不再依赖原 Excel。上下文与热词可同时使用。API Key 独立于任务快照：检查时按需保存已修改的 Key，正式执行读取当时的 `.env`；配置确认不绑定 Key 值或文件时间。
+热词从 Excel 去除表头、忽略完全空白行，保留无效单元格及原值供修正。网页行序号按当前数组从 1 连续编号，删除后重排，与用于组件复用的稳定键分开；错误定位使用当前数据位置。分页不改变编号含义。
 
-配置写入临时文件和相同内容的 SHA 后发布；摘要用于发现已确认内容发生变化。网页保存不授权上传，配置中 `execution_authorized=false`。Codex 从同一 `serve` 进程的 `event=configured` 回执取得编号，根据本次上传授权执行。
+导入、改动后整个热词区域失焦、最终整单检查都调用同一后端路径：`validate_hotword_rows()` → `build_vocabulary()`。自动检查不锁住编辑；输入版本使过期响应失效。相同文本的所有重复行报错，由用户保留一行，权重问题单独定位。没有“检查词表”按钮或检查通过标签。
 
-## 凭据与参数
+上下文按 400 个 Unicode 字符及可传输字符检查，错误指出具体长度或字符位置并保留原文；本机不推断其是否与录音语义相关。热词与上下文可同时使用。Excel 只是导入来源，执行消费确认快照的 vocabulary。
 
-bootstrap 从 Skill 的 `assets/env.example` 复制空模板到私有运行目录 `.env`，保留已存在的文件。网页允许用户填写或修改 `DASHSCOPE_API_KEY`，在“检查并预览”时保存到该固定文件。Key 模式复用非空与内部空白检查，执行时读取并注入 BL 环境。控制台模式复用工作目录内的 BL 配置，首次或明确重新登录时才调用 `login`。
+输出根由默认位置或本次原生目录窗口批准；选择试写、预览和实际生成分别在各自写入边界复用 `check_output_path()`。窗口起点不可用时从工作目录打开，取消保留原路径。多声道且启用发言人区分时，按预览提示创建单声道 FLAC，保留原文件与采样率，检查新副本事实和上传大小，失败停止。
 
-BL登录从首次调用就使用正常桌面执行权限。`check_login_execution_context()`在BL启动前拒绝Windows受限令牌；它只识别已观察到的问题执行路径，不检测全部桌面或Chrome状态。
+## 认证与执行
 
-固定BL 2.1.0将Windows登录URL传给cmd/start，未引用的`&`会产生截断页。仅为console登录预加载`console-browser.cjs`，拦下这一个已核实的开页调用，让BL输出原会话的完整URL；`_communicate_login()`读取两条管道，`_open_login_url()`验证后使用系统URL处理器打开一次。BL包文件不修改，授权会话、回调和凭据保存仍由BL负责。Python不额外设置登录总时限；BL原生会话到期或结束后，使用公开auth status检查模型Key存在。
+API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输入；专用受保护请求加载/保存私有 `.env`，配置只记录认证方式。预览前按需保存，执行时读取当前值。Key 不进入任务配置、日志、聊天或浏览器持久存储。
 
-Python 安装、虚拟环境核对与依赖加载检查使用 `-I` 隔离模式，从指定虚拟环境加载包，避免工作目录中的同名 Python 文件参与安装或检查。执行命令所需的路径来自 Runtime，用户选定的保存目录只用于输出。
+控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-网页通过受保护的 `POST /api/api-key` 读取已有 Key，缺失时返回空值；通过 `POST /api/save-api-key` 保存输入。`KeyDisplay.vue` 使用局部状态绑定密码输入框，与可提交表单分开。独立“保存 API Key”和“检查并预览”复用同一凭据保存逻辑：前者只更新本机凭据，后者先检查表单、按需保存Key、再请求配置预览。保存阶段使用 `auth.status=saving`，暂停认证方式与Key编辑。切换认证方式、配置保存成功或组件关闭时清空控件。Key不进入任务配置、浏览器持久存储、日志或聊天。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。固定 BL 2.1.0 的 cmd/start 会拆开 URL 中的 `&`，因此只在 console 登录预加载 `console-browser.cjs`，转交完整 URL，由 Python 系统 URL 处理器打开一次。BL 包未修改，回调和凭据由 BL 管理；BL 升级时须重新核对是否可移除此适配。
 
-Key保存错误独立于配置预览错误处理，不因其他表单输入的revision变化而丢弃。仅修改Key时，用户看到页面保存成功后回Codex发送“完成”或“继续”，据此结束本次serve；不等待`event=configured`、另查`api-key-status`或启动转写。
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。Windows 参数长度检查和运行凭据读取各执行一次；来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
-`console-status`复用BL本机状态，`api-key-status`只读.env；在线有效性由实际BL请求判定。明确鉴权失败后的修复依据见[错误说明](../skills/asr-transcription/references/errors.md#鉴权失败与重新配置)，使用现有网页或当前工作目录的BL原生命令；修复不自动重传已失败任务。
+`transcribe --job ID` 读取交接授权，核对协议与当前模型，再独占创建 execution 目录。一次任务只有一次尝试，准备失败也保留占用；重复调用读取既有状态，不自动重试。它约束本地尝试次数，不是云端恰好一次保证。启动后 Codex 持续等待同一进程，直到文档交付或明确失败。
 
-`recognition_arguments` 集中映射选项。热词用 JSON 序列化形成单个参数值，上下文使用单个 `--context=<原文>`，避免以 `--` 开头的文本被 BL 误识别为命令选项。`prepare_command` 构造一次 argv、核对一次 Windows 命令长度并读取执行 Key；进程使用 `shell=False`。来源与限制见 [model.md](../skills/asr-transcription/references/model.md)。
-
-## 生命周期与状态
-
-Session 短锁保护上传登记与发布，文件字节接收在锁外完成，同类上传不能并发。HTTP上传仍区分audio和hotwords；只有音频登记到uploads，由`uploaded_audio(identifier)`查找。Excel导入完成或失败时清理其临时副本。目录窗口在独立子进程中运行，取消使用选择器自己的信号，没有用户选择总时限。
-
-正常关闭服务时，`LocalServer.server_close()`先调用`Session.cleanup()`设置关闭标记、取消目录选择并清理未确认音频，保留已确认音频；再在finally中调用基类关闭监听并等待非daemon请求线程结束。仍在接收的上传通过关闭检查或已有的10秒socket读写超时结束等待，由自身finally清理`.part`文件。10秒是网络等待超时，不是整个关闭流程的总时限。关闭浏览器不等于关闭服务。
-
-目录选择与取消共享页面生成的`picker_id`。上次位置或默认位置不是可用目录时，窗口从当前工作目录打开，用户可重新选择保存位置。
-
-前端用输入 revision 作废迟到预览。确认返回明确 4xx 后恢复编辑；保存结果未知时暂停重复保存。默认输出目录由 Runtime 提供，自选目录只能经本机会话原生窗口批准。选择目录时在试写前、预览时在接受目录前调用 `check_output_path()`；创建 JSON 或文档目录前再次通过同一方法检查，确保实际写入目标位于 Skill 之外。
-
-开启发言人区分且多声道时，用已确认 AudioInfo 调用 PyAV 生成单声道 FLAC。保留采样率，核对源文件变化及新副本的声道、采样率、时长与实际上传大小。转换失败停止，不自动更换编码或切片。
-
-任务独占创建 `execution` 目录后，取得一次执行占用。本地准备失败、识别失败或结果未知均保留占用；显式授权、配置协议和当前模型检查通过后，重复调用返回既有状态。这限制本地尝试次数，不是云端恰好一次保证。提交超时或本机进程结束均不能证明云端未受理或已取消。
-
-| 状态或字段 | 含义 |
+| 字段 | 含义 |
 | --- | --- |
-| `CONFIGURED` | 确认配置已保存，尚未执行 |
-| `PREPARING` | 取得执行占用，正在本机准备 |
-| `RUNNING` | 已保存启动前的保守记录，云端结果按未知处理 |
-| `STOPPED` | 当次执行停止，按 `phase` 和 `cloud_outcome` 解释 |
-| `JSON_READY` | 原始 JSON 已保存并通过结构检查 |
-| `documents_ready=true` | 当次导出记录为 COMPLETE，三格式均完成 |
-| `OUTCOME_UNKNOWN` | 本机记录无法确定当前结果 |
-| `record_error` | 执行记录保存失败，磁盘可能滞后于回执 |
+| `CONFIGURED` | 交接配置已保存，尚未执行 |
+| `PREPARING` | 已取得执行占用，最近处于本机准备 |
+| `RUNNING` | 已写入启动前保守记录，不证明云端受理或进程存活 |
+| `STOPPED` | 此次执行停止，以 phase 与 cloud_outcome 解释 |
+| `JSON_READY` | 原始 JSON 通过结构检查 |
+| `documents_ready=true` | delivery 为 COMPLETE，三格式均完成 |
+| `OUTCOME_UNKNOWN` | 本机记录不足以确定结果 |
+| `record_error` | 记录写入失败，磁盘可能滞后于当次回执 |
 
-记录保存失败时保留当次已知事实；成功 JSON 记录写入失败则在导出前返回，已有 JSON 保留。当前没有记录恢复或补签摘要入口。`job-status` 只读本机执行与交付记录，不检查进程存活、不查询云端、不重新核验成品。
+成功 JSON 记录写入失败时保留 JSON 并在导出前返回。当前没有补签摘要或恢复成功记录入口。`job-status` 只读本地记录，不查询云端或进程存活。具体状态与修复见 [errors.md](../skills/asr-transcription/references/errors.md)。
 
-已保存的配置通过`Session.reopen(job_id)`返回编辑。该操作复用`reserve_execution()`，与终端转写原子竞争同一个`execution`目录；只有尚未执行的任务可以撤回。撤回写入`STOPPED`和`LOCAL_CONFIG_REOPENED`，旧编号不能再启动BL；表单从本次内存Draft恢复，重新预览与确认产生新编号。已开始执行或已有执行结果时拒绝覆盖。这里复用一次执行约束，未引入第二套锁或任务取消协议。
+## 文档交付与路径
 
-撤回成功后保留最近一次恢复回执，避免HTTP响应中断使页面无法再次取回原输入。`Session.description()`返回`confirmed`和`reopened`（没有时为null）；页面启动优先恢复已保存回执，否则用`reopened`恢复撤回时的确认快照。启动与点击“修改设置”共用`restoreForm()`，刷新不再发送`POST /api/reopen`，按所选凭据方式重新读取Key。同一旧编号仍可重复取得撤回回执。
+results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把 `config.model` 传给 writer，保留历史任务真实模型；依次尝试 Excel、Word、Markdown，单格式失败仍尝试其他格式。每次用同目录独立临时文件完成后替换固定目标，失败保留旧目标。Excel/Word 替换前回读，Markdown 编码保真由测试验证。
 
-撤回缓存只保存原确认快照，不跟踪恢复后的未保存编辑。开始新的文件导入、成功选择目录或开始预览会使缓存失效；服务结束后也不能恢复。配置保存回执中的`execution_started=false`只描述保存当时，后续不会随转写更新；保存成功页引导用户在Codex查看执行进度与结果。
+重导核对配置、磁盘 JSON_READY 及原 JSON 摘要，复用同一 writer、路径和模型，不读取音频、Excel 或 Key，也不调用 BL。每任务一份 delivery/status.json；人工校对文件应另存。
 
-## 文档交付
-
-results 解析原始 JSON 后，三个 writer 共享 Transcript。delivery将`config.model`作为必传元信息交给`publish_document`及三个writer，使新导出和历史重导都标注原任务真实模型。生成器不读取当前默认MODEL。delivery顺序尝试Excel、Word、Markdown各一次，单格式失败后仍尝试其余格式。各次发布使用同目录独立partial文件，成功后替换固定目标，结束时只清理自身临时文件；失败保留该格式原目标。状态JSON也使用同目录独立临时文件完成原子替换。Excel、Word在替换前回读，Markdown编码保真由测试验证。
-
-重新导出核对确认配置、磁盘 JSON_READY 和原始 JSON 摘要，复用相同 writer 与目标，不读取音频、原 Excel 或 Key，不调用 BL。每个任务只有一份 `delivery/status.json`，记录 EXPORTING、COMPLETE、PARTIAL 或 FAILED。手工校对的文档需另存，同一任务等待当前导出结束后再执行下一次。
-
-`read_config`核对持久化协议与非空模型名称，保留模型来源；`transcribe`在创建执行占用前要求配置模型等于当前固定模型。模型更新后，旧配置的状态查看和成功结果重导仍可用；重新识别须在当前版本另行确认设置。该边界由数据协议和执行入口表达，不维护旧版本白名单，不补写配置摘要。
-
-- 三格式标题：`源文件名（不含扩展名） 录音转写`，不另列“音频”信息行。
-- Excel：等线、黑白无填充色；标题和任务说明左对齐，第三行直接表头；表头及非正文列居中，正文左对齐且自动换行；保留筛选、冻结，真实存储限制不截断。
-- Word：等线；标题 20 磅，正文、元信息、时间标签、页码 10 磅；普通文字和复杂文字采用相同字号与粗体设置；正文左对齐，时间标签不用圆点，标签随下一段。
-
-Word正文标题保留完整源文件名。python-docx的核心元数据标题存在255字符限制，产品交付依赖正文标题，生成器仅保留该正文，不重复写入可选的核心标题属性。
+- 标题均为“源文件名（不含扩展名） 录音转写”，不另列音频信息行。
+- Excel 使用等线、黑白无填充，第三行即表头；标题和任务说明左对齐，表头与非正文列居中，正文左对齐并自动换行。展示行高封顶，完整文本保留；真实存储超限时报错。
+- Word 使用等线，标题 20 磅，其余正文、元信息、时间标签、页码 10 磅。时间标签无圆点，随下一段。正文标题保留完整文件名，不重复写入有限长的可选核心标题属性。
 
 | 数据 | 位置 |
 | --- | --- |
-| Key / BL 配置 | `<workspace>/.asr-transcription/.env` / `<workspace>/.asr-transcription/.state/bailian/` |
-| 暂存输入 | 私有运行目录下 `.state/web-uploads/<session_id>/` |
-| 配置及摘要 | 私有运行目录下 `.state/jobs/<job_id>/config.json`、`config.sha256` |
-| 执行 / 导出记录 | 同一任务的 `execution/status.json` / `delivery/status.json` |
+| API Key / BL 配置 | 私有运行目录 `.env` / `.state/bailian/` |
+| 活动连接信息 | `.state/sessions/<session_id>/connection.json` |
+| 交接回执 | 同一 session 目录的 `receipt.json` |
+| 音频副本 | `.state/web-uploads/<session_id>/` |
+| 配置与摘要 | `.state/jobs/<job_id>/config.json`、`config.sha256` |
+| 执行 / 导出记录 | 同一 job 目录的 `execution/status.json` / `delivery/status.json` |
 | 原始 JSON | `<json_root>/<job_id>/json/transcription.json` |
-| 成品 | `<document_root>/<job_id>/documents/transcription.{xlsx,docx,md}` |
+| 三种成品 | `<document_root>/<job_id>/documents/transcription.{xlsx,docx,md}` |
 
-JSON 与文档保存根默认均为 `<workspace>/transcriptions/`，可分别通过原生窗口选择。结果原文、时间戳、结构检查与识别质量、Office 视觉效果分别验收。
+JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。内容保真、识别质量与 Office 视觉效果分别验收。
 
-## 构建与维护
+## 界面和构建
 
-### 运行依赖准备
+页面使用 Vue 3、TypeScript、Element Plus。优先复用公开 props、插槽和默认交互；卡片、输入、表格、分页、摘要、按钮、结果及图标由组件库承担。CSS 负责布局、响应式和有限主题差异，避免复制组件交互。
 
-`bootstrap`仅在业务依赖缺失或版本不匹配时准备下载。`rank_python_indexes()`并行采样PyPI与阿里云镜像上同一个锁定pip wheel的前缀，按收到字节与耗时排序；这不是全程速度保证。安装工具pip 26.2.1的文件路径与摘要直接维护在`utils/installation.py`，业务依赖仍以`requirements.txt`为来源。
+偏好只保存当前来源下的界面语言与主题；随机端口变化时不保证跨会话继承。界面切换不改变音频语言、地域或输出文档格式。HTTP 请求携带界面语言，后端用请求范围语言上下文返回已登记消息。首页设置 HttpOnly、SameSiteStrict Cookie；URL 和前端状态不持有连接令牌。
 
-安装器先通过现有pip下载并安装锁定的新pip，再由新版pip下载业务依赖。每阶段按排序后的两个来源各启动至多一次下载；连接重试与中断恢复使用pip公开选项。已下载的完整wheel保存在私有`.runtime/wheels`，全部下载成功后才用`--no-index`进行本机安装。SHA校验由pip承担；不自行拼接断点、不修改摘要，也不在本机安装失败后重复切源。
-
-`run_installer()`为pip/npm长进程持续转发stderr进度并写日志，stdout保留CLI最终JSON；安装没有总耗时限制。`run_process()`继续服务版本、平台等短检查。两者复用同一个隔离子进程环境；安装进程中断时回收自身子进程。BL的npm安装保持单次尝试，云端转写策略保持不变。
-
-### 前端与发行包
-
-前端由 Vite 在开发阶段构建到 Skill 的 `scripts/asr_runtime/static/`，固定输出 `index.html`、`app.js` 和 `app.css`，并提供 `favicon.svg` 与 `THIRD_PARTY_LICENSES.txt`。Python 本机服务直接提供这些产物，用户安装和使用时无需安装前端构建依赖。源码在 `frontend/`，锁定的 Vue、Element Plus、Vite、TypeScript 及检查工具在仓库根 `package.json`、`package-lock.json`；构建行为见 [Vite 官方说明](https://vite.dev/guide/build.html)。
-
-开发构建需要 Node.js `^20.19.0 || >=22.12.0`，与 Skill 运行时 BL 所需的 Node.js 18.17+ 分别管理。前端开发命令在仓库根执行：
+Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求 `^20.19.0 || >=22.12.0`，与 BL 运行所需 Node 18.17+ 分开维护。
 
 ```powershell
 npm ci
@@ -248,16 +180,10 @@ npm run build:login
 npm run test:browser
 ```
 
-`build:web` 先执行类型检查再构建。`test:browser` 使用开发依赖 Playwright、本机 Edge 和真实 Python 本机服务；默认使用合成数据，也可通过`MEMOFLOW_TEST_HOTWORDS`只读使用经授权的真实样表，并核对测试前后源文件摘要。测试完成后清理自己的工作目录。Python 静态检查工具与配置也仅用于开发，具体命令见 [ACCEPTANCE](ACCEPTANCE.md)。
+`build:login` 从仓库 `scripts/console-browser.cts` 生成固定适配产物。浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-`build:login`用现有TypeScript编译器将`scripts/console-browser.cts`生成到Skill的`scripts/bailian/console-browser.cjs`。只有该运行产物进入ZIP；TypeScript开发源码保留在仓库。更新BL版本时重新核对上游浏览器能力与该适配，采用上游修复后删除适配。
+安装器按锁定版本准备 Python 依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`；npm 失败停止。安装恢复不扩展为云端转写重试。
 
-`scripts/build_zip.py` 以固定逐文件清单构建 `asr-transcription.zip`，归档根直接为 Skill 内容。包只含 SKILL、展示 metadata、运行代码、前端构建资源、运行依赖锁、参考说明、空配置模板和 LICENSE。仓库 README、AGENTS、开发文档、UML、测试、开发探针、TypeScript/Vue 源码、构建工具、node_modules、运行环境和用户数据都不进入包。
+`scripts/build_zip.py` 按固定逐文件映射生成 ZIP：Skill 资源直接作为归档根，加上仓库根最新版 README.md 和 README.en.md。README 字节原样入包，仓库资料用完整 GitHub 链接，语言切换与 LICENSE 用包内链接。不维护第二份 README。排除开发 doc、AGENTS、UML、测试、Vue/TS 源码、构建工具、依赖环境、凭据和用户数据。
 
-使用仓库中 `skills/asr-transcription/scripts/asr.py` 的绝对路径和明确工作目录准备运行环境；开发测试命令见 [ACCEPTANCE](ACCEPTANCE.md)。开发探针在仓库 `scripts/probe_bl.py`，固定虚构 URL，不进入 Skill。修改模块时沿当前职责定位消费者，同时维护清单、相称测试与相关 UML，实际结果再写验证记录。
-
-## 版本与分支
-
-开发阶段的仓库默认分支为 `dev`，承载日常开发、修复和开发预览，当前项目版本保持 `0.1.0`。只有通过验收并正式发布到 `master` 时才变更项目版本，同时更新根 `package.json`、`package-lock.json` 中的项目版本、Git 标签和发布说明，正式标签指向对应的 `master` 提交。
-
-开发期间经用户授权可更新现有 `v0.1.0` 开发预览及附件，沿用当前版本。向 `dev` 推送或更新预览不触发 `master` 合并。第三方依赖版本由各自锁文件维护，与项目版本分别管理。
+开发在 dev，master 用于验收里程碑。项目版本仅在通过验收并发布 master 时改变；当前及经授权更新的预览均沿用 v0.1.0。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。

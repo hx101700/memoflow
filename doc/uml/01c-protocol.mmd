@@ -1,46 +1,46 @@
 classDiagram
 direction LR
-class Draft {
+class TranscriptionSettings {
   <<TypedDict>>
-  +str id
-  +JobConfig config
-  +dict~str,object~ form
-}
-class JobConfig {
-  <<TypedDict>>
-  +str job_id
   +str model
+  +str region
   +AuthMode auth_mode
   +AudioRecord audio
   +RecognitionOptions recognition_options
   +EnhancementConfig enhancement
+}
+class Draft {
+  <<TypedDict>>
+  +str id
+  +TranscriptionSettings config
+  +dict form
+  +dict summary
+  +Path json_base
+  +Path document_base
+}
+class JobConfig {
+  <<TypedDict>>
+  +str job_id
   +str json_directory
   +str document_directory
   +CONFIGURED status
-  +False execution_authorized
-}
-class AudioRecord {
-  <<TypedDict>>
-  +str path
-  +AudioMetadata metadata
-  +FileFingerprint fingerprint
-  +bool requires_mono
-  +str name
-}
-class EnhancementConfig {
-  <<TypedDict>>
-  +EnhancementMode mode
-  +HotwordConfig_or_None hotwords
-  +str_or_None context
+  +True execution_authorized
+  +str confirmed_at
 }
 class ConfirmationReceipt {
   <<TypedDict>>
+  +str session_id
   +str job_id
   +str config_path
   +AuthMode auth_mode
   +str json_directory
   +str document_directory
   +bool execution_started
+}
+class SessionTerminal {
+  <<TypedDict>>
+  +SessionEndState state
+  +ConfirmationReceipt_or_None receipt
 }
 class ExecutionReport {
   <<TypedDict>>
@@ -56,26 +56,16 @@ class DeliveryReport {
   <<TypedDict>>
   +Literal status
   +str message
-  +dict~str,DocumentReport~ files
+  +dict files
 }
-class DocumentReport {
-  <<TypedDict>>
-  +READY_or_FAILED status
-  +str path
-  +int bytes
-  +str message
-  +str error_type
-}
-Draft --> JobConfig : 成功预览生成的配置
-JobConfig --> AudioRecord : 已预览音频
-JobConfig --> EnhancementConfig : 即时增强内容
-JobConfig ..> ConfirmationReceipt : Session.confirm保存后返回
-JobConfig ..> ExecutionReport : transcribe使用确认快照
-ExecutionReport --> DeliveryReport : JSON成功后附加交付结果
-DeliveryReport --> "0..3" DocumentReport : xlsx／docx／md
-note for Draft "application/session.py::Draft<br/>config是待确认快照；form保留含hotword_rows的原表单<br/>reopen仅恢复同一Session中的form与音频引用<br/>form只存会话内存，执行使用config中的vocabulary"
-note for JobConfig "scripts/asr_runtime/models.py<br/>TypedDict描述现有JSON协议；运行时仍为普通dict<br/>model保存确认时的模型名称，重导沿用原值<br/>read_config核对非空模型名称；新上传校验见图05<br/>图中选择影响任务边界的字段，完整定义见源码<br/>API Key保存在工作目录/.asr-transcription/.env<br/>凭据独立于JobConfig"
-note for AudioRecord "name在基础音频检查后由Session补充<br/>metadata与fingerprint保存已检查事实<br/>执行阶段使用同一配置核对输入"
-note for ConfirmationReceipt "网页与Codex取得同一job_id和输出位置<br/>execution_started=false只表示保存当时未调用BL<br/>回执不随执行更新；后续结果在Codex中查看<br/>reopen成功后此回执作废，重新确认生成新job_id<br/>图03展示回执的HTTP与stdout交付"
-note for ExecutionReport "status使用Literal约束允许状态，转换见图07<br/>result、error、record_error、delivery等为NotRequired<br/>字段可以缺失；结构与业务检查由读取边界负责"
-note for DocumentReport "READY携带path和bytes；FAILED携带公开说明和类型<br/>这些明细字段在代码中使用NotRequired<br/>OUTCOME_UNKNOWN交付回执可以缺少files"
+TranscriptionSettings <|-- JobConfig
+Draft --> TranscriptionSettings : 已校验输入
+JobConfig ..> ConfirmationReceipt : Session.confirm发布后返回
+SessionTerminal --> ConfirmationReceipt : handed_off包含任务回执
+JobConfig ..> ExecutionReport : 仅一次执行
+ExecutionReport --> DeliveryReport : JSON成功后的文档结果
+note for Draft "application/session.py<br/>id为预览版本；form保存可恢复输入<br/>预览不含job_id，不在磁盘保存每次编辑<br/>preview_ready登记展示；edit使该版本失效"
+note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，交接时生成编号与输出路径<br/>配置和SHA发布一次，授权为True<br/>Key独立保存在运行目录.env，执行时读取"
+note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
+note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>没有heartbeat或云端状态字段"
+note for ExecutionReport "models.py<br/>result、error、record_error、delivery等为可选字段<br/>delivery.files各格式记录READY或FAILED、路径或错误<br/>documents_ready仅在COMPLETE时为true"

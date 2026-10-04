@@ -171,18 +171,19 @@ class ValidationTests(RuntimeTestCase):
                     validate_context(invalid)
                 self.assertEqual(caught.exception.field, "context")
 
-    def test_hotwords_accepts_chinese_headers_and_reports_blank_and_duplicate_rows(self):
-        """验证中文表头可用并说明空行及重复词。"""
+    def test_hotwords_skips_blank_excel_rows_and_numbers_current_array(self):
+        """验证中文表头可用，导入去除空行，行号由当前数组决定。"""
         path = self.hotwords([("语音实验室", 4), (None, None), ("语音实验室", 4), ("hello world", 2)],
                              headers=("热词", "权重"))
         before = path.read_bytes()
         with patch("asr_runtime.application.inputs.file_fingerprint", side_effect=AssertionError("热词导入不计算文件SHA")):
             result = import_hotwords(path)
-        self.assertEqual([issue["row"] for issue in result["issues"]], [2, 4])
-        result["rows"] = [row for row in result["rows"] if row["row"] != 4]
+        self.assertEqual([issue["row"] for issue in result["issues"]], [1, 2])
+        self.assertEqual(len(result["rows"]), 3)
+        result["rows"].pop(1)
         checked = validate_hotword_rows(result["rows"])
         self.assertEqual(checked["vocabulary"], {"语音实验室": 4, "hello world": 2})
-        self.assertIn("已忽略1个完全空白行。", checked["warnings"])
+        self.assertEqual(checked["warnings"], [])
         self.assertEqual(len(result["warnings"]), 1)
         self.assertEqual(path.read_bytes(), before)
 
@@ -194,7 +195,7 @@ class ValidationTests(RuntimeTestCase):
         ])
         imported = import_hotwords(path)
         details = imported["issues"]
-        self.assertEqual({error["row"] for error in details}, set(range(2, 11)))
+        self.assertEqual({error["row"] for error in details}, set(range(1, 10)))
         self.assertTrue(all(set(error) == {"row", "field", "message"} for error in details))
         with self.assertRaises(ValidationError) as caught:
             validate_hotword_rows(imported["rows"])
@@ -206,7 +207,7 @@ class ValidationTests(RuntimeTestCase):
         valid = self.hotwords([("汉" * 15, 1), ("a b c d e f g", 5)])
         self.assertEqual(validate_hotword_rows(import_hotwords(valid)["rows"])["count"], 2)
         invalid = self.hotwords([("汉" * 16, 1), ("a b c d e f g h", 5)])
-        self.assertEqual([error["row"] for error in import_hotwords(invalid)["issues"]], [2, 3])
+        self.assertEqual([error["row"] for error in import_hotwords(invalid)["issues"]], [1, 2])
 
     def test_fixed_model_accepts_super_words_and_limits_their_count(self):
         """验证固定模型支持超级热词并限制其数量。"""
@@ -214,14 +215,14 @@ class ValidationTests(RuntimeTestCase):
         self.assertEqual(validate_hotword_rows(import_hotwords(path)["rows"])["vocabulary"],
                          {f"term{i}": 50 for i in range(50)})
         path = self.hotwords([(f"term{i}", 50) for i in range(51)])
-        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 52)
+        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 51)
 
     def test_hotword_count_limit(self):
         """验证即时热词总数量上限。"""
         path = self.hotwords([(f"term{i}", 4) for i in range(2000)])
         self.assertEqual(validate_hotword_rows(import_hotwords(path)["rows"])["count"], 2000)
         path = self.hotwords([(f"term{i}", 4) for i in range(2001)])
-        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 2002)
+        self.assertEqual(import_hotwords(path)["issues"][0]["row"], 2001)
 
     def test_hotwords_rejects_invalid_header_extra_columns_and_corrupt_file(self):
         """验证异常表头、多列和损坏词表在导入时被拒绝。"""

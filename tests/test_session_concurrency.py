@@ -124,7 +124,7 @@ class SessionConcurrencyTests(RuntimeTestCase):
                 # 音频还在接收时，词表已可独立导入供用户编辑。
                 hotwords.release.set()
                 words_result = words_upload.result(timeout=1)
-                self.assertEqual(words_result["rows"], [{"row": 2, "text": "fixture", "weight": 4}])
+                self.assertEqual(words_result["rows"], [{"text": "fixture", "weight": 4}])
                 self.assertFalse(audio_upload.done())
             finally:
                 audio.release.set()
@@ -141,7 +141,7 @@ class SessionConcurrencyTests(RuntimeTestCase):
             try:
                 self.assertTrue(source.read_started.wait(timeout=2))
                 validating = pool.submit(self.session.validate, self.payload)
-                confirming = pool.submit(self.session.confirm, preview["validation_id"])
+                confirming = pool.submit(self.session.confirm)
                 for action in (validating, confirming):
                     with self.assertRaisesRegex(ValidationError, "仍在添加"):
                         action.result(timeout=1)
@@ -185,7 +185,7 @@ class SessionConcurrencyTests(RuntimeTestCase):
         self.assertEqual(list(self.session.upload_directory.iterdir()), [Path(original["path"])])
         self.assertIsNone(self.session.draft)
         with self.assertRaises(ValidationError):
-            self.session.confirm(preview["validation_id"])
+            self.session.confirm()
         self.assertNotEqual(self.session.validate(self.payload)["validation_id"], preview["validation_id"])
 
     def test_publish_failure_removes_new_destination_and_keeps_original(self):
@@ -207,7 +207,7 @@ class SessionConcurrencyTests(RuntimeTestCase):
         self.assertEqual(original.read_bytes(), self.audio)
         self.assertIsNone(self.session.draft)
         with self.assertRaises(ValidationError):
-            self.session.confirm(preview["validation_id"])
+            self.session.confirm()
         # 最终发布失败也必须撤销“正在添加”，让用户可以重新检查旧文件。
         self.assertTrue(self.session.validate(self.payload)["ok"])
 

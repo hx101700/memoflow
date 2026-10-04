@@ -8,14 +8,15 @@ participant B as BL外部进程
 participant A as 百炼／临时OSS
 participant D as delivery（函数模块）
 participant F as 原始JSON与成品
-Note over C,D: 成功主路径：输入有效且记录均写入成功；失败见07-state、08-failure<br/>各lifeline为函数模块或外部进程，未建立同名服务类
-C->>T: --workspace 用户目录 transcribe --job ID --authorize-upload
-T->>T: 核对显式上传授权
-T->>J: read_config()核对协议及配置SHA
+Note over C,D: 成功主路径：用户已明确交接，输入有效且记录均写入成功；失败见07-state、08-failure<br/>各lifeline为函数模块或外部进程，未建立同名服务类
+C->>T: --workspace 用户目录 transcribe --job ID
+Note over C,T: 告知已开始转写；等待同一进程直到文件交付或明确失败
+Note over C,J: 网页服务已结束，编辑会话到期不影响本次任务
+T->>J: read_config()核对协议、交接授权及配置SHA
 T->>T: 核对config.model等于当前MODEL
 Note over T,J: 当前MODEL：qwen-audio-3.1-asr-flash-filetrans
 break 模型与当前固定模型不一致
-    T-->>C: SetupError；回网页重新检查并保存
+    T-->>C: SetupError；回当前版本页面重新配置并交接
     Note over C,J: 原配置保持不变，尚未创建execution或上传<br/>已有结果仍可本地查看或重导
 end
 T->>J: reserve_execution()独占创建execution

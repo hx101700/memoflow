@@ -1,8 +1,8 @@
 import { nextTick, reactive, shallowRef } from "vue";
 import { UiError, uiError } from "./api";
-import { availability, checkRequiredInputs, configuration, createModel, invalidatePreview, receiveReceipt, receiveSaveError, receiveValidation } from "./model";
+import { availability, checkRequiredInputs, configuration, createModel, hotwordRows, invalidatePreview, receiveEnd, receiveValidation } from "./model";
 import type { Translate } from "./i18n";
-import type { Api, DirectoryKind, FormValues, HotwordField, ReopenResult, UploadKind } from "./types";
+import type { Api, DirectoryKind, EditableSnapshot, FormValues, HotwordField, HotwordRow, SessionEnd, UploadKind } from "./types";
 
 export interface ViewEffects {
   focus(target: string): void;
@@ -11,21 +11,54 @@ export interface ViewEffects {
   download(blob: Blob): void;
 }
 
-// 编排页面用例，状态由 Vue 渲染，浏览器操作由视图提供。
+// 编排本机表单、只读预览和会话结束，浏览器操作由视图提供。
 export function useTranscription(api: Api, view: ViewEffects, t: Translate, makeRequestId: () => string = () => crypto.randomUUID()) {
   const model = reactive(createModel());
   const form = reactive<FormValues>({ useApiKey: false, diarizationEnabled: true, hotwordsEnabled: false,
     contextEnabled: false, context: "", language: "", speaker: "", hotwordRows: [] });
   const error = shallowRef<UiError | null>(null);
+  let rowKey = 0;
+  let checkingRevision: number | null = null;
+  let stopListening: (() => void) | undefined;
 
-  // 保存可见错误并将焦点移到相应输入。
-  function fail(reason: unknown, field?: string): void {
+  // 判断会话是否仍允许接收本机操作结果。
+  function active(): boolean { return !["handed_off", "expired", "cancelled", "unavailable"].includes(model.phase); }
+
+  // 保存可见错误，并按用户当前操作定位输入。
+  function fail(reason: unknown, field?: string, focus = true): void {
+    if (!active()) return;
     error.value = uiError(reason, t("failed"), field);
-    if (error.value.field === "hotword_rows") {
-      model.hotwords.issues = error.value.details;
-      model.hotwords.checked = false;
-    }
-    view.focus(error.value.field ?? "error-panel");
+    if (error.value.field === "hotword_rows") model.hotwords.issues = error.value.details;
+    if (focus) view.focus(error.value.field ?? "error-panel");
+  }
+
+  // 接收终态、清除显示凭据并停止结束通知。
+  function ended(result: SessionEnd): void {
+    stopListening?.();
+    receiveEnd(model, result);
+    error.value = null;
+    view.setApiKey("");
+    view.focus("session-ended");
+  }
+
+  // 为导入或恢复的数据分配稳定组件标识和当前序号。
+  function setRows(rows: HotwordRow[]): void {
+    form.hotwordRows = rows.map((row, index) => ({ ...row, row: index + 1, key: ++rowKey }));
+    model.hotwords.revision += 1;
+    model.hotwords.validatedRevision = model.hotwords.revision;
+  }
+
+  // 将后端保留的预览输入恢复到本机表单。
+  function restoreForm(result: EditableSnapshot): void {
+    const config = result.configuration;
+    Object.assign(form, { useApiKey: config.auth_mode === "api_key", diarizationEnabled: config.diarization_enabled,
+      hotwordsEnabled: ["hotwords", "both"].includes(config.enhancement_mode),
+      contextEnabled: ["context", "both"].includes(config.enhancement_mode), context: config.context,
+      language: config.language_hint ?? "", speaker: config.speaker_count === null ? "" : String(config.speaker_count) });
+    setRows(config.hotword_rows);
+    model.uploads.audio = { status: "ready", id: result.audio.upload_id, name: result.audio.name, size: result.audio.size_bytes };
+    model.directories = { json: config.json_directory, document: config.document_directory };
+    Object.assign(model.hotwords, { issues: [], warnings: [] });
   }
 
   // 读取当前凭据方式，在视图中显示 Key 并丢弃迟到结果。
@@ -36,11 +69,11 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     model.auth.status = "loading";
     try {
       const result = await api.request("/api/api-key", {});
-      if (revision !== model.auth.revision) return;
+      if (revision !== model.auth.revision || !active()) return;
       view.setApiKey(result.value);
       model.auth.status = result.value ? "ready" : "dirty";
     } catch (reason) {
-      if (revision !== model.auth.revision) return;
+      if (revision !== model.auth.revision || !active()) return;
       model.auth.status = "failed";
       fail(reason, "auth_mode");
     }
@@ -57,31 +90,43 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       if (revision === model.auth.revision) model.auth.status = "failed";
       throw uiError(reason, t("failed"), "auth_mode");
     }
-    if (revision !== model.auth.revision) return false;
+    if (revision !== model.auth.revision || !active()) return false;
     model.auth.status = "ready";
     return true;
   }
 
-  // 将服务端保留的确认快照恢复为编辑表单，并重新读取所选凭据。
-  async function restoreForm(result: ReopenResult): Promise<void> {
-    const config = result.configuration;
-    Object.assign(form, { useApiKey: config.auth_mode === "api_key", diarizationEnabled: config.diarization_enabled,
-      hotwordsEnabled: ["hotwords", "both"].includes(config.enhancement_mode),
-      contextEnabled: ["context", "both"].includes(config.enhancement_mode), context: config.context,
-      language: config.language_hint ?? "", speaker: config.speaker_count === null ? "" : String(config.speaker_count),
-      hotwordRows: config.hotword_rows });
-    model.uploads.audio = { status: "ready", id: result.audio.upload_id, name: result.audio.name, size: result.audio.size_bytes };
-    model.uploads.hotwords = { status: "empty", id: null, name: "", size: 0 };
-    model.directories = { json: config.json_directory, document: config.document_directory };
-    Object.assign(model.hotwords, { issues: [], warnings: [], checked: false, count: 0 });
-    model.receipt = null;
-    if (model.session) model.session.confirmed = null;
+  // 在预览渲染后登记版本，使代码入口可以接管这份输入。
+  async function registerPreview(): Promise<void> {
+    const preview = model.preview;
+    if (!preview) return;
+    await nextTick();
+    if (model.phase !== "preview" || model.preview?.id !== preview.id) return;
+    try { await api.request("/api/preview-ready", { validation_id: preview.id }); }
+    catch (reason) {
+      if (model.phase === "preview" && model.preview?.id === preview.id) throw reason;
+      return;
+    }
+    if (model.phase !== "preview" || model.preview?.id !== preview.id) return;
+    preview.ready = true;
+    view.setApiKey("");
+    view.focus("review");
+  }
+
+  // 恢复已撤销预览的编辑权限，并读取当前凭据。
+  async function resumeEditing(): Promise<void> {
     model.phase = "editing";
     invalidatePreview(model);
-    model.statusMessage = "reopened";
     await nextTick();
     await updateAuth();
     if (model.auth.status !== "failed") view.focus("config-fields");
+  }
+
+  // 标记词表内容变化，使旧结果过期并等待离开整个区域后检查。
+  function hotwordsChanged(): void {
+    model.hotwords.revision += 1;
+    model.hotwords.issues = [];
+    model.hotwords.warnings = [];
+    actions.changed();
   }
 
   const actions = {
@@ -102,21 +147,33 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       catch (reason) { fail(reason); return false; }
     },
 
-    // 加载本机会话并恢复确认回执或已撤回的表单。
+    // 加载会话、恢复已有预览并订阅一次性结束结果。
     async start(): Promise<void> {
       try {
         model.session = await api.request("/api/session");
-        if (model.session.confirmed) {
-          receiveReceipt(model, model.session.confirmed);
+        if (model.session.terminal) { ended(model.session.terminal); return; }
+        stopListening = api.listen(ended, () => {
+          if (!active()) return;
+          error.value = new UiError(t("network"));
+          model.phase = "unavailable";
           view.setApiKey("");
-          view.focus("receipt");
-        } else if (model.session.reopened) {
-          await restoreForm(model.session.reopened);
-        } else {
-          model.phase = "editing";
-        }
-      } catch (reason) { model.phase = "unavailable"; fail(reason); }
+        });
+        const preview = model.session.preview;
+        if (preview) {
+          restoreForm(preview);
+          model.preview = { id: preview.validation_id, configuration: preview.configuration, summary: preview.summary, ready: false };
+          model.phase = "preview";
+          await registerPreview();
+        } else model.phase = "editing";
+      } catch (reason) {
+        error.value = uiError(reason, t("failed"));
+        model.phase = "unavailable";
+        stopListening?.();
+      }
     },
+
+    // 页面卸载时释放结束通知连接。
+    dispose(): void { stopListening?.(); },
 
     // 切换认证方式并读取或清空密码输入框。
     async setAuthMode(useApiKey: boolean): Promise<void> {
@@ -134,67 +191,62 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       invalidatePreview(model);
     },
 
-    // 更新热词单元格并标记词表需要重新检查。
-    changeHotword(rowNumber: number, field: HotwordField, value: string): void {
+    // 按组件标识更新单元格并清除该格的导入类型标记。
+    changeHotword(key: number, field: HotwordField, value: string): void {
       if (!availability(model).editHotwords) return;
-      const row = form.hotwordRows.find(entry => entry.row === rowNumber);
-      if (!row) return;
+      const row = form.hotwordRows.find(entry => entry.key === key);
+      if (!row || row[field] === value) return;
       row[field] = value;
       if (row.invalid_fields) {
         row.invalid_fields = row.invalid_fields.filter(invalid => invalid !== field);
         if (!row.invalid_fields.length) delete row.invalid_fields;
       }
-      model.hotwords.checked = false;
-      actions.changed();
+      hotwordsChanged();
     },
 
-    // 在词表末尾添加带独立行号的可编辑词条。
+    // 在词表末尾添加独立标识的可编辑词条。
     addHotword(): void {
       if (!availability(model).editHotwords) return;
-      const row = Math.max(0, ...form.hotwordRows.map(entry => entry.row)) + 1;
-      form.hotwordRows.push({ row, text: "", weight: 4 });
-      model.hotwords.checked = false;
-      actions.changed();
+      form.hotwordRows.push({ key: ++rowKey, row: form.hotwordRows.length + 1, text: "", weight: 4 });
+      hotwordsChanged();
     },
 
-    // 删除选定词条并保留其他词条的来源行号。
-    removeHotword(rowNumber: number): void {
+    // 删除词条后按当前位置重排显示序号。
+    removeHotword(key: number): void {
       if (!availability(model).editHotwords) return;
-      form.hotwordRows = form.hotwordRows.filter(entry => entry.row !== rowNumber);
-      model.hotwords.issues = model.hotwords.issues.filter(issue => issue.row !== rowNumber);
-      model.hotwords.checked = false;
-      actions.changed();
+      form.hotwordRows = form.hotwordRows.filter(entry => entry.key !== key);
+      form.hotwordRows.forEach((row, index) => { row.row = index + 1; });
+      hotwordsChanged();
     },
 
-    // 使用服务端同一套词表规则检查当前编辑内容。
+    // 区域失焦后检查已修改的词表，迟到结果按词表版本丢弃。
     async checkHotwords(): Promise<void> {
-      if (!availability(model).editHotwords) return;
-      error.value = null;
+      if (model.phase !== "editing" || !availability(model).editHotwords) return;
+      const revision = model.hotwords.revision;
+      if (revision === model.hotwords.validatedRevision || revision === checkingRevision) return;
+      checkingRevision = revision;
       model.hotwords.checking = true;
-      const revision = model.revision;
       try {
-        const result = await api.request("/api/validate-hotwords", { rows: form.hotwordRows });
-        if (revision !== model.revision) return;
-        Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings, count: result.count, checked: true });
-        if (result.issues.length) view.focus("hotword_rows");
-      } catch (reason) { fail(reason, "hotword_rows"); }
-      finally { model.hotwords.checking = false; }
-    },
-
-    // 保留用户输入，并使上一种语言生成的预览与错误失效。
-    languageChanged(): void {
-      if (!availability(model).changeLanguage) return;
-      error.value = null;
-      model.hotwords.issues = [];
-      model.hotwords.warnings = [];
-      model.hotwords.checked = false;
-      if (model.preview) {
-        invalidatePreview(model);
-        model.statusMessage = "languageChanged";
+        const result = await api.request("/api/validate-hotwords", { rows: hotwordRows(form) });
+        if (revision !== model.hotwords.revision || model.phase !== "editing") return;
+        Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings, validatedRevision: revision });
+      } catch (reason) {
+        if (revision === model.hotwords.revision && model.phase === "editing") fail(reason, "hotword_rows", false);
+      } finally {
+        if (checkingRevision === revision) { checkingRevision = null; model.hotwords.checking = false; }
       }
     },
 
-    // 将单个文件传入本机服务并保存会话引用。
+    // 切换界面语言时清除编辑区旧语言的检查提示。
+    languageChanged(): void {
+      if (!availability(model).changeLanguage || !availability(model).editable) return;
+      error.value = null;
+      model.hotwords.issues = [];
+      model.hotwords.warnings = [];
+      model.hotwords.validatedRevision = -1;
+    },
+
+    // 将单个文件传入本机服务，保存音频引用或可编辑热词数组。
     async upload(kind: UploadKind, files: readonly File[]): Promise<void> {
       const session = model.session;
       if (!session || !availability(model).upload[kind] || !files.length) return;
@@ -216,18 +268,17 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         upload.name = file.name;
         if (kind === "audio") {
           const result = await api.request("/api/upload-audio", undefined, file);
+          if (!active()) return;
           Object.assign(upload, { status: "ready", id: result.upload_id, name: result.name, size: result.size_bytes });
         } else {
           const result = await api.request("/api/upload-hotwords", undefined, file);
-          form.hotwordRows = result.rows;
-          Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings, checked: false, count: 0 });
+          if (!active()) return;
+          setRows(result.rows);
+          Object.assign(model.hotwords, { issues: result.issues, warnings: result.warnings });
           Object.assign(upload, { status: "ready", name: result.name, size: result.size_bytes });
           view.focus("hotword_rows");
         }
-      } catch (reason) {
-        upload.status = "failed";
-        fail(reason, field);
-      }
+      } catch (reason) { upload.status = "failed"; fail(reason, field); }
     },
 
     // 等待系统目录选择结果，选定后更新已批准的保存位置。
@@ -238,7 +289,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       let failure: unknown;
       try {
         const result = await api.request("/api/select-directory", { kind, picker_id: id });
-        if (model.picker?.id !== id) return;
+        if (model.picker?.id !== id || !active()) return;
         if (!result.cancelled) {
           model.directories[kind] = result.path;
           error.value = null;
@@ -268,14 +319,36 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       invalidatePreview(model);
     },
 
-    // 返回表单修改设置。
-    edit(): void {
-      if (!availability(model).editable) return;
-      invalidatePreview(model);
-      view.focus("config-fields");
+    // 后端撤销当前预览后恢复填写，并按需重新读取已保存 Key。
+    async edit(): Promise<void> {
+      if (!availability(model).edit || !model.preview) return;
+      const validationId = model.preview.id;
+      model.preview.ready = false;
+      model.phase = "returning";
+      error.value = null;
+      try {
+        const result = await api.request("/api/edit", { validation_id: validationId });
+        if (!active()) return;
+        restoreForm(result);
+        await resumeEditing();
+      } catch (reason) {
+        if (!active()) return;
+        try {
+          // 返回响应丢失时，仅核对一次服务端状态，恢复仍保留在本页的输入。
+          const session = await api.request("/api/session");
+          if (!active()) return;
+          if (session.session_id === model.session?.session_id) {
+            if (session.terminal) { ended(session.terminal); return; }
+            if (session.phase === "editing" && !session.preview) { await resumeEditing(); return; }
+          }
+        } catch { /* 状态仍未知时保留只读预览，显示原操作错误。 */ }
+        if (!active()) return;
+        model.phase = "preview";
+        fail(reason);
+      }
     },
 
-    // 检查必填内容并取得本次输入版本的服务端预览。
+    // 检查本次输入，在独立预览完成渲染后登记可交接版本。
     async validate(): Promise<void> {
       const session = model.session;
       if (!session || !availability(model).validate) return;
@@ -291,11 +364,10 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       if (form.useApiKey && model.auth.status !== "ready") {
         try {
           const saved = await persistApiKey();
-          if (!saved || revision !== model.revision) {
-            model.phase = "editing";
-            return;
-          }
+          if (!active()) return;
+          if (!saved || revision !== model.revision) { model.phase = "editing"; return; }
         } catch (reason) {
+          if (!active()) return;
           // Key保存期间凭据不可改动，其他表单变化不能使本次凭据错误过期。
           model.phase = "editing";
           fail(reason);
@@ -304,44 +376,21 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       }
       try {
         const result = await api.request("/api/validate", config);
-        if (receiveValidation(model, revision, result, config)) {
-          Object.assign(model.hotwords, { issues: [], warnings: [], checked: form.hotwordsEnabled, count: result.summary.enhancement.count });
-          view.focus("review");
+        if (!active()) return;
+        if (!receiveValidation(model, revision, result, config)) {
+          await api.request("/api/edit", { validation_id: result.validation_id });
+          if (!active()) return;
+          model.phase = "editing";
+          model.statusMessage = "changed";
+          return;
         }
+        Object.assign(model.hotwords, { issues: [], warnings: [], validatedRevision: model.hotwords.revision });
+        await registerPreview();
       } catch (reason) {
-        model.phase = "editing";
+        if (!active()) return;
+        if (!model.preview) model.phase = "editing";
         if (revision === model.revision) fail(reason);
       }
-    },
-
-    // 保存当前预览，并区分明确拒绝与保存结果未知。
-    async confirm(): Promise<void> {
-      const preview = model.preview;
-      if (!preview || !availability(model).confirm) return;
-      model.phase = "saving";
-      error.value = null;
-      try {
-        const receipt = await api.request("/api/confirm", { validation_id: preview.id });
-        receiveReceipt(model, receipt);
-        view.setApiKey("");
-        view.focus("receipt");
-      } catch (reason) {
-        const problem = uiError(reason, t("failed"));
-        receiveSaveError(model, problem);
-        fail(problem);
-      }
-    },
-
-    // 撤回尚未执行的任务，恢复该任务的完整输入供重新确认。
-    async reopen(): Promise<void> {
-      if (!availability(model).reopen || !model.receipt) return;
-      model.reopening = true;
-      error.value = null;
-      try {
-        const result = await api.request("/api/reopen", { job_id: model.receipt.job_id });
-        await restoreForm(result);
-      } catch (reason) { fail(reason); }
-      finally { model.reopening = false; }
     },
 
     // 下载热词模板，保留其它表单操作。

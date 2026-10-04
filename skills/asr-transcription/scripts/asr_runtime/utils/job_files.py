@@ -16,7 +16,7 @@ from .files import write_json_atomic
 def job_directory(runtime: Runtime, job_id: str) -> Path:
     """核对回执编号与路径归属，返回任务目录。"""
     if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{32}", job_id):
-        raise SetupError("设置编号应为网页回执中的32位小写十六进制编号。")
+        raise SetupError("任务编号应为Codex交接回执中的32位小写十六进制编号。")
     path = runtime.path(f".state/jobs/{job_id}")
     if path != runtime.root.resolve() / ".state/jobs" / job_id:
         raise SetupError("任务目录不能重定向。")
@@ -49,20 +49,20 @@ def read_config(runtime: Runtime, job_id: str) -> JobConfig:
     if path.resolve() != path or checksum.resolve() != checksum:
         raise SetupError("任务配置不能使用符号链接。")
     if not checksum.is_file():
-        raise SetupError("此设置缺少确认摘要，请在当前网页重新检查并保存；不会自动补签或上传。")
+        raise SetupError("此任务缺少确认摘要，请回到Codex重新配置并确认新任务；未上传。")
     try:
         content = path.read_bytes()
         if hashlib.sha256(content).hexdigest() != checksum.read_text(encoding="ascii").strip():
-            raise SetupError("已保存的配置发生变化，请重新检查并确认；未执行转写。")
+            raise SetupError("已确认的配置发生变化，请回到Codex重新配置并确认新任务；未执行转写。")
         config = json.loads(content)
         # 模型记录用于标注原结果；是否允许新上传由转写入口按当前固定模型判断。
         valid = (config["schema_version"] == 1 and config["job_id"] == job_id
                  and isinstance(config["model"], str) and bool(config["model"].strip())
                  and config["region"] == "cn-beijing"
                  and config["status"] == "CONFIGURED"
-                 and config["execution_authorized"] is False and bool(config["confirmed_at"]))
+                 and config["execution_authorized"] is True and bool(config["confirmed_at"]))
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise SetupError("无法读取已确认的配置，请通过网页重新检查并保存。") from exc
+        raise SetupError("无法读取已确认的配置，请回到Codex重新配置并确认新任务。") from exc
     if not valid:
         raise SetupError("任务配置的模型名称、地域或保存协议不符，未执行。")
     # 配置由publish_config生成；上面的协议和摘要检查确定读取的是确认快照。

@@ -1,19 +1,20 @@
 [中文](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.md) | English
 
-MemoFlow aims to turn recordings into meeting minutes that follow your preferred style and format. This v0.1.0 development preview delivers the first step: let Codex transcribe a recording and produce timestamped Word, Excel, and Markdown documents for you to review and correct.
+MemoFlow aims to turn recordings into meeting minutes that follow your preferred style and format. This v0.1.0 development preview delivers the first step: transcribe a recording in Codex and receive timestamped Word, Excel, and Markdown documents to review and correct.
 
 ### Features
 
-- **Local configuration page**: Add one recording and choose the language, speaker diarization, and save locations. Chinese and English interfaces and light and dark themes are available.
-- **Recognition enhancement**: Enter hotwords in the table or import an Excel file and edit it directly. Errors appear on the affected rows; review duplicate terms and keep one entry. Hotwords and context can be used together.
-- **Model Studio recognition**: Qwen-Audio-3.1-ASR-Flash-Filetrans runs through the official BL CLI. Choose Console login or enter and save your own Beijing-region API key on the page.
-- **Document delivery**: Keep the original JSON and all three transcript formats. Successful tasks can be re-exported locally.
+- **Edit and review in your browser**: Add a recording and choose its language, speaker diarization, and save locations. Return to editing as needed before handing the settings to Codex.
+- **Hotwords and context**: Enter hotwords directly or import an Excel list and edit it in place. Problems appear in the affected cells. Hotwords and context can be used together.
+- **Model Studio recognition**: Call Qwen-Audio-3.1-ASR-Flash-Filetrans through the official BL CLI, using Console authorization or your Beijing-region API Key.
+- **Three document formats**: Generate Word, Excel, and Markdown together and retain the original JSON. Successful tasks can be re-exported locally.
+- **Language and appearance**: Choose Chinese or English and light or dark themes.
 
-### Using the preview
+### From settings to delivery
 
-After saving your settings, return to Codex and send “continue.” You can return to editing before transcription starts. If the response to a withdrawal request is interrupted, refreshing the original page restores the confirmed settings still held by the same service. Later unsaved edits are not retained.
+Select “Confirm and preview” on the page, check the details, then use “Copy for Codex” to send the confirmation message back to your conversation. Codex accepts those settings, guides a login if needed, and waits for transcription and document generation to finish. Handed-off settings are fixed; follow the results in Codex.
 
-If you change other settings while your API key is being saved, any error from saving the key now remains visible. To change only your key, save it on the page, then return to Codex and send “done” after the success message. Normal service shutdown also waits for current uploads to clean up their temporary files. Tasks whose settings can no longer be changed direct you back to Codex to check their status.
+The editing page is valid for two hours after opening and shows a final message after handoff or expiry. This deadline does not affect tasks already handed to Codex.
 
 ### Get started
 
@@ -21,8 +22,8 @@ Create an Alibaba Cloud account and complete the platform's identity verificatio
 
 > Extract the ZIP, read its SKILL.md, and help me install and configure asr-transcription.
 
-Once installed, ask Codex to transcribe a recording, then add your file and settings on the page it opens.
+After installation, ask Codex to transcribe a recording and follow the page it opens. The package also includes the latest Chinese and English README files.
 
-This preview supports Windows 10/11 x64 and requires Python 3.12 x64, Node.js 18.17+, and npm. Recognition uses the Beijing region and may incur charges. Personalized minutes and learning from feedback are planned for a later stage.
+This preview supports Windows 10/11 x64 and requires Python 3.12 x64, Node.js 18.17+, and npm. Recognition uses Model Studio in China (Beijing) and may incur charges. Personalized meeting minutes and learning from feedback are planned for a later stage.
 
-See the [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.en.md) for instructions, or report a problem through [Issues](https://github.com/hx101700/memoflow/issues).
+See the [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.en.md) for details, or share problems and suggestions through [Issues](https://github.com/hx101700/memoflow/issues).

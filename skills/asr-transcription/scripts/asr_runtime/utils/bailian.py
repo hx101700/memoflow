@@ -313,7 +313,7 @@ def login_console(runtime: Runtime) -> dict[str, str | bool]:
     runtime.prepare()
     command = prepare_command(runtime, ["auth", "login", "--console", "--console-site", "domestic",
                                         "--config", "default", "--output", "json"], "console")
-    print(json.dumps({"status": "WAITING_FOR_LOGIN", "message": "请在系统默认浏览器完成百炼授权，完成后回到Codex发送“继续”。"}, ensure_ascii=False), flush=True)
+    print(json.dumps({"status": "WAITING_FOR_LOGIN", "message": "请在系统默认浏览器完成百炼授权，完成后回到Codex发送“已完成”。"}, ensure_ascii=False), flush=True)
     _run_bl(runtime, command, [], timeout=None, console_login=True)
     # BL登录空等超时也可能退出0，必须再核对公开的本地状态命令。
     return console_status(runtime)

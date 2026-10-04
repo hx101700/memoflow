@@ -11,7 +11,7 @@ participant F as 用户工作目录
 Note over U,F: Windows 10/11 x64；本机CPython 3.12 x64、Node 18.17+及npm
 U->>C: 安装asr-transcription Skill，选择独立工作目录
 C->>S: 读取SKILL.md与按需references
-Note over C,S: Skill包根为SKILL.md、scripts、references、assets和agents<br/>安装者决定Skill位置；本工具不自动注册用户Skill
+Note over C,S: Skill包根包含SKILL.md、scripts、references、assets、agents、LICENSE<br/>双语README直接来自仓库根；开发文档与环境排除<br/>安装者决定Skill位置；本工具不自动注册用户Skill
 C->>E: python -S -X utf8 Skill/scripts/asr.py --workspace 用户目录 bootstrap
 E->>R: Runtime(workspace, skill_root)
 R->>R: 规范化路径；工作目录须在Skill之外<br/>私有运行目录与Skill互不包含

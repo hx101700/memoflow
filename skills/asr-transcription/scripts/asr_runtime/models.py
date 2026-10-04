@@ -57,9 +57,8 @@ HotwordField = Literal["text", "weight"]
 
 
 class HotwordRow(TypedDict):
-    """保留可编辑的单元格值、原行号及待改写的Excel单元格类型。"""
+    """保留可编辑的单元格值及待改写的Excel单元格类型。"""
 
-    row: int
     text: HotwordValue
     weight: HotwordValue
     invalid_fields: NotRequired[list[HotwordField]]
@@ -96,11 +95,9 @@ class EnhancementConfig(TypedDict):
     context: str | None
 
 
-class JobConfig(TypedDict):
-    """描述网页预览与确认文件共用的任务配置协议。"""
+class TranscriptionSettings(TypedDict):
+    """描述预览与执行共用的已校验转写输入。"""
 
-    schema_version: int
-    job_id: str
     model: str
     region: str
     auth_mode: AuthMode
@@ -108,23 +105,42 @@ class JobConfig(TypedDict):
     diarization_enabled: bool
     recognition_options: RecognitionOptions
     enhancement: EnhancementConfig
+
+
+class JobConfig(TranscriptionSettings):
+    """保存交接时冻结的输入、执行授权和输出位置。"""
+
+    schema_version: int
+    job_id: str
     json_directory: str
     document_directory: str
     status: Literal["CONFIGURED"]
-    execution_authorized: Literal[False]
-    confirmed_at: NotRequired[str]
+    execution_authorized: Literal[True]
+    confirmed_at: str
 
 
 class ConfirmationReceipt(TypedDict):
-    """描述已保存设置交付给网页和Codex的回执。"""
+    """描述编辑会话一次性交给Codex的任务回执。"""
 
     ok: bool
+    session_id: str
     job_id: str
     config_path: str
     auth_mode: AuthMode
     json_directory: str
     document_directory: str
     execution_started: bool
+
+
+SessionEndState = Literal["handed_off", "expired", "cancelled"]
+SessionPhase = Literal["editing", "preview", "handed_off", "expired", "cancelled"]
+
+
+class SessionTerminal(TypedDict):
+    """向网页和控制入口公布编辑会话的最终结果。"""
+
+    state: SessionEndState
+    receipt: ConfirmationReceipt | None
 
 
 class ResultSummary(TypedDict):

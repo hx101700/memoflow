@@ -1,173 +1,76 @@
 sequenceDiagram
 actor U as 用户
 participant C as Codex＋Skill
-participant B as 浏览器
 participant W as Vue页面
-participant H as web（HTTP函数模块）
-participant S as Session对象
-participant P as DirectoryPicker对象
-participant R as Runtime对象
-participant I as inputs（函数模块）
-participant Q as rules（函数模块）
-participant J as job_files（函数模块）
-participant F as 本机文件
-Note over U,C: 新转写先打开页面<br/>录音在网页中选择<br/>工作目录复用会话约定<br/>或当前任务目录
-C->>H: Skill/scripts/asr.py --workspace 用户目录 serve<br/>宿主有浏览器工具时传--no-browser
-H->>S: 创建本次Session
-opt 使用系统浏览器
-    H->>B: webbrowser.open(url)请求打开页面
-    B-->>H: 返回成功、失败或调用异常
-end
-H-->>C: event=listening，url、pid<br/>browser_request=skipped/requested/failed
-H->>H: serve_forever()持续提供HTTP服务
-opt 使用宿主浏览器工具
-    C->>B: 用回执中的完整URL打开页面
-end
-B->>W: 加载页面和静态资源
-Note over U,C: 按回执报告启动或打开请求结果<br/>立即让用户操作<br/>正常路径不依赖computer-use<br/>或页面自动检查<br/>打开报错或用户反馈异常时<br/>再排查同一服务
-Note over C,H: Codex保留serve会话并结束当前回复<br/>页面提示保存后发送“继续”<br/>收到后读取原会话的configured回执
-Note over W,H: App.vue与Element Plus呈现界面<br/>useTranscription编排，model处理纯状态，api发送HTTP<br/>令牌保留在接口闭包；请求携带Accept-Language
-W->>H: actions.start()经api.ts请求GET /api/session
+participant H as web模块
+participant S as Session
+participant Q as inputs／rules模块
+participant F as session_files／job_files
+Note over C,F: Python路径：skills/asr-transcription/scripts/asr_runtime/<br/>前端路径：frontend/App.vue、useTranscription.ts、api.ts、components/HotwordEditor.vue
+C->>H: serve --no-browser（具备宿主开页能力时）
+H->>S: 创建session_id、两小时截止时间
+H->>F: write_connection（私有端口与令牌）
+H-->>C: listening：session_id、url、expires_at
+C->>W: 打开URL一次
+Note over C,W: Codex保留进程并交给用户填写<br/>正常路径不检查浏览器DOM或截图
+W->>H: GET / 首页建立HttpOnly Cookie
+W->>H: GET /api/session；GET /api/events
 H->>S: description()
-S-->>H: 模型、限制、语言代码列表、默认目录<br/>confirmed与reopened（均可为空）
-H-->>W: 当前会话描述
-Note over W,S: confirmed保留保存时的回执，不随转写更新<br/>页面引导到Codex查看后续执行结果
-opt confirmed为空且reopened存在
-    W->>W: restoreForm(reopened)恢复确认快照<br/>回到editing，按所选方式读取Key
-    Note over W,S: 刷新直接读取同一Session的撤回缓存<br/>不额外发送POST /api/reopen<br/>后续未保存编辑不属于此快照
+H-->>W: 选项、会话阶段、可恢复预览
+U->>W: 添加音频、填写设置
+W->>S: 经HTTP上传音频副本
+opt 导入热词Excel
+  W->>S: upload(hotwords)
+  S->>Q: import_hotwords → validate_hotword_rows
+  Q-->>W: 去表头及全空行的数组、单元格问题
+  S->>S: 清理Excel临时副本
 end
-opt 调整界面语言或主题
-    U->>W: 选择中文/English或system/light/dark
-    W->>W: usePreferences同步组件、html与偏好
-    Note over W,H: 语言切换保留输入，已有预览作废<br/>localStorage只保存当前来源下的语言和主题
+U->>W: 编辑热词、删除或新增行
+Note over U,W: 显示序号按当前数组1…N；稳定组件键独立
+opt 内容改变且焦点离开整个热词区域
+  W->>S: POST /api/validate-hotwords
+  S->>Q: validate_hotword_rows → build_vocabulary
+  Q-->>W: 当前行级问题；迟到响应按输入版本丢弃
 end
-U->>W: 选择一个音频
-W->>H: POST /api/upload-audio，传文件字节
-H->>S: upload(audio, name, rfile, size)
-S->>F: 保存工作目录/.asr-transcription/.state/web-uploads/会话ID/副本
-S-->>H: upload_id
-H-->>W: 接收回执
-opt 启用热词
-    alt 从Excel导入
-        U->>W: HotwordEditor选择热词Excel
-        W->>H: POST /api/upload-hotwords，传文件字节
-        H->>S: upload(hotwords, name, rfile, size)
-        S->>F: 写入Excel临时副本
-        S->>I: import_hotwords(partial)
-        I->>F: utils.hotwords.read_hotwords()读取单元格
-        I->>Q: validate_hotword_rows(rows)
-        Q-->>I: 词典与提示，或可定位的行级问题
-        I-->>S: rows、issues、warnings
-        S->>F: finally删除Excel临时副本
-        S-->>H: rows＋issues＋warnings＋文件名及大小
-        H-->>W: 导入回执；不提供热词upload_id
-    else 直接填写
-        U->>W: 新增词条，在相同表格填写词语与权重
-    end
-    W-->>U: Element Plus表格显示原行号、单元格问题和提示
-    U->>W: 编辑或删除词条；作废旧预览
-    opt 单独检查词表
-        W->>H: POST /api/validate-hotwords，提交rows
-        H->>S: check_hotwords(rows)
-        S->>Q: validate_hotword_rows(rows)
-        Q-->>S: 词典与提示，或行级问题
-        S-->>H: count、issues、warnings
-        H-->>W: HotwordEditor标红问题单元格并定位页码
-    end
+U->>W: 确认并预览
+opt API Key待保存
+  W->>S: 专用save-api-key请求保存本机.env
 end
-U->>W: 设置语种、说话人与参考人数；热词及上下文
-opt 选择自定义保存位置
-    W->>H: POST /api/select-directory
-    H->>S: select_directory(kind, picker_id)
-    S->>S: 起始位置不可用时使用当前工作目录
-    S->>P: select(initial, picker_id)复用页面请求编号
-    P->>U: choose_directory函数打开原生窗口
-    U-->>P: 选择目录或取消
-    P-->>S: Path或None
-    S->>R: check_output_path(selected)检查Skill外的位置
-    S->>S: 选定时试写一次并登记精确目录
-    S-->>H: 所选路径或cancelled
-    H-->>W: 目录回执
+W->>S: POST /api/validate
+S->>Q: 共享增强规则、音频探测与SHA、输出位置
+Q-->>S: 已校验输入
+S-->>W: validation_id＋summary（尚无job_id）
+W->>W: 展示独立预览
+W->>S: POST /api/preview-ready(validation_id)
+S-->>W: 预览就绪
+opt 用户返回修改
+  U->>W: 返回修改
+  W->>S: POST /api/edit(validation_id)
+  S-->>W: 旧预览失效，恢复表单
+  Note over W,S: 后端允许后才展示填写；重新预览仍不创建任务
 end
-U->>W: 检查并预览
-W->>W: actions.validate()核对必填输入
-opt Key模式且凭据待保存
-    W->>H: POST /api/save-api-key，独立发送当前Key
-    H->>S: save_api_key(value)
-    S->>F: auth.write_api_key()保存<br/>WORKSPACE/.asr-transcription/.env
-    S-->>H: ok
-    H-->>W: 凭据保存完成；详细交互见图04
+U->>W: 核对并点击“复制给Codex”
+W-->>U: 明确开始请求＋session_id
+U->>C: 发送复制的确认消息
+Note over U,C: 上传范围、北京地域及费用已在预览说明<br/>裸“继续”时要求复制消息，不代选会话
+C->>H: confirm --session 用户提供的ID
+H->>F: read_receipt；未交接则read_connection
+H->>S: 受保护POST /api/confirm
+critical Session状态锁
+  S->>S: 截止时间、预览版本、音频size/mtime
+  S->>F: write_receipt（候选session_id对应job_id）
+  S->>F: publish_config（唯一job_id、授权True、SHA）
+  Note over S,F: config.json最后原子发布，是交接完成标记
+  Note over S,F: 未发布配置的候选回执不视为成功
+  S->>S: _finish(handed_off)
 end
-W->>H: POST /api/validate<br/>提交audio_upload_id、hotword_rows与选项
-H->>S: validate(payload)
-S->>Q: validate_options()；按需validate_hotword_rows()、validate_context()
-Q-->>S: 已检查的选项、即时词典与上下文
-Note over S,Q: 文本问题先返回对应字段和行号<br/>通过后才读取可能较大的音频
-S->>I: validate_audio()
-I->>F: 探测音频并建立SHA基线
-I-->>S: 媒体信息、指纹和提示
-S->>S: output_directory()解析保存根
-S->>R: check_output_path()核对默认或批准目录
-S->>S: 建立draft：id＋config＋原表单form
-S-->>H: validation_id＋summary
-H-->>W: 预览回执
-Note over W,S: 热词与上下文可并用；即时vocabulary进入确认快照<br/>多声道且开启说话人时，预览提示单声道FLAC副本
-U->>W: 核对后保存
-W->>H: POST /api/confirm(validation_id)
-H->>S: confirm(validation_id)
-S->>F: files.check_file_unchanged()核对size/mtime
-S->>J: publish_config(runtime, config)
-J->>F: 写配置与摘要并发布配置
-S-->>H: 同一job_id的确认回执
-H-->>C: 同一serve进程stdout：event=configured
-H-->>W: HTTP回执：job_id与保存位置
-opt 用户在已保存页面点击修改设置
-    W->>H: POST /api/reopen，提交当前job_id
-    H->>S: reopen(job_id)
-    alt job_id匹配最近成功撤回的_reopened缓存
-        S-->>H: 同一恢复载荷：configuration与audio引用
-        Note over W,S: 已撤回但HTTP响应丢失时，再次点击修改可取回载荷<br/>缓存命中直接返回，原执行占用和STOPPED记录保持不变
-    else 本次尚无匹配的撤回缓存
-        S->>S: 核对同一会话回执、draft及音频引用
-        Note over S,J: reopen与transcribe调用同一reserve_execution()<br/>独占创建旧job的execution目录，只有一方成功
-        S->>J: reserve_execution(runtime, old_job_id)
-        alt 已有执行占用，包括transcribe先取得目录
-            J-->>S: FileExistsError
-            S-->>H: ValidationError；既有任务保持原样
-            H-->>W: 422，说明该任务无法修改
-        else reopen先取得执行占用
-            J-->>S: 新建execution目录
-            S->>J: save_record(STOPPED, LOCAL_CONFIG_REOPENED)<br/>execution_authorized=false，cloud_outcome=not_started
-            J->>F: 写旧job的execution/status.json
-            S->>S: 清空receipt和draft<br/>_reopened保存旧job_id与恢复载荷
-            S-->>H: 原configuration与audio引用
-        end
-    end
-    opt reopen成功，含缓存返回
-        H-->>C: event=configuration_reopened，旧job_id
-        H-->>W: 恢复表单所需的回执
-        W->>W: restoreForm(result)恢复音频、热词行、上下文及保存根<br/>回到editing，按所选方式重新读取Key
-        Note over W,S: _reopened只在当前Session内保留最近确认快照<br/>GET /api/session也返回它，供刷新时恢复<br/>开始新上传、成功选择目录或开始validate时清空
-        Note over C,J: 旧job已被占用，后续transcribe只读本地状态<br/>reopen写记录失败也保留占用，不继续执行旧job
-        U->>W: 修改、重新检查并确认
-        Note over W,J: 重走上述validate与confirm<br/>创建新job_id和新确认回执
-    end
+S-->>C: 同一任务回执及认证方式
+S-->>W: SSE ended：handed_off
+W-->>U: 已交给Codex，可关闭页面
+H->>S: cleanup保留交接输入、清理其他副本
+H->>F: remove_connection
+H->>H: 正常关闭并等待请求线程
+Note over C,F: 相同confirm先读持久回执，服务结束也返回原任务<br/>接下来认证、转写与文档交付见图04、05
+opt 交接前取消或到期
+  Note over H,S: cancel或单次Timer触发expire，共用状态锁<br/>发送cancelled／expired，清理未提交副本并结束服务<br/>原文件和已保存Key保留；不创建job
 end
-Note over C,S: stdout回执丢失且网页已显示保存成功时<br/>从同一页面取得确切job_id，用job-status核对<br/>同会话GET /api/session的confirmed提供auth_mode与输出路径
-Note over U,C: Codex核对本次上传授权<br/>覆盖音频、增强内容与费用<br/>已覆盖的授权可继续使用
-Note over H,S: 行级检查可返回issues供表格修改<br/>其他字段或文件错误返回422；过大的JSON请求返回413<br/>保存配置不启动BL，凭据在执行时读取
-Note over C,H: 本机配置页先于BL授权页<br/>保存后按auth_mode和已有凭据决定是否login
-Note over W,S: 输入变化使旧预览失效；确认结果未知时网页持续冻结<br/>关闭网页不关闭serve；服务正常退出保留已确认音频并清理临时副本
-Note over I,F: 默认根：工作目录/transcriptions<br/>JSON与成品分别选择保存根<br/>Excel只作导入，预览使用编辑行，执行使用词典快照
-opt 交付完成、取消或失败收尾时正常结束serve
-    C->>H: 结束本次serve
-    H->>S: LocalServer.server_close()先调用cleanup()
-    S->>S: 设置_closed关闭标记
-    S->>P: close()取消仍在等待的目录选择
-    S->>F: 保留已确认音频，清理未确认副本
-    S-->>H: cleanup完成或抛出异常
-    H->>H: finally调用基类server_close()<br/>关闭监听并等待非daemon请求线程结束
-    Note over H,F: 活动上传检测关闭或经过已有10秒网络读写超时后<br/>由上传自身finally清理.part并完成请求<br/>10秒不是整个关闭流程的总时限
-    H-->>C: 本次serve进程结束
-end
-Note over C,F: 前端相对仓库根：frontend/App.vue、useTranscription.ts、components/HotwordEditor.vue、model.ts、api.ts<br/>Python相对Skill：scripts/asr_runtime/web.py；application/session.py::upload、check_hotwords、validate、confirm、reopen<br/>application/inputs.py::import_hotwords、validate_audio；application/rules.py::validate_hotword_rows、validate_context<br/>application/transcription.py::transcribe、job_status；utils/job_files.py::reserve_execution、save_record、publish_config

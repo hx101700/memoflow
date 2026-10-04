@@ -2,7 +2,6 @@ import http.client
 import io
 import json
 import threading
-import wave
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
@@ -11,192 +10,9 @@ from unittest.mock import patch
 from openpyxl import Workbook, load_workbook
 
 from asr_runtime.models import AudioInfo
-from asr_runtime.application.rules import ValidationError
 from asr_runtime.application.transcription import job_status
 from asr_runtime.web import create_server
-from asr_runtime.application.session import Session, output_directory
-from tests.support import RuntimeTestCase
-
-
-class WebFixture(RuntimeTestCase):
-    def setUp(self):
-        """准备可供会话上传的合成音频。"""
-        super().setUp()
-        self.audio = self.runtime.path("data/audio/录音.wav")
-        self.audio.parent.mkdir(parents=True)
-        with wave.open(str(self.audio), "wb") as audio:
-            audio.setnchannels(2)
-            audio.setsampwidth(2)
-            audio.setframerate(16000)
-            audio.writeframes(b"\0" * 64000)
-    def payload_for(self, session):
-        """上传合成音频并构造默认网页配置。"""
-        content = self.audio.read_bytes()
-        uploaded = session.upload("audio", self.audio.name, io.BytesIO(content), len(content))
-        return {"auth_mode": "console", "audio_upload_id": uploaded["upload_id"],
-                        "diarization_enabled": True, "enhancement_mode": "none",
-                        "hotword_rows": [], "context": "", "json_directory": "default",
-                        "document_directory": "default"}
-
-
-class SessionTests(WebFixture):
-    def setUp(self):
-        """准备会话及已上传音频的默认配置。"""
-        super().setUp()
-        self.session = Session(self.runtime)
-        self.payload = self.payload_for(self.session)
-
-    def test_preview_performs_no_conversion_or_job_write(self):
-        """验证预览生成内存快照和用户核对信息。"""
-        result = self.session.validate(self.payload)
-        self.assertEqual(result["summary"]["audio"]["channels"], 2)
-        self.assertTrue(any("单声道" in warning for warning in result["summary"]["warnings"]))
-        self.assertFalse(self.runtime.path(".state/jobs").exists())
-        self.assertFalse(self.runtime.output_root.exists())
-
-    def test_hotword_import_errors_target_the_editable_table(self):
-        """验证导入前的文件错误与等待提示指向当前热词表格字段。"""
-        with self.assertRaises(ValidationError) as caught:
-            self.session.upload("hotwords", "words.xlsx", io.BytesIO(), 0)
-        self.assertEqual(caught.exception.field, "hotword_rows")
-        self.session._pending_uploads.add("hotwords")
-        try:
-            with self.assertRaises(ValidationError) as caught:
-                self.session.validate(self.payload)
-            self.assertEqual(caught.exception.field, "hotword_rows")
-        finally:
-            self.session._pending_uploads.clear()
-
-    def test_confirm_is_idempotent_even_with_concurrent_requests(self):
-        """验证并发确认共用同一配置回执。"""
-        preview = self.session.validate(self.payload)
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            receipts = list(pool.map(self.session.confirm, [preview["validation_id"]] * 2))
-        self.assertEqual(receipts[0], receipts[1])
-        self.assertEqual(len(list(self.runtime.path(".state/jobs").iterdir())), 1)
-        with open(receipts[0]["config_path"], encoding="utf-8") as file:
-            config = json.load(file)
-        self.assertFalse(config["execution_authorized"])
-        self.assertFalse(receipts[0]["execution_started"])
-        self.assertEqual(config["region"], "cn-beijing")
-
-    def test_failed_revalidation_invalidates_old_preview(self):
-        """验证再次校验失败使旧预览失效。"""
-        previous = self.session.validate(self.payload)
-        with self.assertRaises(ValidationError):
-            self.session.validate({**self.payload, "audio_upload_id": "missing"})
-        with self.assertRaises(ValidationError):
-            self.session.confirm(previous["validation_id"])
-
-    def test_file_changed_after_preview_cannot_be_confirmed(self):
-        """验证预览后文件变化时拒绝确认。"""
-        preview = self.session.validate(self.payload)
-        uploaded = Path(self.session.uploaded_audio(self.payload["audio_upload_id"])["path"])
-        uploaded.write_bytes(uploaded.read_bytes() + b"changed")
-        with self.assertRaises(ValidationError):
-            self.session.confirm(preview["validation_id"])
-        self.assertFalse(self.runtime.path(".state/jobs").exists())
-
-    def test_confirmation_uses_metadata_without_reading_audio_again(self):
-        """验证确认通过文件元信息复用预览快照。"""
-        preview = self.session.validate(self.payload)
-        with patch("asr_runtime.application.inputs.file_fingerprint", side_effect=AssertionError("must not hash again")), \
-             patch("asr_runtime.application.inputs.probe_audio", side_effect=AssertionError("must not probe again")):
-            self.assertTrue(self.session.confirm(preview["validation_id"])["ok"])
-
-    def test_api_key_is_not_written_to_config(self):
-        """验证确认配置与凭据保持分离。"""
-        secret = "synthetic-local-key"
-        self.runtime.path(".env").write_text("DASHSCOPE_API_KEY=" + secret, encoding="utf-8")
-        preview = self.session.validate({**self.payload, "auth_mode": "api_key"})
-        receipt = self.session.confirm(preview["validation_id"])
-        with open(receipt["config_path"], encoding="utf-8") as file:
-            text = file.read()
-        self.assertNotIn(secret, text)
-        self.assertNotIn(secret, json.dumps(preview))
-
-    def test_api_key_change_does_not_invalidate_configuration(self):
-        """验证Key改变后配置仍能正常确认。"""
-        path = self.runtime.path(".env")
-        path.write_text("DASHSCOPE_API_KEY=synthetic-key", encoding="utf-8")
-        preview = self.session.validate({**self.payload, "auth_mode": "api_key"})
-        path.write_text("DASHSCOPE_API_KEY=another-synthetic-key", encoding="utf-8")
-        with patch("asr_runtime.application.session.read_api_key", side_effect=AssertionError("must not read credentials")):
-            self.assertTrue(self.session.confirm(preview["validation_id"])["ok"])
-
-    def test_description_and_configuration_do_not_read_dotenv(self):
-        """验证页面说明与配置流程独立于运行凭据。"""
-        with patch("asr_runtime.application.session.read_api_key", side_effect=AssertionError("must not read credentials")):
-            self.assertNotIn("auth", self.session.description())
-            preview = self.session.validate({**self.payload, "auth_mode": "api_key"})
-            self.assertTrue(self.session.confirm(preview["validation_id"])["ok"])
-
-    def test_confirmation_uses_edited_rows_after_excel_is_removed(self):
-        """验证词表导入后可编辑，确认阶段复用已校验词典。"""
-        path = self.runtime.path("data/热词.xlsx")
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "热词"
-        sheet.append(["text", "weight"])
-        sheet.append(["术语", 50])
-        workbook.save(path)
-        workbook.close()
-        content = path.read_bytes()
-        uploaded = self.session.upload("hotwords", path.name, io.BytesIO(content), len(content))
-        path.unlink()
-        self.assertFalse(list(self.session.upload_directory.glob("*.xlsx*")))
-        uploaded["rows"][0]["weight"] = "4"
-        payload = {**self.payload, "enhancement_mode": "both", "hotword_rows": uploaded["rows"],
-                   "context": "会议涉及测试术语"}
-        preview = self.session.validate(payload)
-        self.assertEqual(preview["summary"]["enhancement"]["count"], 1)
-        self.assertEqual(preview["summary"]["enhancement"]["context_chars"], len(payload["context"]))
-        with patch("asr_runtime.application.session.import_hotwords", side_effect=AssertionError("must not parse Excel again")):
-            receipt = self.session.confirm(preview["validation_id"])
-        config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
-        self.assertEqual(config["enhancement"]["hotwords"]["vocabulary"], {"术语": 4})
-
-    def test_browser_rejects_unapproved_output_paths(self):
-        """验证客户端提交源码或其他路径时被拒绝。"""
-        for path in ("data/audio", "../outside", "transcriptions/meeting", "transcriptions/../.git", "transcriptions/.private"):
-            with self.subTest(path=path), self.assertRaises(ValidationError):
-                output_directory(self.runtime, path, "json_directory")
-
-    def test_unknown_fields_and_multiple_audio_values_are_rejected(self):
-        """验证未知字段和多音频输入被拒绝。"""
-        with self.assertRaises(ValidationError):
-            self.session.validate({**self.payload, "model": "other-model"})
-        with self.assertRaises(ValidationError):
-            self.session.validate({**self.payload, "audio_upload_id": ["a", "b"]})
-
-    def test_browser_source_is_not_read_again_after_upload(self):
-        """验证上传后预览使用本机会话副本。"""
-        preview = self.session.validate(self.payload)
-        self.audio.write_bytes(b"source changed outside local upload")
-        receipt = self.session.confirm(preview["validation_id"])
-        self.assertTrue(receipt["ok"])
-
-    def test_reselection_invalidates_preview_and_replaces_only_own_copy(self):
-        """验证重选使预览失效并替换当前会话副本。"""
-        preview = self.session.validate(self.payload)
-        old_copy = Path(self.session.uploaded_audio(self.payload["audio_upload_id"])["path"])
-        content = self.audio.read_bytes()
-        self.session.upload("audio", "another.wav", io.BytesIO(content), len(content))
-        self.assertFalse(old_copy.exists())
-        self.assertTrue(self.audio.is_file())
-        with self.assertRaises(ValidationError):
-            self.session.confirm(preview["validation_id"])
-
-    def test_incomplete_upload_removes_partial_copy(self):
-        """验证上传长度异常时清理临时副本。"""
-        with self.assertRaises(ValidationError):
-            self.session.upload("audio", "short.wav", io.BytesIO(b"short"), 10)
-        self.assertFalse(list(self.session.upload_directory.glob("*.part")))
-
-    def test_upload_id_cannot_be_used_by_another_session(self):
-        """验证跨会话上传编号被拒绝。"""
-        with self.assertRaises(ValidationError):
-            Session(self.runtime).validate(self.payload)
+from tests.test_session import WebFixture
 
 
 class WebServerTests(WebFixture):
@@ -260,54 +76,50 @@ class WebServerTests(WebFixture):
         with self.assertRaises(OSError):
             create_server(self.runtime, self.server.server_port)
 
-    def test_cookie_restores_receipt_without_browser_storage(self):
-        """验证Cookie会话恢复已保存回执。"""
-        status, headers, _ = self.request("GET", "/api/session")
+    def test_cookie_restores_ready_preview_without_creating_a_job(self):
+        """验证无令牌URL通过会话Cookie恢复当前预览。"""
+        status, headers, _ = self.request("GET", "/", token=False)
         self.assertEqual(status, 200)
         cookie = headers["Set-Cookie"]
         self.assertIn("HttpOnly", cookie)
         self.assertIn("SameSite=Strict", cookie)
-        self.assertNotIn("Max-Age", cookie)
         preview = json.loads(self.request("POST", "/api/validate", self.payload)[2])
-        receipt = json.loads(self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})[2])
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
         status, _, body = self.request("GET", "/api/session", token=False, headers={"Cookie": cookie.split(";", 1)[0]})
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["confirmed"]["job_id"], receipt["job_id"])
+        description = json.loads(body)
+        self.assertEqual(description["phase"], "preview")
+        self.assertEqual(description["preview"]["validation_id"], preview["validation_id"])
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
 
-    def test_confirm_emits_job_receipt_for_codex_without_private_inputs(self):
-        """验证确认输出可供Codex读取的脱敏回执。"""
+    def test_confirm_returns_authorized_receipt_without_private_inputs(self):
+        """验证代码交接返回授权任务，并且回执与输出不包含用户内容。"""
         secret = "synthetic-secret-key"
         context = "只用于测试的内部会议术语"
         self.runtime.path(".env").write_text("DASHSCOPE_API_KEY=" + secret, encoding="utf-8")
         payload = {**self.payload, "auth_mode": "api_key", "enhancement_mode": "context", "context": context}
         preview = json.loads(self.request("POST", "/api/validate", payload)[2])
-
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
         with patch("builtins.print") as printed:
-            status, _, body = self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})
-
+            status, _, body = self.request("POST", "/api/confirm", {})
         self.assertEqual(status, 200)
         receipt = json.loads(body)
-        event = json.loads(printed.call_args.args[0])
-        self.assertEqual(event, {"event": "configured", **receipt})
-        self.assertEqual(event["auth_mode"], "api_key")
-        self.assertFalse(event["execution_started"])
-        self.assertNotIn(secret, printed.call_args.args[0])
-        self.assertNotIn(context, printed.call_args.args[0])
-
-    def test_saved_page_can_recover_receipt_when_stdout_is_closed(self) -> None:
-        """验证终端回执丢失后，可用同一网页的确切编号核对已保存任务。"""
-        preview = json.loads(self.request("POST", "/api/validate", self.payload)[2])
-        with patch("builtins.print", side_effect=OSError("closed output channel")):
-            status, _, body = self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})
-        self.assertEqual(status, 200)
-        receipt = json.loads(body)
-        description = json.loads(self.request("GET", "/api/session")[2])
-        self.assertEqual(description["confirmed"], receipt)
-        self.assertEqual(description["confirmed"]["auth_mode"], "console")
-        state = job_status(self.runtime, receipt["job_id"])
-        self.assertEqual(state["status"], "CONFIGURED")
-        self.assertFalse(state["execution_authorized"])
+        self.assertEqual(receipt["auth_mode"], "api_key")
+        self.assertEqual(receipt["session_id"], self.server.session.session_id)
         self.assertFalse(receipt["execution_started"])
+        self.assertNotIn(secret, body.decode())
+        self.assertNotIn(context, body.decode())
+        printed.assert_not_called()
+        self.assertTrue(job_status(self.runtime, receipt["job_id"])["execution_authorized"])
+
+    def test_browser_cookie_cannot_confirm_or_cancel(self):
+        """验证浏览器预览与本机代码交接使用各自的接口权限。"""
+        _, headers, _ = self.request("GET", "/", token=False)
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        for endpoint in ("/api/confirm", "/api/cancel"):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.request("POST", endpoint, {}, token=False, headers={"Cookie": cookie})[0], 403)
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
 
     def test_direct_upload_and_template(self):
         """验证直接上传与热词模板下载。"""
@@ -369,7 +181,8 @@ class WebServerTests(WebFixture):
         self.assertFalse((self.runtime.workspace / ".env").exists())
         self.assertIn(secret, self.runtime.path(".env").read_text(encoding="utf-8"))
         preview = json.loads(self.request("POST", "/api/validate", {**self.payload, "auth_mode": "api_key"})[2])
-        receipt = json.loads(self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})[2])
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
+        receipt = json.loads(self.request("POST", "/api/confirm", {})[2])
         self.assertNotIn(secret, json.dumps(preview))
         self.assertNotIn(secret, Path(receipt["config_path"]).read_text(encoding="utf-8"))
 
@@ -382,12 +195,14 @@ class WebServerTests(WebFixture):
         self.assertNotIn(b"invalid synthetic", body)
         self.assertIn("previous-synthetic", self.runtime.path(".env").read_text(encoding="utf-8"))
 
-    def test_confirmed_session_cannot_change_api_key(self):
-        """验证已经确认的页面不能再修改工作区凭据。"""
+    def test_preview_must_return_to_edit_before_changing_api_key(self):
+        """验证已就绪预览通过后端返回填写后才能修改凭据。"""
         preview = json.loads(self.request("POST", "/api/validate", self.payload)[2])
-        self.request("POST", "/api/confirm", {"validation_id": preview["validation_id"]})
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
         self.assertEqual(self.request("POST", "/api/save-api-key", {"value": "synthetic-key"})[0], 422)
         self.assertFalse(self.runtime.path(".env").exists())
+        self.assertEqual(self.request("POST", "/api/edit", {"validation_id": preview["validation_id"]})[0], 200)
+        self.assertEqual(self.request("POST", "/api/save-api-key", {"value": "synthetic-key"})[0], 200)
 
     def test_request_language_applies_to_errors_and_resets_for_chinese(self) -> None:
         """验证请求语言覆盖协议与字段错误，并保持默认中文。"""
@@ -477,7 +292,7 @@ class WebServerTests(WebFixture):
         self.assertEqual(status, 200)
         imported = json.loads(body)
         self.assertEqual([(item["row"], item["field"]) for item in imported["issues"]],
-                         [(2, "text"), (3, "weight"), (4, "text")])
+                         [(1, "text"), (2, "weight"), (3, "text")])
         self.assertEqual(imported["rows"][1]["weight"], 99)
         self.assertFalse(list(self.server.session.upload_directory.glob("*.xlsx*")))
         imported["rows"][1]["weight"] = "4"
@@ -489,25 +304,27 @@ class WebServerTests(WebFixture):
 
     def test_hotword_request_accepts_model_limit_beyond_old_body_limit(self):
         """验证2000条词表可通过HTTP检查，避免被旧32KiB请求上限误拒绝。"""
-        rows = [{"row": number + 2, "text": f"术语{number}", "weight": "4"} for number in range(2000)]
+        rows = [{"text": f"术语{number}", "weight": "4"} for number in range(2000)]
         self.assertGreater(len(json.dumps({"rows": rows}).encode()), 32 * 1024)
         status, _, body = self.request("POST", "/api/validate-hotwords", {"rows": rows})
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["count"], 2000)
         self.assertEqual(json.loads(body)["issues"], [])
 
-    def test_http_reopen_withdraws_old_job_and_restores_form(self):
-        """验证重新打开已保存页面后可以撤回并恢复原表单。"""
-        status, _, body = self.request("POST", "/api/validate", self.payload)
+    def test_return_to_edit_invalidates_preview_without_creating_a_job(self):
+        """验证返回修改使旧预览失效，重复填写始终没有执行任务。"""
+        preview = json.loads(self.request("POST", "/api/validate", self.payload)[2])
+        self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})
+        status, _, body = self.request("POST", "/api/edit", {"validation_id": preview["validation_id"]})
         self.assertEqual(status, 200)
-        _, _, saved = self.request("POST", "/api/confirm", {"validation_id": json.loads(body)["validation_id"]})
-        receipt = json.loads(saved)
-        status, _, body = self.request("POST", "/api/reopen", {"job_id": receipt["job_id"]})
-        self.assertEqual(status, 200)
-        restored = json.loads(body)
-        self.assertEqual(restored["configuration"], self.payload)
-        self.assertEqual(job_status(self.runtime, receipt["job_id"])["error"]["code"], "LOCAL_CONFIG_REOPENED")
-        self.assertIsNone(json.loads(self.request("GET", "/api/session")[2])["confirmed"])
+        self.assertEqual(json.loads(body)["configuration"], self.payload)
+        self.assertEqual(self.request("POST", "/api/preview-ready", {"validation_id": preview["validation_id"]})[0], 422)
+        self.assertEqual(self.request("POST", "/api/confirm", {})[0], 422)
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
+        revised = json.loads(self.request("POST", "/api/validate", self.payload)[2])
+        self.assertNotEqual(revised["validation_id"], preview["validation_id"])
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
+        self.assertEqual(self.request("POST", "/api/reopen", {})[0], 404)
 
     def test_english_api_key_errors_guide_page_input_without_echoing_key(self) -> None:
         """验证Key空值可填写，保存校验英文提示保持凭据脱敏。"""

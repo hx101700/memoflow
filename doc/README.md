@@ -25,4 +25,4 @@
 | [DEVLOG](DEVLOG.md) | 影响当前实现的重要决策 |
 | [发布说明：中文](../release/NOTES.md) / [English](../release/NOTES.en.md) | 供发布时使用的用户说明 |
 
-使用资料随 Skill 放在 `references/`；开发文档、UML 和测试保留在仓库。每份资料维护一个职责，避免复制同一操作说明。实际实现和运行证据优先；未完成的验证明确标注。写作参考 [Google 开发者文档指南](https://developers.google.com/style/highlights)。
+详细使用资料随 Skill 放在 `references/`，最新版双语 README 从仓库根直接入包；开发文档、UML 和测试保留在仓库。每份资料维护一个职责，避免复制同一操作说明。实际实现和运行证据优先；未完成的验证明确标注。写作参考 [Google 开发者文档指南](https://developers.google.com/style/highlights)。

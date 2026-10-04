@@ -11,10 +11,20 @@ class AudioInfo {
 }
 class HotwordRow {
   <<TypedDict>>
-  +int row
   +HotwordValue text
   +HotwordValue weight
   +list~HotwordField~ invalid_fields
+}
+class EditorRow {
+  <<TypeScript interface>>
+  +number key
+  +number row
+}
+class HotwordIssue {
+  <<TypedDict>>
+  +int row
+  +str field
+  +str message
 }
 class HotwordImport {
   <<TypedDict>>
@@ -58,9 +68,12 @@ class BailianFailure {
 class Exception
 Transcript --> "0..*" Sentence : 保存原顺序及毫秒时间戳
 HotwordImport --> "0..*" HotwordRow : Excel读取后可继续编辑
+HotwordRow <|-- EditorRow : 前端表格状态
+HotwordImport --> "0..*" HotwordIssue : 当前数组位置的问题
 Exception <|-- BailianFailure
 note for AudioInfo "scripts/asr_runtime/models.py<br/>utils/media.py::probe_audio创建媒体事实<br/>供规则判断与声道转换使用"
-note for HotwordRow "scripts/asr_runtime/models.py；运行时为普通dict<br/>HotwordValue为str、int、float、bool或None<br/>invalid_fields为可选的text／weight列表<br/>Excel保留行号与无效单元格标记；手填使用相同结构"
+note for HotwordRow "scripts/asr_runtime/models.py；运行时为普通dict<br/>HotwordValue为str、int、float、bool或None<br/>invalid_fields为可选的text／weight列表<br/>Excel保留原值与无效单元格标记；数据数组不携带行号<br/>前端独立保存稳定行键，显示与错误编号按数组位置"
+note for EditorRow "frontend/types.ts；model.ts<br/>key为组件稳定标识；row按当前数组位置1…N重排<br/>提交后端的数据只有HotwordRow，不传key或row"
 note for HotwordImport "application/inputs.py::import_hotwords<br/>utils/hotwords.py::read_hotwords读取Excel<br/>application/rules.py::validate_hotword_rows统一检查<br/>问题与可编辑行一起返回，不生成热词upload_id"
 note for Transcript "scripts/asr_runtime/models.py<br/>utils/results.py::load_transcript创建<br/>三个writer共享内容；Sentence可独立存在或共享"
 note for PreparedCommand "scripts/asr_runtime/utils/bailian.py<br/>prepare_command创建；run_recognition使用<br/>argv和env隐藏repr；env是可变字典，frozen限制属性重赋值"

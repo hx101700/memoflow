@@ -11,14 +11,14 @@ import sys
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from scripts.build_zip import REQUIRED_FILES, SKILL_DIRECTORY, build_zip
+from scripts.build_zip import REPOSITORY_FILES, REQUIRED_FILES, SKILL_DIRECTORY, build_zip
 from asr_runtime.utils.environment import Runtime
 from tests.support import RuntimeTestCase, SKILL_ROOT
 
 
 class PackageTests(RuntimeTestCase):
     def setUp(self):
-        """准备只含固定 Skill 文件的独立仓库副本。"""
+        """准备含固定运行资源及仓库使用说明的独立副本。"""
         super().setUp()
         self.source = self.temporary_root / "中文 源码目录"
         self.skill = self.source / SKILL_DIRECTORY
@@ -26,6 +26,8 @@ class PackageTests(RuntimeTestCase):
             destination = self.skill / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SKILL_ROOT / relative, destination)
+        for relative in REPOSITORY_FILES:
+            shutil.copyfile(SKILL_ROOT.parents[1] / relative, self.source / relative)
 
     def extract(self, name="解压 验收目录"):
         """构建独立包并解压到本例指定目录。"""
@@ -36,10 +38,10 @@ class PackageTests(RuntimeTestCase):
             archive.extractall(destination)
         return destination
 
-    def test_release_contains_only_skill_resources(self):
-        """验证包中只有 Skill 清单，源码和私有数据均被排除。"""
+    def test_release_contains_runtime_and_current_repository_readmes(self):
+        """验证运行资源和最新版仓库说明入包，开发文件与私有数据排除。"""
         excluded = (
-            "README.md", "AGENTS.md", ".gitignore", ".env", "pyproject.toml",
+            "AGENTS.md", ".gitignore", ".env", "pyproject.toml",
             "data/audio/private.wav", "transcriptions/job/transcription.md",
             ".asr-transcription/.env", ".asr-transcription/.state/jobs/config.json",
             ".asr-transcription/.venv/Lib/site-packages/private.py",
@@ -54,21 +56,25 @@ class PackageTests(RuntimeTestCase):
             path = self.skill / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic-private-marker")
-        (self.source / "README.md").write_bytes(b"developer-marker")
+        for relative in REPOSITORY_FILES:
+            (self.skill / relative).write_bytes(b"stale-skill-copy")
+            path = self.source / relative
+            path.write_bytes(path.read_bytes() + b"\n<!-- current repository README -->\n")
         report = build_zip(self.source)
         self.assertEqual(Path(report["path"]), self.source / "dist/asr-transcription.zip")
         with ZipFile(report["path"]) as archive:
             names = archive.namelist()
             self.assertEqual(names, report["files"])
-            self.assertEqual(set(names), set(REQUIRED_FILES))
+            self.assertEqual(set(names), set(REQUIRED_FILES) | set(REPOSITORY_FILES))
             self.assertEqual(len(names), report["file_count"])
             self.assertIn("SKILL.md", names)
             self.assertTrue(all(name.split("/")[0] in
-                                {"SKILL.md", "LICENSE", "agents", "scripts", "references", "assets"}
+                                {"SKILL.md", "LICENSE", "README.md", "README.en.md", "agents", "scripts", "references", "assets"}
                                 for name in names))
             self.assertFalse(any("tools" in name.split("/") for name in names))
             for name in names:
-                self.assertEqual(archive.read(name), (self.skill / name).read_bytes())
+                source = self.source if name in REPOSITORY_FILES else self.skill
+                self.assertEqual(archive.read(name), (source / name).read_bytes())
             for name in excluded:
                 self.assertNotIn(name, names)
 
@@ -90,6 +96,13 @@ class PackageTests(RuntimeTestCase):
     def test_missing_resource_stops_before_creating_archive(self):
         """验证缺少运行依赖锁时在创建 ZIP 前停止。"""
         (self.skill / "scripts/requirements.txt").unlink()
+        with self.assertRaises(FileNotFoundError):
+            build_zip(self.source)
+        self.assertFalse((self.source / "dist").exists())
+
+    def test_missing_repository_readme_stops_before_creating_archive(self):
+        """验证缺少仓库使用说明时在创建 ZIP 前停止。"""
+        (self.source / "README.en.md").unlink()
         with self.assertRaises(FileNotFoundError):
             build_zip(self.source)
         self.assertFalse((self.source / "dist").exists())
@@ -159,7 +172,7 @@ class PackageTests(RuntimeTestCase):
         self.assertEqual(before, {name: hashlib.sha256((skill / name).read_bytes()).hexdigest()
                                   for name in REQUIRED_FILES})
         self.assertEqual({path.relative_to(skill).as_posix() for path in skill.rglob("*") if path.is_file()},
-                         set(REQUIRED_FILES))
+                         set(REQUIRED_FILES) | set(REPOSITORY_FILES))
         self.assertFalse((skill / ".asr-transcription").exists())
 
     def test_two_workspaces_keep_credentials_and_state_separate(self):

@@ -1,6 +1,6 @@
 import { UiError } from "./api";
 import type { Translate } from "./i18n";
-import type { Configuration, FormValues, Limits, Model, Receipt, ValidationResult } from "./types";
+import type { Configuration, FormValues, HotwordRow, Limits, Model, SessionEnd, ValidationResult } from "./types";
 
 // 初始化页面阶段、上传引用、凭据读取和目录选择状态。
 export function createModel(): Model {
@@ -11,30 +11,30 @@ export function createModel(): Model {
       audio: { status: "empty", id: null, name: "", size: 0 },
       hotwords: { status: "empty", id: null, name: "", size: 0 },
     },
-    hotwords: { issues: [], warnings: [], checking: false, checked: false, count: 0 }, reopening: false,
+    hotwords: { issues: [], warnings: [], checking: false, revision: 0, validatedRevision: 0 },
     auth: { revision: 0, status: "idle" }, picker: null, downloadingTemplate: false, statusMessage: "",
   };
 }
 
 // 从同一份页面状态推导事件与控件的操作权限。
 export function availability(model: Model) {
-  const editable = ["editing", "validating", "review"].includes(model.phase);
+  const editable = ["editing", "validating"].includes(model.phase);
   const uploading = Object.values(model.uploads).some(upload => upload.status === "uploading");
-  const pending = uploading || model.hotwords.checking || model.auth.status === "loading" || model.auth.status === "saving" || Boolean(model.picker);
+  const pending = uploading || model.auth.status === "loading" || model.auth.status === "saving" || Boolean(model.picker);
   return {
     editable,
     validate: editable && model.phase !== "validating" && !pending,
-    confirm: model.phase === "review" && Boolean(model.preview) && !pending,
+    edit: model.phase === "preview" && Boolean(model.preview),
+    copy: model.phase === "preview" && Boolean(model.preview?.ready),
     chooseDirectory: editable && !model.picker,
     cancelDirectory: Boolean(model.picker) && !model.picker?.cancelling,
     template: editable && !model.downloadingTemplate,
-    editHotwords: editable && model.uploads.hotwords.status !== "uploading" && !model.hotwords.checking,
-    reopen: model.phase === "saved" && Boolean(model.receipt) && !model.reopening,
+    editHotwords: editable && model.uploads.hotwords.status !== "uploading",
     changeAuth: editable && model.auth.status !== "saving",
-    changeLanguage: !pending && !model.downloadingTemplate && !model.reopening && model.phase !== "validating" && model.phase !== "saving",
+    changeLanguage: !pending && !model.downloadingTemplate && !["validating", "returning"].includes(model.phase),
     upload: {
       audio: editable && model.uploads.audio.status !== "uploading",
-      hotwords: editable && model.uploads.hotwords.status !== "uploading" && !model.hotwords.checking,
+      hotwords: editable && model.uploads.hotwords.status !== "uploading",
     },
   };
 }
@@ -50,36 +50,28 @@ export function invalidatePreview(model: Model): void {
 
 // 按输入版本接收校验结果并保存确认所需的预览。
 export function receiveValidation(model: Model, revision: number, result: ValidationResult, config: Configuration): boolean {
-  if (revision !== model.revision) {
-    model.phase = "editing";
-    model.statusMessage = "changed";
-    return false;
-  }
-  model.preview = { id: result.validation_id, summary: result.summary, configuration: config };
-  model.phase = "review";
+  if (revision !== model.revision || model.phase !== "validating") return false;
+  model.preview = { id: result.validation_id, summary: result.summary, configuration: config, ready: false };
+  model.phase = "preview";
   return true;
 }
 
-// 根据确定的拒绝或未知结果，恢复编辑或阻止重复提交。
-export function receiveSaveError(model: Model, error: UiError): void {
+// 接收会话结束结果并使未完成的输入请求失效。
+export function receiveEnd(model: Model, result: SessionEnd): void {
+  model.phase = result.state;
   model.preview = null;
-  if (error.httpStatus !== undefined && error.httpStatus >= 400 && error.httpStatus < 500) {
-    model.phase = "editing";
-    model.revision += 1;
-    model.statusMessage = "saveRejected";
-  } else {
-    model.phase = "save_unknown";
-  }
-}
-
-// 保存任务回执并使未结束的凭据读取失效。
-export function receiveReceipt(model: Model, receipt: Receipt): void {
-  model.phase = "saved";
-  model.preview = null;
-  model.receipt = receipt;
+  model.receipt = result.receipt;
+  model.revision += 1;
   model.statusMessage = "";
   model.auth.revision += 1;
   model.auth.status = "idle";
+  model.hotwords.checking = false;
+}
+
+// 按当前表格顺序生成传输行，保留错误原值并去除组件标识。
+export function hotwordRows(form: FormValues): HotwordRow[] {
+  return form.hotwordRows.map(entry => ({ text: entry.text, weight: entry.weight,
+    ...(entry.invalid_fields ? { invalid_fields: [...entry.invalid_fields] } : {}) }));
 }
 
 // 根据普通表单与上传引用构建确认配置。
@@ -95,7 +87,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
     auth_mode: form.useApiKey ? "api_key" : "console",
     audio_upload_id: model.uploads.audio.id, diarization_enabled: form.diarizationEnabled,
     enhancement_mode: form.hotwordsEnabled ? (form.contextEnabled ? "both" : "hotwords") : (form.contextEnabled ? "context" : "none"),
-    hotword_rows: form.hotwordsEnabled ? form.hotwordRows.map(row => ({ ...row, ...(row.invalid_fields ? { invalid_fields: [...row.invalid_fields] } : {}) })) : [],
+    hotword_rows: form.hotwordsEnabled ? hotwordRows(form) : [],
     context: form.contextEnabled ? form.context : "", language_hint: form.language || null,
     speaker_count: speakerCount, json_directory: model.directories.json, document_directory: model.directories.document,
   };

@@ -22,8 +22,8 @@ alt 使用指定API Key
     alt 单独保存API Key
         U->>V: 点击保存API Key
         V-->>W: save事件，调用actions.saveApiKey()
-    else 检查并预览
-        U->>W: 检查并预览
+    else 确认并预览
+        U->>W: 确认并预览
         W->>W: 本机必填检查
     end
     opt Key待保存
@@ -37,11 +37,11 @@ alt 使用指定API Key
     end
     alt 单独保存API Key
         W-->>U: 本机保存成功提示，不创建任务
-    else 检查并预览
+    else 确认并预览
         W->>S: POST /api/validate，凭据字段仅含auth_mode
     end
-    Note over V,F: Key只驻留KeyDisplay局部ref和本机凭据文件<br/>切换方式、保存配置成功或组件关闭时清空输入<br/>页面状态只记录凭据读取/修改状态；持久偏好只含语言与主题
-    C->>P: 确认配置且授权后调用transcribe
+    Note over V,F: Key只驻留KeyDisplay局部ref和本机凭据文件<br/>切换方式、进入预览或组件关闭时清空输入<br/>页面状态只记录凭据读取/修改状态；持久偏好只含语言与主题
+    C->>P: 已交接任务调用transcribe --job ID
     P->>K: prepare_command()，由转写用例调用
     K->>F: auth.bailian_environment()读取执行当时的Key
     F-->>K: 运行时Key
@@ -65,7 +65,7 @@ else 使用控制台配置
         K->>K: _open_login_url()校验URL
         K->>A: 系统URL处理器打开一次完整URL
         U->>A: 完成登录授权
-        Note over C,B: login持续等待BL回调，Codex可交还用户操作<br/>用户发送“继续”后读取原会话结果<br/>BL结果判断凭据是否保存；超时或失败时停止
+        Note over C,B: login持续等待BL回调，Codex可交还用户操作<br/>用户回复“已完成”后读取原会话结果<br/>继续同一已授权任务，不再次询问上传确认<br/>BL结果判断凭据是否保存；超时或失败时停止
         A-->>B: 原BL授权会话的回调
         B->>F: 保存工作目录/.asr-transcription/.state/bailian凭据
         B-->>K: 登录进程结束
@@ -74,7 +74,7 @@ else 使用控制台配置
         K-->>P: configured、console_configured
         P-->>C: 登录及本地状态回执
     end
-    C->>P: 确认配置且授权后调用transcribe
+    C->>P: 已交接任务调用transcribe --job ID
     P->>K: prepare_command()构造工作目录的隔离环境
     K-->>P: PreparedCommand(argv, env)
     P->>K: run_recognition(runtime, command, private_values)
@@ -83,6 +83,6 @@ else 使用控制台配置
 end
 Note over K,A: Python转交BL输出的官方URL<br/>授权会话、回调及凭据保存由BL负责
 Note over U,C: 授权只使用系统默认浏览器<br/>Codex不另开授权页<br/>也不通过computer-use检查页面
-Note over C,B: configured表示模型Key存在；console_configured表示控制台凭据存在<br/>均为本地状态；不同于网页event=configured
+Note over C,B: configured表示模型Key存在；console_configured表示控制台凭据存在<br/>均为本地凭据状态，不等同在线调用已验证
 Note over B,F: ASR使用模型API Key；控制台令牌与模型Key分别使用<br/>实际请求由BL及云端判断鉴权结果<br/>指定Key失效时由用户在网页更新.env
 Note over C,F: 前端路径相对仓库根：frontend/App.vue、useTranscription.ts、components/KeyDisplay.vue<br/>Python路径相对Skill：scripts/asr_runtime/application/session.py::api_key_display、save_api_key<br/>utils/auth.py::read_api_key、write_api_key、bailian_environment<br/>utils/bailian.py::prepare_command、login_console、console_status、_open_login_url<br/>utils/environment.py::check_login_execution_context<br/>Node适配源码相对仓库根：scripts/console-browser.cts<br/>编译产物相对Skill：scripts/bailian/console-browser.cjs

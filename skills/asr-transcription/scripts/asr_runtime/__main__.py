@@ -27,11 +27,12 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser = commands.add_parser("serve", help="打开本地配置网页")
     serve_parser.add_argument("--port", type=int, default=0, help="本地网页端口，默认自动选择")
     serve_parser.add_argument("--no-browser", action="store_true", help="不自动打开系统浏览器")
+    for name in ("confirm", "cancel"):
+        command = commands.add_parser(name)
+        command.add_argument("--session", required=True, help="用户从预览页复制到对话中的编辑会话编号")
     for name in ("transcribe", "export", "job-status"):
         command = commands.add_parser(name)
-        command.add_argument("--job", required=True, help="网页保存回执中的设置编号")
-        if name == "transcribe":
-            command.add_argument("--authorize-upload", action="store_true", help="用户明确同意将本次音频及所选增强内容发送至阿里云")
+        command.add_argument("--job", required=True, help="会话交接回执中的任务编号")
     args = parser.parse_args(argv)
     report: Mapping[str, object]
     try:
@@ -40,9 +41,12 @@ def main(argv: list[str] | None = None) -> int:
             from .web import serve
             serve(runtime, port=args.port, open_browser=not args.no_browser)
             return 0
-        if args.command == "transcribe":
+        if args.command in ("confirm", "cancel"):
+            from .web import control_session
+            report = control_session(runtime, args.session, args.command)
+        elif args.command == "transcribe":
             from .application.transcription import transcribe
-            report = transcribe(runtime, args.job, authorize_upload=args.authorize_upload)
+            report = transcribe(runtime, args.job)
         elif args.command == "export":
             from .application.transcription import export_job
             report = export_job(runtime, args.job)

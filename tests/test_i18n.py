@@ -63,13 +63,13 @@ class LocalizationTests(unittest.TestCase):
 
     def test_hotword_notices_translate_locations_and_keep_user_terms(self) -> None:
         """验证行号提示使用英文，用户词条保持原文。"""
-        rows = [HotwordRow(row=2, text="产品术语", weight=4), HotwordRow(row=3, text="产品术语", weight=4),
-                HotwordRow(row=4, text=None, weight=None)]
+        rows = [HotwordRow(text="产品术语", weight=4), HotwordRow(text="产品术语", weight=4),
+                HotwordRow(text=None, weight=None)]
         with language_scope("en"), self.assertRaises(ValidationError) as caught:
             build_vocabulary(rows)
-        self.assertEqual([issue["row"] for issue in caught.exception.details], [2, 3])
-        self.assertIn("row 3", caught.exception.details[0]["message"])
-        self.assertIn("row 2", caught.exception.details[1]["message"])
+        self.assertEqual([issue["row"] for issue in caught.exception.details], [1, 2])
+        self.assertIn("row 2", caught.exception.details[0]["message"])
+        self.assertIn("row 1", caught.exception.details[1]["message"])
         self.assertTrue(all("keep one entry" in issue["message"] for issue in caught.exception.details))
         with language_scope("en"):
             result = build_vocabulary([rows[0], rows[2]])
@@ -78,6 +78,6 @@ class LocalizationTests(unittest.TestCase):
             "Empty rows skipped: 1.",
         ])
         with language_scope("en"), self.assertRaises(ValidationError) as caught:
-            build_vocabulary([rows[0], HotwordRow(row=3, text="产品术语", weight=5)])
-        self.assertEqual([issue["row"] for issue in caught.exception.details], [2, 3])
+            build_vocabulary([rows[0], HotwordRow(text="产品术语", weight=5)])
+        self.assertEqual([issue["row"] for issue in caught.exception.details], [1, 2])
         self.assertEqual([issue["field"] for issue in caught.exception.details], ["text", "text"])

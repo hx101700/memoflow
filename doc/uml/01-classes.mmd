@@ -4,62 +4,51 @@ class Runtime {
   <<frozen dataclass>>
   +Path workspace
   +Path skill_root
-  +root Path
-  +output_root Path
   +path(relative) Path
   +resource(relative) Path
+  +output_root Path
   +check_output_path(path)
-  +bl_directory Path
-  +bl_entry Path
   +prepare()
 }
 class Session {
-  +Runtime runtime
-  +dict~str,UploadRecord~ uploads
-  +dict~str,Path~ output_directories
+  +str session_id
+  +str expires_at
+  +float deadline
   +Draft_or_None draft
   +ConfirmationReceipt_or_None receipt
-  -tuple_or_None _reopened
+  -SessionPhase _phase
   -Lock _state_lock
-  -DirectoryPicker _picker
-  -Event _closed
-  -set _pending_uploads
-  +upload(kind, name, source, size) dict
-  +uploaded_audio(identifier) UploadRecord
-  +check_hotwords(rows) dict
-  +validate(payload) dict
-  +confirm(validation_id) dict
-  +reopen(job_id) dict
-  +select_directory(kind, picker_id) dict
-  +cancel_directory(picker_id) dict
-  +description() dict
-  +api_key_display() dict
-  +save_api_key(value) dict
+  +Event terminal_event
+  +upload(kind, name, source, size)
+  +check_hotwords(rows)
+  +validate(payload)
+  +preview_ready(validation_id)
+  +edit(validation_id)
+  +confirm() ConfirmationReceipt
+  +cancel() SessionTerminal
+  +expire() SessionTerminal_or_None
+  +terminal_result()
+  +description()
   +cleanup()
 }
 class ThreadingHTTPServer
 class LocalServer {
   +Session session
-  +bool daemon_threads
+  +serve_forever(poll_interval)
+  +expire_session()
   +server_bind()
   +server_close()
 }
 class DirectoryPicker {
-  -Lock _lock
-  -request_id_or_None _active_id
-  -Event_or_None _cancel_event
-  -request_id_or_None _cancelled_id
-  -bool _closed
-  -Event _finished
   +select(initial, request_id) Path_or_None
   +cancel(request_id)
   +close()
 }
-Session --> Runtime : 持有外部传入的工作目录与资源边界
-Session "1" *-- "1" DirectoryPicker : 会话创建并关闭
+Session --> Runtime : 工作目录与资源边界
+Session "1" *-- "1" DirectoryPicker : 创建并关闭窗口
 ThreadingHTTPServer <|-- LocalServer
-LocalServer "1" *-- "1" Session : 持有会话并在关闭时清理
-note for Runtime "scripts/asr_runtime/utils/environment.py<br/>resource读取Skill；path定位工作目录/.asr-transcription<br/>运行目录与Skill互不包含；check_output_path保护Skill<br/>output_root为工作目录/transcriptions"
-note for Session "scripts/asr_runtime/application/session.py<br/>HTTP上传区分audio／hotwords，uploads只登记音频<br/>uploaded_audio读取仅含path和name的UploadRecord<br/>Excel导入返回可编辑行后清理临时副本<br/>Draft保留确认表单，_reopened保留最近撤回快照<br/>description返回confirmed与reopened，供页面刷新恢复<br/>Key通过独立方法写入当前工作目录"
-note for DirectoryPicker "scripts/asr_runtime/utils/directory_picker.py<br/>choose_directory函数管理窗口子进程<br/>独立取消信号；Session登记所选精确路径"
-note for LocalServer "scripts/asr_runtime/web.py<br/>create_server创建对象并绑定127.0.0.1<br/>daemon_threads=False；正常关闭等待请求线程收尾<br/>server_close先Session.cleanup，finally调用基类关闭<br/>活动上传由自身finally清理，HTTP读写超时为10秒<br/>请求处理器使用language_scope隔离提示语言"
+LocalServer "1" *-- "1" Session : 单次编辑生命周期
+note for Session "application/session.py<br/>状态锁保护预览、交接、取消与到期<br/>预览只存转写设置，成功交接才创建job_id<br/>有效期从创建起两小时，操作不续期<br/>确认与回执失败边界以实际磁盘状态为准"
+note for LocalServer "web.py<br/>create_server绑定127.0.0.1并保存私有连接信息<br/>一次Timer触发expire；SSE发送终态<br/>server_close清理Session、移除连接凭据<br/>基类等待非daemon请求线程完成自身清理"
+note for Runtime "utils/environment.py<br/>resource读取Skill；path定位workspace/.asr-transcription<br/>私有运行目录与Skill互不包含；保护Skill写入边界"
+note for DirectoryPicker "utils/directory_picker.py<br/>目录窗口独立子进程；按请求编号取消<br/>Session登记用户选择的精确输出目录"

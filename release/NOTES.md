@@ -1,28 +1,29 @@
 中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.en.md)
 
-MemoFlow 希望把录音整理成符合你习惯和格式要求的会议纪要。这份 v0.1.0 开发预览先做好第一步：让 Codex 帮你转写录音，生成带时间戳的 Word、Excel 和 Markdown，交给你检查和校对。
+MemoFlow 希望把录音整理成符合你习惯和格式要求的会议纪要。v0.1.0 开发预览先完成第一步：在 Codex 中转写录音，拿到带时间戳的 Word、Excel 和 Markdown，供你检查与校对。
 
 ### 功能特性
 
-- **网页配置**：添加单个录音，按需调整语言、发言人区分和保存位置；支持中文、英文及浅色、深色外观。
-- **精度增强**：在表格中填写热词，或导入 Excel 后直接修改。错误会标在对应行，重复词需确认保留一行；热词和上下文可同时使用。
-- **百炼识别**：使用 Qwen-Audio-3.1-ASR-Flash-Filetrans，由官方 BL CLI 完成上传和识别。可选择控制台授权，也可在网页填写并保存自己的北京地域 API Key。
-- **文档交付**：保留原始 JSON，并生成三种转写文件；已有成功任务可以直接在本机重新导出。
+- **网页填写与预览**：添加录音，设置语言、发言人区分和保存位置。预览前后可以返回调整，确认后再交给 Codex。
+- **热词与上下文**：直接填写热词，或导入 Excel 后就地修改。问题会标在对应单元格；热词和上下文可以同时使用。
+- **百炼识别**：通过官方 BL CLI 调用 Qwen-Audio-3.1-ASR-Flash-Filetrans，支持控制台授权和北京地域 API Key。
+- **三种文档**：一次生成 Word、Excel、Markdown 并保留原始 JSON。已有成功任务可以在本机重新导出。
+- **中英界面与主题**：按习惯选择中文、English、浅色或深色外观。
 
-### 使用体验
+### 从配置到交付
 
-保存设置后，回到 Codex 发送“继续”即可接着操作。发现设置填错时，可在转写开始前返回修改。若撤回请求的响应中断，刷新原页面可以恢复同一服务仍保留的确认内容；之后未保存的编辑不会保留。
+在网页点击“确认并预览”，核对无误后用“复制给 Codex”把确认消息发回对话。Codex 会接收这份设置；需要登录时引导你完成一次授权，随后等待转写和文件生成完成。交接后的设置固定，结果在 Codex 中查看。
 
-保存 API Key 期间修改其他设置，现在仍会显示凭据保存失败的具体原因。只想更换 Key 时，可以单独保存，看到成功提示后回到 Codex 发送“完成”即可。服务正常关闭时也会等当前上传清理临时文件；无法返回修改的任务会引导你在 Codex 查看状态。
+编辑页面从打开起有效两小时，交接或到期会显示结束提示。已经交给 Codex 的任务不受页面期限影响。
 
 ### 开始使用
 
-先注册阿里云账号，按平台指引完成实名认证及百炼服务准备。下载 [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)，连同下面这句话发给 Codex：
+先注册阿里云账号，按平台指引完成实名认证和百炼服务准备。下载 [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)，连同下面这句话发给 Codex：
 
 > 请解压 ZIP，阅读其中的 SKILL.md，帮我安装并配置 asr-transcription。
 
-安装完成后说“帮我转写录音”，在打开的网页中添加文件和设置即可。
+安装后说“帮我转写录音”，按打开的页面操作即可。安装包也包含最新的中英文 README。
 
-当前支持 Windows 10/11 x64，需要 Python 3.12 x64、Node.js 18.17+ 与 npm。识别使用百炼北京地域，可能产生调用费用。个性化纪要与反馈学习属于后续阶段。
+当前支持 Windows 10/11 x64，需要 Python 3.12 x64、Node.js 18.17+ 与 npm。识别使用百炼北京地域，可能产生调用费用。个性化会议纪要与反馈学习属于后续阶段。
 
-使用方法见[README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.md)，遇到问题欢迎提交[Issue](https://github.com/hx101700/memoflow/issues)。
+详细用法见 [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.md)，问题和建议欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)。

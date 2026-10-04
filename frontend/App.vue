@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { ElAlert, ElButton, ElCard, ElCollapse, ElCollapseItem, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch, ElTag } from "element-plus";
-import { Aim, ChatLineSquare, Check, Edit, FolderOpened, Headset, Key, Monitor, Moon, Reading, Setting, Sunny, View } from "@element-plus/icons-vue";
+import { Aim, ChatLineSquare, DocumentCopy, Edit, FolderOpened, Headset, Key, Monitor, Moon, Reading, Setting, Sunny, View } from "@element-plus/icons-vue";
 import en from "element-plus/es/locale/lang/en";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { availability } from "./model";
@@ -33,7 +33,8 @@ async function focus(target: string): Promise<void> {
     'input:not(:disabled), textarea:not(:disabled), button:not(:disabled), [role="button"][tabindex="0"]',
   )).find(element => element.getClientRects().length > 0);
   (control ?? region).focus({ preventScroll: true });
-  region.scrollIntoView({ block: "center", behavior: "auto" });
+  if (["review", "config-fields", "session-ended"].includes(target)) window.scrollTo({ top: 0, behavior: "auto" });
+  else region.scrollIntoView({ block: "center", behavior: "auto" });
 }
 
 // 将已取得的模板交给浏览器下载。
@@ -54,13 +55,24 @@ const { model, form, error, actions } = useTranscription(props.connect(() => lan
 }, t);
 const available = computed(() => availability(model));
 const locale = computed(() => language.value === "en" ? en : zhCn);
-const step = computed(() => model.phase === "saved" ? 3 : model.preview || model.phase === "save_unknown" ? 1 : 0);
+const terminal = computed(() => ["handed_off", "expired", "cancelled"].includes(model.phase));
+const step = computed(() => model.preview ? 1 : 0);
+const confirmationText = computed(() => t("confirmationMessage", { id: model.session?.session_id ?? "" }));
 const contextLength = computed(() => Array.from(form.context).length);
 const outputKinds: DirectoryKind[] = ["json", "document"];
 
 // 单独保存 Key 成功后显示本机保存回执。
 async function saveApiKey(): Promise<void> {
   if (await actions.saveApiKey()) ElMessage.success(t("keySaved"));
+}
+
+// 复制带当前会话编号的确认文字，供用户在 Codex 中发起交接。
+async function copyConfirmation(): Promise<void> {
+  if (!available.value.copy) return;
+  try {
+    await navigator.clipboard.writeText(confirmationText.value);
+    ElMessage.success(t("copied"));
+  } catch { ElMessage.error(t("copyFailed")); }
 }
 
 // 将后端字段别名映射到当前页面的可访问输入区域。
@@ -74,6 +86,7 @@ function fieldMessage(field: string): string {
 }
 
 onMounted(actions.start);
+onUnmounted(actions.dispose);
 </script>
 
 <template>
@@ -102,34 +115,42 @@ onMounted(actions.start);
         <div><div class="page-title-row">
           <h1 id="page-title" tabindex="-1">{{ t('title') }}</h1>
           <ElTag size="small" type="info" effect="plain">{{ t('preview') }}</ElTag></div>
-          <p>{{ model.phase === 'saved' ? t('savedLocal') : t('intro') }}</p>
+          <p>{{ terminal ? t('endedLocal') : t('intro') }}</p>
         </div>
         <span class="region"><span aria-hidden="true">●</span>{{ t('region') }}</span>
       </div>
 
-      <ElSteps :active="step" finish-status="success" class="steps" align-center>
-        <ElStep :title="t('stepConfigure')" /><ElStep :title="t('stepReview')" /><ElStep :title="t('stepSaved')" />
+      <ElSteps v-if="!terminal" :active="step" finish-status="success" class="steps" align-center>
+        <ElStep :title="t('stepConfigure')" /><ElStep :title="t('stepReview')" />
       </ElSteps>
-      <ElAlert v-if="model.phase !== 'saved'" :title="t('beforeStart')" type="info" :closable="false" show-icon class="intro-note" />
+      <ElAlert v-if="!terminal && !model.preview" :title="t('beforeStart')" type="info" :closable="false" show-icon class="intro-note" />
       <ElAlert v-if="model.statusMessage" :title="t(model.statusMessage)" type="info" :closable="false" show-icon class="page-notice" />
       <ElAlert v-if="error && !['hotword_rows', 'context'].includes(error.field ?? '')" id="error-panel" tabindex="-1" class="page-notice" :title="error.message" type="error" :closable="false" show-icon />
       <p v-if="model.phase === 'loading'" class="loading-note" role="status">{{ t('loading') }}</p>
       <ElAlert v-if="model.phase === 'unavailable'" :title="t('unavailable')" type="error" :closable="false" />
 
-      <ElCard v-if="model.phase === 'saved' && model.receipt" id="receipt" class="receipt" shadow="never" tabindex="-1">
-        <ElResult icon="success" :title="t('savedTitle')" :sub-title="t('savedHelp')" />
-        <ElDescriptions :column="1" direction="vertical">
+      <ElCard v-if="terminal" id="session-ended" class="receipt" shadow="never" tabindex="-1">
+        <ElResult :icon="model.phase === 'handed_off' ? 'success' : 'info'"
+          :title="t(model.phase === 'handed_off' ? 'handedOffTitle' : model.phase === 'expired' ? 'expiredTitle' : 'cancelledTitle')"
+          :sub-title="t(model.phase === 'handed_off' ? 'handedOffHelp' : model.phase === 'expired' ? 'expiredHelp' : 'cancelledHelp')" />
+        <ElDescriptions v-if="model.receipt" :column="1" direction="vertical">
           <ElDescriptionsItem :label="t('job')">{{ model.receipt.job_id }}</ElDescriptionsItem>
           <ElDescriptionsItem :label="t('jsonLocation')">{{ model.receipt.json_directory }}</ElDescriptionsItem>
           <ElDescriptionsItem :label="t('documentLocation')">{{ model.receipt.document_directory }}</ElDescriptionsItem>
         </ElDescriptions>
-        <div class="receipt-actions">
-          <ElButton :icon="Edit" :loading="model.reopening" :disabled="!available.reopen" @click="actions.reopen">{{ t('reopenSettings') }}</ElButton>
-          <p class="helper">{{ t('reopenHelp') }}</p>
-        </div>
       </ElCard>
 
-      <div v-else-if="model.session" class="workspace">
+      <section v-else-if="model.preview" class="preview-view">
+        <ReviewPanel :model="model" :language="language" :t="t" />
+        <ElCard class="handoff-panel" shadow="never">
+          <p>{{ t('uploadDisclosure') }}</p>
+          <p class="helper">{{ t('reviewHelp') }}</p>
+          <ElInput :model-value="confirmationText" readonly :aria-label="t('confirmationLabel')" class="confirmation-text" />
+          <p class="helper">{{ t('expiryHelp') }}</p>
+        </ElCard>
+      </section>
+
+      <div v-else-if="model.session && available.editable" class="workspace">
         <ElForm id="config-fields" :disabled="!available.editable" label-position="top" inline-message class="form-column" tabindex="-1" @submit.prevent="actions.validate">
           <ElCard id="audio_upload_id" shadow="never" header-class="section-heading" :class="{ 'needs-attention': invalid('audio_upload_id') }" tabindex="-1">
             <template #header><ElIcon class="section-icon" :size="20" aria-hidden="true"><Headset /></ElIcon><h2>{{ t('audioHeading') }}</h2><span class="section-aside">{{ t('oneFile') }}</span></template>
@@ -180,7 +201,7 @@ onMounted(actions.start);
                   :message="fieldMessage('hotword_rows')" :limit="model.session.limits.hotwords_count"
                   :file-limit="model.session.limits.hotwords_bytes / 1_000_000" :t="t"
                   @upload="actions.upload('hotwords', $event)" @download="actions.downloadTemplate" @add="actions.addHotword"
-                  @remove="actions.removeHotword" @change="actions.changeHotword" @check="actions.checkHotwords" />
+                  @remove="actions.removeHotword" @change="actions.changeHotword" @leave="actions.checkHotwords" />
               </div>
             </div>
             <ElDivider />
@@ -225,20 +246,16 @@ onMounted(actions.start);
           </ElCard>
         </ElForm>
 
-        <aside class="review-column">
-          <ReviewPanel :model="model" :form="form" :language="language" :t="t" :editable="available.editable" @jump="focus" />
-        </aside>
       </div>
       <footer>{{ t('footer') }}<span>{{ t('brand') }}</span></footer>
     </main>
 
-    <div v-if="model.session && model.phase !== 'saved'" class="action-bar">
+    <div v-if="model.session && !terminal && model.phase !== 'unavailable'" class="action-bar">
       <div class="action-inner">
-        <div class="action-copy"><strong>{{ model.phase === 'save_unknown' ? t('unknownTitle') : model.preview ? t('reviewTitle') : t('next') }}</strong><p>{{ model.phase === 'save_unknown' ? t('unknownHelp') : model.preview ? t('reviewHelp') : t('nextHelp') }}</p></div>
+        <div class="action-copy"><strong>{{ model.preview ? t('reviewTitle') : t('next') }}</strong><p>{{ model.preview ? t('reviewHelp') : t('nextHelp') }}</p></div>
         <div class="action-buttons">
-          <ElButton class="mobile-review" :disabled="!available.editable" @click="focus('review')">{{ t('viewDetails') }}</ElButton>
-          <ElButton v-if="model.preview" :disabled="!available.editable" @click="actions.edit">{{ t('edit') }}</ElButton>
-          <ElButton v-if="model.preview" type="primary" :icon="Check" :loading="model.phase === 'saving'" :disabled="!available.confirm" @click="actions.confirm">{{ t('save') }}</ElButton>
+          <ElButton v-if="model.preview" :icon="Edit" :loading="model.phase === 'returning'" :disabled="!available.edit" @click="actions.edit">{{ t('edit') }}</ElButton>
+          <ElButton v-if="model.preview" type="primary" :icon="DocumentCopy" :disabled="!available.copy" @click="copyConfirmation">{{ t('copyToCodex') }}</ElButton>
           <ElButton v-else type="primary" :icon="View" :loading="model.phase === 'validating'" :disabled="!available.validate" @click="actions.validate">{{ t('check') }}</ElButton>
         </div>
       </div>

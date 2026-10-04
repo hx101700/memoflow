@@ -39,8 +39,8 @@ def main() -> None:
         workbook.save(fixtures / name)
         workbook.close()
     server = create_server(Runtime(options.workspace, SKILL_ROOT))
-    url = f"http://127.0.0.1:{server.server_port}/#token={server.session.token}"
-    print(json.dumps({"url": url}), flush=True)
+    url = f"http://127.0.0.1:{server.server_port}/"
+    print(json.dumps({"url": url, "session_id": server.session.session_id}), flush=True)
     try:
         server.serve_forever()
     finally:

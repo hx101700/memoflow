@@ -74,22 +74,17 @@ def validate_hotword_rows(payload: object) -> HotwordConfig:
         raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows")
     if len(payload) > MAX_HOTWORD_ROWS:
         raise ValidationError("热词表格最多支持10000行，请减少后重新检查。", "hotword_rows")
-    row_numbers: set[int] = set()
     for index, value in enumerate(payload, start=1):
-        if (not isinstance(value, dict) or not {"row", "text", "weight"} <= value.keys()
-                or value.keys() - {"row", "text", "weight", "invalid_fields"}
-                or type(value["row"]) is not int or value["row"] < 1
-                or value["row"] in row_numbers):
-            raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows",
-                                  [{"row": index, "field": "row", "message": "行号必须为不重复的正整数。"}])
+        if (not isinstance(value, dict) or not {"text", "weight"} <= value.keys()
+                or value.keys() - {"text", "weight", "invalid_fields"}):
+            raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows")
         for field in ("text", "weight"):
             if value[field] is not None and not isinstance(value[field], (str, int, float, bool)):
                 raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows",
-                                      [{"row": value["row"], "field": field, "message": "单元格必须为文本或数值。"}])
+                                      [{"row": index, "field": field, "message": "单元格必须为文本或数值。"}])
         invalid_fields = value.get("invalid_fields", [])
         if not isinstance(invalid_fields, list) or any(field not in ("text", "weight") for field in invalid_fields):
             raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows")
-        row_numbers.add(value["row"])
     return build_vocabulary(cast(list[HotwordRow], payload))
 
 
@@ -101,11 +96,8 @@ def build_vocabulary(rows: Iterable[HotwordRow]) -> HotwordConfig:
     warnings = []
     ignored_blank_rows = 0
     super_count = 0
-    first_row: int | None = None
-    for row in rows:
-        row_number, text, weight = row["row"], row["text"], row["weight"]
-        if first_row is None:
-            first_row = row_number
+    for row_number, row in enumerate(rows, start=1):
+        text, weight = row["text"], row["weight"]
         invalid_fields = row.get("invalid_fields", [])
         if text in (None, "") and weight in (None, "") and not invalid_fields:
             ignored_blank_rows += 1
@@ -166,7 +158,7 @@ def build_vocabulary(rows: Iterable[HotwordRow]) -> HotwordConfig:
         raise ValidationError("请修改热词表格中标红的单元格后重新检查。", "hotword_rows", details)
     if not vocabulary:
         raise ValidationError("请至少填写一个热词及其权重，或关闭热词增强。", "hotword_rows",
-                              [{"row": first_row or 1, "field": "text", "message": "热词必须为非空文本。"}])
+                              [{"row": 1, "field": "text", "message": "热词必须为非空文本。"}])
     if ignored_blank_rows:
         warnings.append(translate("已忽略{count}个完全空白行。").format(count=ignored_blank_rows))
     return {"vocabulary": vocabulary, "count": len(vocabulary), "warnings": warnings}
