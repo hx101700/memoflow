@@ -33,7 +33,7 @@ MemoFlow 第一阶段由 asr-transcription Skill 完成单录音网页配置、B
 
 独立 Skill 文本行为演练覆盖 7 个接续场景，修正“先说继续再补编号”被要求再次确认的歧义，以及已知原进程运行时多余的状态查询。此演练不等于新 Codex 对话的实际使用。10 份 UML 已渲染并目视，12 项打包测试通过，112 个本地 Markdown 链接有效。
 
-发行 ZIP 含 47 文件、335250 字节，SHA-256 为 `0543dd117b6e9c5b2bf5ec93cf7399d989dd10297799f6f6210ea91e9cfd750b`；CRC、固定清单及逐文件源码字节核对通过。远端 dev 与 v0.1.0 预览附件待本轮上传。
+发行 ZIP 含 47 文件、335250 字节，SHA-256 为 `0543dd117b6e9c5b2bf5ec93cf7399d989dd10297799f6f6210ea91e9cfd750b`；CRC、固定清单及逐文件源码字节核对通过。实现提交 `3df7ba1` 已推送远端 dev，现有 [v0.1.0 预览](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 的 ZIP 与双语说明已更新。匿名公开下载与本机包逐字节一致；138 文件的远端源码树与实现提交一致，仍为一个 Release、一个标签、一个 ZIP 附件。master 保持 `6c83711`，版本号不变。
 
 本轮未执行真实云端识别、真实登录、原生目录窗口人工操作、Office 逐页检查或全新联网安装。官方 quick_validate 因验证环境缺 PyYAML 未完成，详见 ACCEPTANCE。
 
