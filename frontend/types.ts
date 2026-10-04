@@ -32,29 +32,31 @@ export interface FormValues {
 }
 export type CellValue = string | number | boolean | null;
 export type HotwordField = "text" | "weight";
+export interface LocalizedText { zh: string; en: string }
 export interface HotwordRow { text: CellValue; weight: CellValue; invalid_fields?: HotwordField[] }
 export interface EditorRow extends HotwordRow { key: number; row: number }
-export interface HotwordImport { name: string; size_bytes: number; rows: HotwordRow[]; warnings: string[] }
+export interface HotwordImport { name: string; rows: HotwordRow[]; warnings: LocalizedText[] }
 export interface Summary {
   auth_mode: "console" | "api_key";
   audio: { name: string; path: string; duration_seconds: number; size_bytes: number; format_name: string; channels: number; sample_rate: number };
   enhancement: { mode: EnhancementMode; count: number; context_chars: number };
-  json_directory: string; document_directory: string; warnings: string[];
+  json_directory: string; document_directory: string; warnings: LocalizedText[];
 }
 export interface ValidationResult { validation_id: string; summary: Summary }
 export interface Preview { id: string; summary: Summary; configuration: Configuration; ready: boolean }
-export interface ImportState { status: "empty" | "importing" | "ready" | "failed"; name: string; size: number }
+export interface ImportState { status: "empty" | "importing" | "ready" | "failed"; name: string }
 export interface Picker { id: string; kind: DirectoryKind | "audio"; cancelling: boolean }
 export interface Model {
-  phase: Phase; revision: number; preview: Preview | null; receipt: Receipt | null;
+  phase: Phase; preview: Preview | null; receipt: Receipt | null;
   session: SessionDescription | null; directories: Record<DirectoryKind, string>;
   audio: AudioSelection | null; hotwordImport: ImportState;
-  hotwords: { issues: ErrorDetail[]; warnings: string[] };
+  hotwords: { issues: EditorIssue[]; warnings: LocalizedText[] };
   auth: { revision: number; status: "idle" | "loading" | "saving" | "ready" | "dirty" | "failed" };
-  picker: Picker | null; downloadingTemplate: boolean; statusMessage: "changed" | "";
+  picker: Picker | null; downloadingTemplate: boolean;
 }
-export interface ErrorDetail { row?: number; field?: string; message: string }
-export interface ErrorPayload { error?: string; ok?: boolean; field?: string; details?: ErrorDetail[] }
+export interface ErrorDetail { row?: number; field?: string; message: LocalizedText; duplicate_group?: number }
+export interface EditorIssue extends ErrorDetail { key?: number }
+export interface ErrorPayload { error?: LocalizedText; ok?: boolean; field?: string; details?: ErrorDetail[] }
 export interface AudioSelection { audio_id: string; name: string; path: string; size_bytes: number }
 export interface EditableSnapshot { configuration: Configuration; audio: AudioSelection }
 export interface SessionEnd { state: "handed_off" | "expired" | "cancelled"; receipt: Receipt | null }

@@ -9,6 +9,7 @@ MemoFlow aims to turn recordings into meeting minutes that follow your preferred
 - **Model Studio recognition**: Call Qwen-Audio-3.1-ASR-Flash-Filetrans through the official BL CLI, using Console authorization or your Beijing-region API Key.
 - **Three document formats**: Generate Word, Excel, and Markdown together and retain the original JSON. Successful tasks can be re-exported locally.
 - **Language and appearance**: Choose Chinese or English and light or dark themes.
+- **Automatic download-source selection**: Setup compares download sources for both Python dependencies and the BL CLI, switches sources for eligible download failures, and reuses downloaded packages to reduce interruptions caused by unstable connections.
 
 Audio is selected in the system file dialog and read from its original path. Excel hotword lists are parsed in memory. Keep the recording available until transcription finishes; a processed audio file is created only when channel merging is needed.
 

@@ -11,6 +11,7 @@ from asr_runtime.application.inputs import validate_audio
 from asr_runtime.application.session import Session, SESSION_LIFETIME_SECONDS
 from asr_runtime.application.recovery import finish_session
 from asr_runtime.application.transcription import job_status
+from asr_runtime.utils.bailian import check_recognition_command
 from asr_runtime.utils.job_files import publish_config
 from asr_runtime.utils.session_files import read_receipt
 from tests.test_session import WebFixture
@@ -49,6 +50,55 @@ class SessionHandoffTests(WebFixture):
         self.assertEqual(read_receipt(self.runtime, self.session.session_id), receipt)
         self.assertEqual(self.session.description()["phase"], "handed_off")
         self.assertEqual(job_status(self.runtime, receipt["job_id"])["status"], "CONFIGURED")
+
+    def test_oversized_valid_hotwords_keep_preview_editable_before_handoff(self):
+        """验证合法大词表超出命令长度时保留预览，缩短后同会话可交接。"""
+        self.form["hotword_rows"] = [
+            {"text": "术语" + str(index).zfill(4) + "甲" * 9, "weight": 4}
+            for index in range(2000)
+        ]
+        preview = self.show_preview()
+        self.assertEqual(preview["summary"]["enhancement"]["count"], 2000)
+        with patch("asr_runtime.utils.bailian.installed_bl_version", side_effect=AssertionError("交接不检查BL安装")), \
+                patch("asr_runtime.utils.auth.read_api_key", side_effect=AssertionError("交接不读取Key")), \
+                patch("asr_runtime.utils.bailian.subprocess.Popen", side_effect=AssertionError("交接不启动BL")):
+            with self.assertRaises(ValidationError) as caught:
+                self.session.confirm()
+            self.assertEqual(caught.exception.field, "form")
+            self.assertIn("32767", caught.exception.message["zh"])
+            self.assertIn("exceeding the Windows limit", caught.exception.message["en"])
+            self.assertEqual(self.session.description()["phase"], "preview")
+            self.assertEqual(self.session.draft["id"], preview["validation_id"])
+            self.assertIsNone(self.session.receipt)
+            self.assertIsNone(read_receipt(self.runtime, self.session.session_id))
+            self.assertFalse(self.session.terminal_event.is_set())
+            self.assertFalse(self.runtime.path(".state/jobs").exists())
+            self.session.edit(preview["validation_id"])
+            self.form["hotword_rows"] = self.form["hotword_rows"][:1]
+            self.show_preview()
+            receipt = self.session.confirm()
+        self.assertEqual(receipt["session_id"], self.session.session_id)
+        self.assertEqual(len(list(self.runtime.path(".state/jobs").iterdir())), 1)
+        self.assertFalse(self.runtime.path(f'.state/jobs/{receipt["job_id"]}/execution').exists())
+
+    def test_handoff_length_check_uses_actual_original_or_mono_paths(self):
+        """验证长度检查使用正式任务编号及实际原音频或混音副本的路径。"""
+        for diarization in (False, True):
+            with self.subTest(diarization=diarization):
+                session = Session(self.runtime)
+                self.addCleanup(session.cleanup)
+                form = {**self.payload_for(session), "diarization_enabled": diarization}
+                preview = session.validate(form)
+                session.preview_ready(preview["validation_id"])
+                with patch("asr_runtime.application.session.check_recognition_command", wraps=check_recognition_command) as check:
+                    receipt = session.confirm()
+                arguments = check.call_args.args[1]
+                directory = self.runtime.path(f'.state/jobs/{receipt["job_id"]}')
+                expected_source = directory / "execution/mono.flac" if diarization else self.audio
+                self.assertEqual(arguments[arguments.index("--url") + 1], str(expected_source))
+                self.assertEqual(arguments[arguments.index("--out") + 1],
+                                 str(Path(receipt["json_directory"]) / "transcription.json"))
+                self.assertFalse((directory / "execution").exists())
 
     def test_return_to_edit_invalidates_old_preview_without_creating_jobs(self):
         """验证多次返回修改保持同一会话，最终交接只生成一个任务。"""
@@ -126,7 +176,7 @@ class SessionHandoffTests(WebFixture):
             edited = pool.submit(edit)
             self.assertEqual(sum((confirmed.result(timeout=5), edited.result(timeout=5))), 1)
 
-    def test_expiry_uses_fixed_deadline_and_cleans_only_unsubmitted_copy(self):
+    def test_expiry_uses_fixed_deadline_and_preserves_original_inputs(self):
         """验证操作不延长时限，到期收尾保留原音频和Key。"""
         deadline = self.session.deadline
         self.session.save_api_key("synthetic-saved-key")

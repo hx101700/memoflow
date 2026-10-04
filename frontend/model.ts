@@ -5,22 +5,22 @@ import type { Configuration, FormValues, HotwordRow, Limits, Model, SessionEnd, 
 // 初始化页面阶段、音频选择、词表导入与凭据状态。
 export function createModel(): Model {
   return {
-    phase: "loading", revision: 0, preview: null, receipt: null, session: null,
+    phase: "loading", preview: null, receipt: null, session: null,
     directories: { json: "default", document: "default" },
-    audio: null, hotwordImport: { status: "empty", name: "", size: 0 },
+    audio: null, hotwordImport: { status: "empty", name: "" },
     hotwords: { issues: [], warnings: [] },
-    auth: { revision: 0, status: "idle" }, picker: null, downloadingTemplate: false, statusMessage: "",
+    auth: { revision: 0, status: "idle" }, picker: null, downloadingTemplate: false,
   };
 }
 
 // 从同一份页面状态推导事件与控件的操作权限。
 export function availability(model: Model) {
-  const editable = ["editing", "validating"].includes(model.phase);
+  const editable = model.phase === "editing";
   const importing = model.hotwordImport.status === "importing";
   const pending = importing || model.auth.status === "loading" || model.auth.status === "saving" || Boolean(model.picker);
   return {
     editable,
-    validate: editable && model.phase !== "validating" && !pending,
+    validate: editable && !pending,
     edit: model.phase === "preview" && Boolean(model.preview),
     copy: model.phase === "preview" && Boolean(model.preview?.ready),
     selectAudio: editable && !model.picker,
@@ -34,21 +34,10 @@ export function availability(model: Model) {
   };
 }
 
-// 输入变化后作废旧预览，使迟到的校验结果失效。
-export function invalidatePreview(model: Model): void {
-  if (!availability(model).editable) return;
-  model.revision += 1;
-  model.preview = null;
-  model.statusMessage = "";
-  if (model.phase !== "validating") model.phase = "editing";
-}
-
-// 按输入版本接收校验结果并保存确认所需的预览。
-export function receiveValidation(model: Model, revision: number, result: ValidationResult, config: Configuration): boolean {
-  if (revision !== model.revision || model.phase !== "validating") return false;
+// 保存本次检查的回执和设置，进入独立预览。
+export function receiveValidation(model: Model, result: ValidationResult, config: Configuration): void {
   model.preview = { id: result.validation_id, summary: result.summary, configuration: config, ready: false };
   model.phase = "preview";
-  return true;
 }
 
 // 接收会话结束结果并使未完成的输入请求失效。
@@ -56,8 +45,6 @@ export function receiveEnd(model: Model, result: SessionEnd): void {
   model.phase = result.state;
   model.preview = null;
   model.receipt = result.receipt;
-  model.revision += 1;
-  model.statusMessage = "";
   model.auth.revision += 1;
   model.auth.status = "idle";
 }
@@ -74,7 +61,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
   if (form.diarizationEnabled && form.speaker !== "") {
     speakerCount = Number(form.speaker);
     if (!Number.isInteger(speakerCount) || speakerCount < limits.speaker_min || speakerCount > limits.speaker_max) {
-      throw new UiError(t("invalidSpeaker", { min: limits.speaker_min, max: limits.speaker_max }), "speaker_count");
+      throw new UiError(() => t("invalidSpeaker", { min: limits.speaker_min, max: limits.speaker_max }), "speaker_count");
     }
   }
   return {
@@ -89,5 +76,5 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
 
 // 检查音频选择状态并指出选择区域。
 export function checkRequiredInputs(config: Configuration, t: Translate): void {
-  if (!config.audio_id) throw new UiError(t("missingAudio"), "audio_id");
+  if (!config.audio_id) throw new UiError(() => t("missingAudio"), "audio_id");
 }

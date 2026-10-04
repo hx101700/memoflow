@@ -104,11 +104,12 @@ def choose_path(initial: Path, *, mode: Literal["audio", "directory"],
         return None
     # GUI只接收系统环境；CREATE_NO_WINDOW隐藏控制台并保留原生选择窗口。
     # Windows Shell用SystemDrive/ProgramData展开系统缓存位置，不能随凭据一起删掉。
+    # Tk窗口只依赖基础Python；直接启动它，使取消时终止的就是窗口进程。
     env = {key: value for key, value in os.environ.items()
            if key.upper() in {"SYSTEMROOT", "SYSTEMDRIVE", "PROGRAMDATA", "WINDIR", "PATH", "TEMP", "TMP"}}
     try:
         process = subprocess.Popen(
-            [sys.executable, "-I", "-X", "utf8", str(Path(__file__).with_name("_path_dialog.py")),
+            [str(Path(sys.base_prefix) / "python.exe"), "-I", "-X", "utf8", str(Path(__file__).with_name("_path_dialog.py")),
              str(initial), translate("录音转写 · 选择音频文件" if mode == "audio" else "录音转写 · 选择保存位置"),
              mode, json.dumps(audio_suffixes), translate("音频文件")],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

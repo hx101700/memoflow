@@ -9,6 +9,13 @@ EnhancementMode = Literal["none", "hotwords", "context", "both"]
 MAX_HOTWORD_ROWS = 10_000
 
 
+class LocalizedText(TypedDict):
+    """保存同一网页提示的中英文文本。"""
+
+    zh: str
+    en: str
+
+
 class FileStat(TypedDict):
     """描述确认时比较的文件大小与修改时间。"""
 
@@ -40,7 +47,7 @@ class AudioRecord(TypedDict):
     metadata: AudioMetadata
     fingerprint: FileFingerprint
     requires_mono: bool
-    warnings: list[str]
+    warnings: list[LocalizedText]
     name: NotRequired[str]
 
 
@@ -58,7 +65,8 @@ class HotwordIssue(TypedDict):
 
     row: int
     field: str
-    message: str
+    message: LocalizedText
+    duplicate_group: NotRequired[int]
 
 
 HotwordValue = str | int | float | bool | None
@@ -77,7 +85,7 @@ class HotwordImport(TypedDict):
     """返回Excel导入后的可编辑原始行及读取提示。"""
 
     rows: list[HotwordRow]
-    warnings: list[str]
+    warnings: list[LocalizedText]
 
 
 class HotwordConfig(TypedDict):
@@ -85,7 +93,7 @@ class HotwordConfig(TypedDict):
 
     vocabulary: dict[str, int]
     count: int
-    warnings: list[str]
+    warnings: list[LocalizedText]
 
 
 class RecognitionOptions(TypedDict):

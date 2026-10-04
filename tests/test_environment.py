@@ -1,10 +1,12 @@
 import contextlib
+import ctypes
+from ctypes import wintypes
 import io
 import json
 import os
 import subprocess
 import sys
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from asr_runtime import BAILIAN_VERSION
 from asr_runtime.application.bootstrap import bootstrap
@@ -152,7 +154,6 @@ class EnvironmentTests(RuntimeTestCase):
         for name in private.keys() - {"NPM_CONFIG_USERCONFIG"}:
             self.assertNotIn(name, env)
         self.assertTrue(env["NPM_CONFIG_USERCONFIG"].startswith(str(self.runtime.root)))
-        self.assertEqual(env["NPM_CONFIG_FETCH_RETRIES"], "0")
         self.assertEqual(env["DO_NOT_TRACK"], "1")
 
     def test_probe_does_not_share_login_directory(self):
@@ -172,20 +173,91 @@ class EnvironmentTests(RuntimeTestCase):
 
     def test_failed_subprocess_is_not_retried_and_uses_argument_array(self):
         """验证子进程返回失败退出码且按参数数组调用一次。"""
-        with patch("asr_runtime.utils.environment.subprocess.run") as run:
-            run.return_value = subprocess.CompletedProcess([], 6, "", "network failure")
+        process = Mock(returncode=6, stdout=io.StringIO(), stderr=io.StringIO())
+        process.communicate.return_value = ("", "network failure")
+        process.poll.return_value = 6
+        with patch("asr_runtime.utils.environment.subprocess.Popen", return_value=process) as run, \
+                patch("asr_runtime.utils.environment.subprocess.run", side_effect=AssertionError("已退出命令无需终止")):
             result = run_process(self.runtime, ["node.exe", "file with spaces.mjs", "--help"])
+        self.assertIsInstance(result, subprocess.CompletedProcess)
         self.assertEqual(result.returncode, 6)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "network failure")
         run.assert_called_once()
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.args[0][1], "file with spaces.mjs")
+        self.assertEqual(run.call_args.kwargs["cwd"], self.runtime.workspace)
+        self.assertEqual(run.call_args.kwargs["env"], child_environment(self.runtime))
+        self.assertEqual(run.call_args.kwargs["stdin"], subprocess.DEVNULL)
+        self.assertEqual(run.call_args.kwargs["stdout"], subprocess.PIPE)
+        self.assertEqual(run.call_args.kwargs["stderr"], subprocess.PIPE)
+        self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+        process.communicate.assert_called_once_with(timeout=60)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
 
     def test_timeout_is_not_retried(self):
         """验证子进程超时返回环境错误且调用次数为一。"""
-        with patch("asr_runtime.utils.environment.subprocess.run", side_effect=subprocess.TimeoutExpired([], 1)) as run:
+        process = Mock(stdout=io.StringIO(), stderr=io.StringIO())
+        process.communicate.side_effect = subprocess.TimeoutExpired([], 1)
+        with patch("asr_runtime.utils.environment.subprocess.Popen", return_value=process) as run, \
+                patch("asr_runtime.utils.environment.stop_process_tree") as stop:
             with self.assertRaises(SetupError):
                 run_process(self.runtime, ["node.exe"], timeout=1)
         run.assert_called_once()
+        stop.assert_called_once_with(process)
+        process.communicate.assert_called_once_with(timeout=1)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_timeout_ends_the_actual_windows_venv_worker(self):
+        """等待实际worker就绪后触发超时，用持有句柄确认启动器和worker均退出。"""
+        if os.name != "nt":
+            self.skipTest("Windows venv启动器测试")
+        self.runtime.prepare()
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        processes, handles, actual_pids = [], [], []
+        start = subprocess.Popen
+
+        def record_worker(argv, **kwargs):
+            """持有诊断worker的句柄，原生终止工具按正常路径运行。"""
+            process = start(argv, **kwargs)
+            if argv[0] == sys.executable:
+                processes.append(process)
+                actual_pid = int(process.stdout.readline().strip())
+                actual_pids.append(actual_pid)
+                handle = kernel.OpenProcess(0x00100001, False, actual_pid)
+                self.assertTrue(handle)
+                handles.append(handle)
+            return process
+
+        try:
+            with patch("asr_runtime.utils.environment.subprocess.Popen", side_effect=record_worker):
+                with self.assertRaisesRegex(SetupError, "超时，已停止"):
+                    run_process(self.runtime, [sys.executable, "-I", "-u", "-c",
+                                "import os,time; print(os.getpid(), flush=True); time.sleep(30)"], timeout=0.05)
+            self.assertEqual(len(processes), 1)
+            self.assertIsNotNone(processes[0].returncode)
+            self.assertEqual(kernel.WaitForSingleObject(handles[0], 0), 0)
+            self.assertTrue(processes[0].stdout.closed)
+            self.assertTrue(processes[0].stderr.closed)
+            if sys.prefix != sys.base_prefix:
+                self.assertNotEqual(processes[0].pid, actual_pids[0])
+        finally:
+            for handle in handles:
+                if kernel.WaitForSingleObject(handle, 0) == 0x102:
+                    kernel.TerminateProcess(handle, 1)
+                    kernel.WaitForSingleObject(handle, 2000)
+                kernel.CloseHandle(handle)
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
 
     def test_missing_local_bl_does_not_fall_back_to_global(self):
         """验证工作区未安装 BL 时返回安装错误。"""

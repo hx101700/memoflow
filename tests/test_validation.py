@@ -100,7 +100,7 @@ class ValidationTests(RuntimeTestCase):
         before = path.read_bytes()
         stereo = validate_audio(path, True)
         self.assertTrue(stereo["requires_mono"])
-        self.assertIn("保留原文件", stereo["warnings"][0])
+        self.assertIn("保留原文件", stereo["warnings"][0]["zh"])
         self.assertFalse(validate_audio(path, False)["requires_mono"])
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(list(self.data.iterdir()), [path])
@@ -147,7 +147,7 @@ class ValidationTests(RuntimeTestCase):
                    return_value=replace(normal, duration_seconds=43200, audio_tracks=2)):
             result = validate_audio(path, True)
             self.assertEqual(len(result["warnings"]), 2)
-            self.assertTrue(any("索引0" in text for text in result["warnings"]))
+            self.assertTrue(any("索引0" in text["zh"] for text in result["warnings"]))
 
     def test_upload_size_applies_to_actual_upload_not_source_to_be_merged(self):
         """验证上传大小规则依据原文件或混音后副本。"""
@@ -187,7 +187,7 @@ class ValidationTests(RuntimeTestCase):
         checked = validate_hotword_rows(result["rows"])
         self.assertEqual(checked["vocabulary"], {"语音实验室": 4, "hello world": 2})
         self.assertEqual(checked["warnings"], [])
-        self.assertEqual(len(result["warnings"]), 1)
+        self.assertEqual(result["warnings"], [])
         self.assertEqual(path.read_bytes(), before)
 
     def test_hotwords_reports_formula_conflict_empty_word_and_invalid_weights_by_row(self):
@@ -203,7 +203,7 @@ class ValidationTests(RuntimeTestCase):
         self.assertEqual(caught.exception.field, "hotword_rows")
         details = caught.exception.details
         self.assertEqual({error["row"] for error in details}, set(range(1, 10)))
-        self.assertTrue(all(set(error) == {"row", "field", "message"} for error in details))
+        self.assertTrue(all({"row", "field", "message"} <= set(error) for error in details))
 
     def test_hotword_length_rules(self):
         """验证中英文热词长度规则。"""
@@ -290,7 +290,7 @@ class ValidationTests(RuntimeTestCase):
         workbook.close()
         result = import_hotwords(path.read_bytes())
         self.assertEqual(validate_hotword_rows(result["rows"])["vocabulary"], {"test": 4})
-        self.assertTrue(any("其他工作表" in warning for warning in result["warnings"]))
+        self.assertTrue(any("其他工作表" in warning["zh"] for warning in result["warnings"]))
 
     def test_hotwords_rejects_chart_sheet_with_field_error_and_preserves_source(self) -> None:
         """验证图表工作表返回双语热词字段错误，原Excel保持不变。"""

@@ -62,7 +62,7 @@ Audio is selected in the system file dialog and read from its original path. Exc
 
 ## Contributing
 
-[Issues](https://github.com/hx101700/memoflow/issues), feature suggestions, and pull requests are welcome. See the [development documentation](https://github.com/hx101700/memoflow/blob/dev/doc/README.md) for code structure, conventions, and verification.
+[Issues](https://github.com/hx101700/memoflow/issues), feature suggestions, and pull requests are welcome. See the [development documentation](https://github.com/hx101700/memoflow/blob/dev/doc/README.md) for code structure, conventions, and verification. If you find this project helpful, please consider **starring and forking** it, thank you!
 
 ## Related links
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { durationText, fileSize, languageName, translate } from "../frontend/i18n";
+import { durationText, fileSize, languageName, localize, translate } from "../frontend/i18n";
+import { UiError, uiError } from "../frontend/api";
+import type { Language } from "../frontend/types";
 import { isDark, readPreferences } from "../frontend/preferences";
 
 test("深浅色显式选择和系统配色遵循同一规则", () => {
@@ -18,7 +20,7 @@ test("偏好仅包含语言和主题；存储不可用时仍可打开", () => {
 });
 
 test("英文使用Model Studio与speaker diarization术语", () => {
-  assert.equal(translate("en", "brand"), "Alibaba Cloud Model Studio");
+  assert.equal(translate("en", "provider"), "Speech recognition by Alibaba Cloud Model Studio");
   assert.equal(translate("en", "diarization"), "Speaker diarization");
   assert.equal(languageName("tl", "en"), "Filipino");
   assert.equal(languageName("de", "en"), "German");
@@ -33,4 +35,27 @@ test("文案替换保留用户文件名、花括号和Unicode原文", () => {
 test("文件大小与服务端十进制限制一致，时长跨语言一致", () => {
   assert.equal(fileSize(5_000_000), "5.00 MB");
   assert.equal(durationText(3671), "01:01:11");
+});
+
+test("服务端错误和警告按当前语言读取，原始位置及双语内容保持不变", () => {
+  const text = { zh: "请修改权重。", en: "Correct the weight." };
+  const issue = { row: 2, field: "weight", message: text };
+  const error = new UiError(text, "hotword_rows", 422, [issue]);
+  assert.equal(error.describe("zh-CN"), "请修改权重。");
+  assert.equal(error.describe("en"), "Correct the weight.");
+  assert.equal(localize(text, "en"), "Correct the weight.");
+  assert.equal(error.details[0], issue);
+  assert.equal(error.details[0].row, 2);
+  assert.deepEqual(text, { zh: "请修改权重。", en: "Correct the weight." });
+});
+
+test("本机提示随语言切换更新，未知异常内容不泄露给页面", () => {
+  let language: Language = "zh-CN";
+  const local = new UiError(() => translate(language, "missingAudio"), "audio_id");
+  const unknown = uiError(new Error("private technical detail"), () => translate(language, "failed"));
+  assert.equal(local.describe(language), "请选择音频文件。");
+  language = "en";
+  assert.equal(local.describe(language), "Choose an audio file.");
+  assert.equal(unknown.describe(language), translate("en", "failed"));
+  assert.equal(unknown.describe(language).includes("private technical detail"), false);
 });

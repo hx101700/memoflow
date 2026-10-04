@@ -1,3 +1,5 @@
+import ctypes
+from ctypes import wintypes
 import json
 import os
 import subprocess
@@ -196,7 +198,7 @@ class PathPickerTests(RuntimeTestCase):
         with patch.dict(os.environ, environment, clear=True):
             choose_path(self.runtime.root, mode="directory")
         args, kwargs = self.popen.call_args
-        self.assertEqual(args[0][:4], [sys.executable, "-I", "-X", "utf8"])
+        self.assertEqual(args[0][:4], [str(Path(sys.base_prefix) / "python.exe"), "-I", "-X", "utf8"])
         self.assertEqual(Path(args[0][4]).name, "_path_dialog.py")
         self.assertEqual(args[0][5], str(self.runtime.root.resolve()))
         self.assertEqual({key.upper(): value for key, value in kwargs["env"].items()}, {
@@ -237,20 +239,32 @@ class PathPickerTests(RuntimeTestCase):
 
 class PathPickerProcessTests(RuntimeTestCase):
     def test_cancel_terminates_real_unresponsive_child_without_gui(self):
-        """验证取消能终止真实等待子进程。"""
+        """等待实际Python进程就绪后取消，并通过持有句柄验证该进程已结束。"""
         if sys.platform != "win32":
             self.skipTest("路径选择窗口运行边界仅支持 Windows")
         real_popen = subprocess.Popen
         cancelled = Event()
         children = []
+        handles = []
         timer = None
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
 
         def start_sleeping_child(command, **kwargs):
-            """启动本机等待进程并定时触发取消。"""
+            """使用生产选定的解释器启动等待进程，收到其PID后才触发取消。"""
             nonlocal timer
-            # 真子进程只等待、不创建窗口，验证取消后确实回收进程。
-            child = real_popen([sys.executable, "-I", "-c", "import time; time.sleep(30)"], **kwargs)
+            child = real_popen([command[0], "-I", "-u", "-c",
+                               "import os,time; print(os.getpid(), flush=True); time.sleep(30)"], **kwargs)
             children.append(child)
+            actual_pid = int(child.stdout.readline().strip())
+            handle = kernel.OpenProcess(0x00100001, False, actual_pid)  # SYNCHRONIZE | PROCESS_TERMINATE
+            self.assertTrue(handle)
+            handles.append(handle)
+            self.assertEqual(child.pid, actual_pid)
             timer = Timer(0.05, cancelled.set)
             timer.start()
             return child
@@ -261,10 +275,16 @@ class PathPickerProcessTests(RuntimeTestCase):
             self.assertEqual(len(children), 1)
             self.assertIsNotNone(children[0].poll())
             self.assertNotEqual(children[0].returncode, 0)
+            self.assertEqual(kernel.WaitForSingleObject(handles[0], 0), 0)
         finally:
             if timer is not None:
                 timer.cancel()
                 timer.join()
+            for handle in handles:
+                if kernel.WaitForSingleObject(handle, 0) == 0x102:
+                    kernel.TerminateProcess(handle, 1)
+                    kernel.WaitForSingleObject(handle, 2000)
+                kernel.CloseHandle(handle)
             for child in children:
                 if child.poll() is None:
                     child.kill()

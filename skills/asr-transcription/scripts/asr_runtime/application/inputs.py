@@ -8,7 +8,7 @@ from ..models import AudioMetadata, AudioRecord, HotwordImport
 
 from ..utils.files import FileError, file_fingerprint, resolve_input
 from ..utils.hotwords import HotwordFileError, read_hotwords
-from ..utils.i18n import translate
+from ..utils.i18n import localize
 from ..utils.media import MediaError, probe_audio
 from .rules import AUDIO_SUFFIXES, ValidationError, check_audio_limits
 
@@ -30,16 +30,14 @@ def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
         requires_mono = diarization and info.channels > 1
         warnings = []
         if requires_mono:
-            warnings.append(translate(
+            warnings.append(localize(
                 "此音频包含 {channels} 个声道。为区分发言人，转写前将生成单声道 FLAC 副本，"
-                "保留原文件。副本通过大小和时长检查后才会上传。"
-            ).format(channels=info.channels))
+                "保留原文件。副本通过大小和时长检查后才会上传。", channels=info.channels))
         if diarization and duration > 2 * 60 * 60:
-            warnings.append(translate("音频超过 2 小时。启用发言人区分可能导致识别失败或超时，建议使用 2 小时以内的音频。"))
+            warnings.append(localize("音频超过 2 小时。启用发言人区分可能导致识别失败或超时，建议使用 2 小时以内的音频。"))
         if info.audio_tracks > 1:
-            warnings.append(translate(
-                "此文件包含 {tracks} 个音轨，仅转写第一个音轨（索引0），其余音轨不会转写。"
-            ).format(tracks=info.audio_tracks))
+            warnings.append(localize(
+                "此文件包含 {tracks} 个音轨，仅转写第一个音轨（索引0），其余音轨不会转写。", tracks=info.audio_tracks))
         fingerprint = file_fingerprint(source)
         after = source.stat()
         if (fingerprint["size_bytes"] != info.size_bytes
@@ -49,7 +47,7 @@ def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
         return {"path": str(source), "metadata": cast(AudioMetadata, asdict(info)), "fingerprint": fingerprint,
                 "requires_mono": requires_mono, "warnings": warnings}
     except FileError as exc:
-        raise ValidationError(str(exc), field) from exc
+        raise ValidationError(exc.template, field) from exc
     except (MediaError, OSError) as exc:
         raise ValidationError("无法读取音频，请检查文件是否损坏及格式是否支持。", field) from exc
 
@@ -59,5 +57,5 @@ def import_hotwords(content: bytes) -> HotwordImport:
     try:
         rows, warnings = read_hotwords(content)
     except HotwordFileError as exc:
-        raise ValidationError(str(exc), "hotword_rows", exc.details) from exc
+        raise ValidationError(exc.template, "hotword_rows") from exc
     return {"rows": rows, "warnings": warnings}

@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from typing import cast
 
 from ..models import MAX_HOTWORD_ROWS, AudioInfo, HotwordConfig, HotwordIssue, HotwordRow, RecognitionOptions
-from ..utils.i18n import translate
+from ..utils.i18n import localize, translate
 
 
 # 官方模型/临时OSS限制见Skill的references/model.md A02、A04、A06。
@@ -28,13 +28,13 @@ MAX_SPEAKERS = 100
 class ValidationError(ValueError):
     """携带表单字段和修改提示的输入校验错误。"""
 
-    def __init__(self, message: str, field: str, details: list[HotwordIssue] | None = None) -> None:
+    def __init__(self, message: str, field: str, details: list[HotwordIssue] | None = None, /,
+                 **params: object) -> None:
         """携带可公开的说明、表单字段和可选行级错误。"""
-        super().__init__(translate(message))
+        super().__init__(translate(message, **params))
+        self.message = localize(message, **params)
         self.field = field
-        self.details: list[HotwordIssue] = [
-            {**detail, "message": translate(detail["message"])} for detail in details or []
-        ]
+        self.details = details or []
 
 
 def check_audio_limits(info: AudioInfo, diarization: bool) -> None:
@@ -57,14 +57,14 @@ def validate_context(text: object) -> str:
     if not text.strip():
         raise ValidationError("参考文本为空，请输入与录音相关的术语或参考文字，或关闭上下文增强。", "context")
     if len(text) > MAX_CONTEXT_CHARS:
-        raise ValidationError(translate(
-            "参考文本共 {count} 个字符，最多支持 {maximum} 个，超出 {excess} 个。请精简后重新检查。"
-        ).format(count=len(text), maximum=MAX_CONTEXT_CHARS, excess=len(text) - MAX_CONTEXT_CHARS), "context")
+        raise ValidationError(
+            "参考文本共 {count} 个字符，最多支持 {maximum} 个，超出 {excess} 个。请精简后重新检查。",
+            "context", count=len(text), maximum=MAX_CONTEXT_CHARS, excess=len(text) - MAX_CONTEXT_CHARS)
     for position, char in enumerate(text, start=1):
         if char == "\x00" or 0xD800 <= ord(char) <= 0xDFFF:
-            raise ValidationError(translate(
-                "参考文本第 {position} 个字符无法传输（{codepoint}），请删除或重新输入。"
-            ).format(position=position, codepoint=f"U+{ord(char):04X}"), "context")
+            raise ValidationError(
+                "参考文本第 {position} 个字符无法传输（{codepoint}），请删除或重新输入。",
+                "context", position=position, codepoint=f"U+{ord(char):04X}")
     return text
 
 
@@ -81,7 +81,7 @@ def validate_hotword_rows(payload: object) -> HotwordConfig:
         for field in ("text", "weight"):
             if value[field] is not None and not isinstance(value[field], (str, int, float, bool)):
                 raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows",
-                                      [{"row": index, "field": field, "message": "单元格必须为文本或数值。"}])
+                                      [{"row": index, "field": field, "message": localize("单元格必须为文本或数值。")}])
         invalid_fields = value.get("invalid_fields", [])
         if not isinstance(invalid_fields, list) or any(field not in ("text", "weight") for field in invalid_fields):
             raise ValidationError("热词表格格式无效，请重新填写或导入。", "hotword_rows")
@@ -131,7 +131,7 @@ def build_vocabulary(rows: Iterable[HotwordRow]) -> HotwordConfig:
                 or weight not in allowed_weights):
             row_errors.append(("weight", "权重必须为1至5的整数或50。"))
         if row_errors:
-            details.extend({"row": row_number, "field": name, "message": message}
+            details.extend({"row": row_number, "field": name, "message": localize(message)}
                            for name, message in row_errors)
             continue
         # 行级错误已排除非文本热词与非法权重，转换只保留已接受的值。
@@ -141,26 +141,24 @@ def build_vocabulary(rows: Iterable[HotwordRow]) -> HotwordConfig:
             continue
         vocabulary[text] = weight
         if len(vocabulary) > MAX_HOTWORDS:
-            details.append({"row": row_number, "field": "text", "message": "热词总数超过2000个，请减少。"})
+            details.append({"row": row_number, "field": "text", "message": localize("热词总数超过2000个，请减少。")})
         if weight == 50:
             super_count += 1
             if super_count > 50:
-                details.append({"row": row_number, "field": "weight", "message": "超级热词（权重50）最多50个。"})
+                details.append({"row": row_number, "field": "weight", "message": localize("超级热词（权重50）最多50个。")})
     for repeated in word_rows.values():
         if len(repeated) > 1:
             for number in repeated:
-                other = repeated[1] if number == repeated[0] else repeated[0]
-                details.append({"row": number, "field": "text", "message": translate(
-                    "与第{other_row}行热词重复，请删除重复行，仅保留一行。"
-                ).format(other_row=other)})
+                details.append({"row": number, "field": "text", "duplicate_group": repeated[0],
+                                "message": localize("存在重复数据，请保留至一行")})
     if details:
         details.sort(key=lambda issue: issue["row"])
-        raise ValidationError("请修改热词表格中标红的单元格后重新检查。", "hotword_rows", details)
+        raise ValidationError("热词表输入存在错误，请处理标红行数据。", "hotword_rows", details)
     if not vocabulary:
         raise ValidationError("请至少填写一个热词及其权重，或关闭热词增强。", "hotword_rows",
-                              [{"row": 1, "field": "text", "message": "热词必须为非空文本。"}])
+                              [{"row": 1, "field": "text", "message": localize("热词必须为非空文本。")}])
     if ignored_blank_rows:
-        warnings.append(translate("已忽略{count}个完全空白行。").format(count=ignored_blank_rows))
+        warnings.append(localize("已忽略{count}个完全空白行。", count=ignored_blank_rows))
     return {"vocabulary": vocabulary, "count": len(vocabulary), "warnings": warnings}
 
 
@@ -186,9 +184,8 @@ def validate_options(payload: Mapping[str, object], diarization: object) -> Reco
             raise ValidationError("设置发言人数前，请开启区分发言人。", "speaker_count")
         # bool 是 int 的子类，但不能把勾选状态当作人数。
         if type(speaker_count) is not int or not MIN_SPEAKERS <= speaker_count <= MAX_SPEAKERS:
-            raise ValidationError(translate(
-                "发言人数需为 {minimum}–{maximum} 的整数，或使用自动识别。"
-            ).format(minimum=MIN_SPEAKERS, maximum=MAX_SPEAKERS), "speaker_count")
+            raise ValidationError("发言人数需为 {minimum}–{maximum} 的整数，或使用自动识别。",
+                                  "speaker_count", minimum=MIN_SPEAKERS, maximum=MAX_SPEAKERS)
 
     return {
         "language_hints": [] if language is None else [language],

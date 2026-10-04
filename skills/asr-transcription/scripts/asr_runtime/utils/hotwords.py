@@ -11,8 +11,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
-from ..models import MAX_HOTWORD_ROWS, HotwordField, HotwordIssue, HotwordRow, HotwordValue
-from .i18n import translate
+from ..models import MAX_HOTWORD_ROWS, HotwordField, HotwordRow, HotwordValue, LocalizedText
+from .i18n import localize, translate
 
 
 # 本机工作簿解析资源上限，不是阿里云接口限制。
@@ -22,12 +22,12 @@ MAX_XLSX_ENTRIES = 200
 
 
 class HotwordFileError(ValueError):
-    """表示热词Excel文件结构错误及行级提示。"""
+    """表示热词Excel文件结构错误。"""
 
-    def __init__(self, message: str, details: list[HotwordIssue] | None = None) -> None:
-        """保存可展示的文件错误及可选行级修改提示。"""
+    def __init__(self, message: str) -> None:
+        """保留文件错误原文，并提供当前语言的异常说明。"""
         super().__init__(translate(message))
-        self.details = details or []
+        self.template = message
 
 
 def _check_xlsx_archive(stream: io.BytesIO) -> None:
@@ -41,7 +41,7 @@ def _check_xlsx_archive(stream: io.BytesIO) -> None:
             raise HotwordFileError("不支持加密的热词Excel，请保存为普通.xlsx文件。")
 
 
-def read_hotwords(content: bytes) -> tuple[list[HotwordRow], list[str]]:
+def read_hotwords(content: bytes) -> tuple[list[HotwordRow], list[LocalizedText]]:
     """从Excel字节读取固定两列原始值及工作簿提示。"""
     workbook = None
     try:
@@ -65,13 +65,10 @@ def read_hotwords(content: bytes) -> tuple[list[HotwordRow], list[str]]:
             raise HotwordFileError("热词工作表仅支持两列、最多10001行（含表头和空行）。")
         header = [sheet.cell(1, number).value for number in (1, 2)]
         if header[0] not in ("text", "热词") or header[1] not in ("weight", "权重"):
-            raise HotwordFileError("首行必须依次为text、weight，或中文列名热词、权重。",
-                                   [{"row": 1, "field": "header", "message": "请按模板修改表头。"}])
+            raise HotwordFileError("当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。")
         warnings = []
         if len(workbook.sheetnames) > 1:
-            warnings.append(translate("仅读取名为“热词”的工作表，其他工作表不参与此次转写。"))
-        if header != ["text", "weight"]:
-            warnings.append(translate("已按中文别名读取表头：热词对应text，权重对应weight。"))
+            warnings.append(localize("仅读取名为“热词”的工作表，其他工作表不参与此次转写。"))
         rows: list[HotwordRow] = []
         for cells in sheet.iter_rows(min_row=2, max_col=2):
             row: HotwordRow = {"text": None, "weight": None}

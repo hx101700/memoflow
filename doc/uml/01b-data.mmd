@@ -27,16 +27,30 @@ class EditorRow {
   +number key
   +number row
 }
+class LocalizedText {
+  <<TypedDict / TypeScript interface>>
+  +str zh
+  +str en
+}
 class HotwordIssue {
   <<TypedDict>>
   +int row
   +str field
-  +str message
+  +LocalizedText message
+  +int duplicate_group
+}
+class EditorIssue {
+  <<TypeScript interface>>
+  +number key
+  +number row
+  +str field
+  +LocalizedText message
+  +number duplicate_group
 }
 class HotwordImport {
   <<TypedDict>>
   +list~HotwordRow~ rows
-  +list~str~ warnings
+  +list~LocalizedText~ warnings
 }
 class Transcript {
   <<frozen dataclass>>
@@ -76,12 +90,18 @@ AudioSelection ..> AudioInfo : validate_audio读取原文件
 Transcript --> "0..*" Sentence : 保存原顺序及毫秒时间戳
 HotwordImport --> "0..*" HotwordRow : Excel读取后可继续编辑
 HotwordRow <|-- EditorRow : 前端表格状态
-HotwordRow ..> HotwordIssue : 确认并预览时按当前位置校验
+HotwordRow ..> HotwordIssue : 按当前数组位置校验
+HotwordIssue ..> LocalizedText : 一次返回双语
+HotwordIssue ..> EditorIssue : 前端关联稳定行键
+HotwordImport ..> LocalizedText : 读取提示
 Exception <|-- BailianFailure
 note for AudioSelection "Session.select_audio通过PathPicker登记原路径<br/>浏览器只提交audio_id；选择不复制录音<br/>执行前核对原文件，声道合并才创建处理文件"
 note for AudioInfo "scripts/asr_runtime/models.py<br/>utils/media.py::probe_audio创建媒体事实<br/>供规则判断与声道转换使用"
 note for HotwordRow "scripts/asr_runtime/models.py；运行时为普通dict<br/>HotwordValue为str、int、float、bool或None<br/>invalid_fields为可选的text／weight列表<br/>Excel保留原值与无效单元格标记；数据数组不携带行号<br/>前端独立保存稳定行键，显示与错误编号按数组位置"
 note for EditorRow "frontend/types.ts；model.ts<br/>key为组件稳定标识；row按当前数组位置1…N重排<br/>提交后端的数据只有HotwordRow，不传key或row"
+note for HotwordIssue "application/rules.py::build_vocabulary<br/>row是本次校验时的数组位置<br/>duplicate_group为可选的重复组标识，取本次组首行号<br/>重复组每行共享标识，其他格级错误没有此字段"
+note for EditorIssue "frontend/types.ts；useTranscription.ts<br/>接收时将row关联到稳定key<br/>key、row、field、duplicate_group为可选字段<br/>编辑／删除只移除当前格／行报错<br/>重复组剩余至少两行时保留红标，仅剩一行时清除重复提示<br/>修改权重只清该格错误；其他行按稳定键保留"
+note for LocalizedText "models.py／frontend/types.ts；utils/i18n.py::localize<br/>网页错误、格级说明和预览警告一次包含zh与en<br/>切换语言只选择文本，不重新请求、不清空状态"
 note for HotwordImport "application/inputs.py::import_hotwords<br/>utils/hotwords.py::read_hotwords读取内存bytes<br/>返回可编辑数组和读取说明，不生成热词upload_id<br/>内容规则由Session.validate在确认并预览时应用"
 note for Transcript "scripts/asr_runtime/models.py<br/>utils/results.py::load_transcript创建<br/>三个writer共享内容；Sentence可独立存在或共享"
 note for PreparedCommand "scripts/asr_runtime/utils/bailian.py<br/>prepare_command创建；run_recognition使用<br/>argv和env隐藏repr；env是可变字典，frozen限制属性重赋值"

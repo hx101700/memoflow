@@ -18,11 +18,12 @@ from ..models import (
     SessionPhase, SessionTerminal, TranscriptionSettings,
 )
 from ..utils.auth import read_api_key, write_api_key
+from ..utils.bailian import check_recognition_command, recognition_arguments
 from ..utils.path_picker import PathPicker
 from ..utils.environment import Runtime, SetupError
 from ..utils.files import FileError, check_file_unchanged, resolve_input
 from ..utils.hotwords import MAX_XLSX_BYTES
-from ..utils.job_files import job_directory, publish_config
+from ..utils.job_files import job_directory, publish_config, result_path
 from ..utils.session_files import session_directory, write_receipt
 from .inputs import import_hotwords, validate_audio
 from .rules import (
@@ -52,7 +53,7 @@ def output_directory(runtime: Runtime, value: object, field: str, approved: Path
         runtime.check_output_path(base)
         return base
     except SetupError as exc:
-        raise ValidationError(str(exc), field) from exc
+        raise ValidationError(exc.template, field, **exc.params) from exc
     except OSError as exc:
         raise ValidationError("此文件夹无法保存文件，请选择其他位置。", field) from exc
 
@@ -159,8 +160,9 @@ class Session:
             path = selected
             size = path.stat().st_size
         except (SetupError, OSError) as exc:
-            message = str(exc) if isinstance(exc, SetupError) else "无法读取指定文件，请检查路径和访问权限。"
-            raise ValidationError(message, "audio_id") from exc
+            message = exc.template if isinstance(exc, SetupError) else "无法读取指定文件，请检查路径和访问权限。"
+            params = exc.params if isinstance(exc, SetupError) else {}
+            raise ValidationError(message, "audio_id", **params) from exc
         with self._state_lock:
             self._require_editable()
             self.selected_audio = {"audio_id": uuid.uuid4().hex, "path": str(path), "name": path.name,
@@ -181,7 +183,7 @@ class Session:
         try:
             selected = self._picker.select(initial, picker_id, mode="directory")
         except SetupError as exc:
-            raise ValidationError(str(exc), f"{kind}_directory") from exc
+            raise ValidationError(exc.template, f"{kind}_directory", **exc.params) from exc
         if selected is None:
             return {"ok": True, "cancelled": True}
         path = selected  # 选择器已核对现有目录；这里只检查一次实际可写性。
@@ -191,7 +193,7 @@ class Session:
             with tempfile.TemporaryFile(dir=path):
                 pass
         except SetupError as exc:
-            raise ValidationError(str(exc), f"{kind}_directory") from exc
+            raise ValidationError(exc.template, f"{kind}_directory", **exc.params) from exc
         except OSError as exc:
             raise ValidationError("此文件夹无法保存文件，请选择其他位置。", f"{kind}_directory") from exc
         with self._state_lock:
@@ -206,7 +208,7 @@ class Session:
         try:
             self._picker.cancel(picker_id)
         except SetupError as exc:
-            raise ValidationError(str(exc), "directory") from exc
+            raise ValidationError(exc.template, "directory", **exc.params) from exc
         return {"ok": True}
 
     def api_key_display(self) -> dict[str, str | bool]:
@@ -216,8 +218,9 @@ class Session:
             try:
                 return {"ok": True, "value": read_api_key(self.runtime, required=False)}
             except (SetupError, OSError, UnicodeError) as exc:
-                message = str(exc) if isinstance(exc, SetupError) else "无法读取 .env 文件。"
-                raise ValidationError(message, "auth_mode") from exc
+                message = exc.template if isinstance(exc, SetupError) else "无法读取 .env 文件。"
+                params = exc.params if isinstance(exc, SetupError) else {}
+                raise ValidationError(message, "auth_mode", **params) from exc
 
     def save_api_key(self, value: object) -> dict[str, bool]:
         """保存当前页面填写的Key，返回完成状态。"""
@@ -226,8 +229,9 @@ class Session:
             try:
                 write_api_key(self.runtime, value, staging_directory=session_directory(self.runtime, self.session_id))
             except (SetupError, OSError, UnicodeError) as exc:
-                message = str(exc) if isinstance(exc, SetupError) else "无法保存 API Key，请检查工作目录的访问权限。"
-                raise ValidationError(message, "auth_mode") from exc
+                message = exc.template if isinstance(exc, SetupError) else "无法保存 API Key，请检查工作目录的访问权限。"
+                params = exc.params if isinstance(exc, SetupError) else {}
+                raise ValidationError(message, "auth_mode", **params) from exc
         return {"ok": True}
 
     def description(self) -> dict[str, object]:
@@ -279,7 +283,7 @@ class Session:
                 result = import_hotwords(content.getvalue())
             with self._state_lock:
                 self._require_editable()
-            return {"ok": True, "name": name, "size_bytes": size, **result}
+            return {"ok": True, "name": name, **result}
         finally:
             with self._state_lock:
                 self._receiving_hotwords = False
@@ -400,7 +404,7 @@ class Session:
             except FileError as exc:
                 self.draft = None
                 self._phase = "editing"
-                raise ValidationError(str(exc), "audio_id") from exc
+                raise ValidationError(exc.template, "audio_id") from exc
             self._require_open()
             job_id = uuid.uuid4().hex
             config: JobConfig = {
@@ -410,9 +414,15 @@ class Session:
                 "status": "CONFIGURED", "execution_authorized": True,
                 "confirmed_at": datetime.fromtimestamp(self._clock(), timezone.utc).isoformat(),
             }
+            directory = job_directory(self.runtime, job_id)
+            source = directory / "execution/mono.flac" if audio["requires_mono"] else Path(audio["path"])
+            try:
+                check_recognition_command(self.runtime, recognition_arguments(config, source, result_path(config)))
+            except SetupError as exc:
+                raise ValidationError(exc.template, "form", **exc.params) from exc
             receipt: ConfirmationReceipt = {
                 "ok": True, "session_id": self.session_id, "job_id": job_id,
-                "config_path": str(job_directory(self.runtime, job_id) / "config.json"),
+                "config_path": str(directory / "config.json"),
                 "auth_mode": config["auth_mode"], "json_directory": config["json_directory"],
                 "document_directory": config["document_directory"], "execution_started": False,
             }

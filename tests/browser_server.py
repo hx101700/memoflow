@@ -28,7 +28,8 @@ def main() -> None:
     sheets = {
         "invalid.xlsx": [("wrong", "weight"), ("Kubernetes", 4)],
         "invalid-rows.xlsx": [("text", "weight"), ("Kubernetes", 4), ("MemoFlow", 9), ("Kubernetes", 5)],
-        "paged.xlsx": [("text", "weight"), *[(f"Term{number}", 4) for number in range(60)], ("LastTerm", 8)],
+        "scroll.xlsx": [("text", "weight"), *[(f"Term{number}", 4) for number in range(60)], ("LastTerm", 8)],
+        "limit.xlsx": [("text", "weight"), *[(f"Term{number}", 4) for number in range(2000)]],
     }
     for name, rows in sheets.items():
         workbook = Workbook()

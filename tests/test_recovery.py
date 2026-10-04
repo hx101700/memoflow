@@ -22,7 +22,7 @@ DEAD_PID = 900001
 
 class RecoveryTests(WebFixture):
     def expired_session(self):
-        """创建有明确归属的过期编辑会话和合成上传。"""
+        """创建有明确归属的过期编辑会话，并选择合成录音原文件。"""
         session = Session(self.runtime, clock=lambda: 0.0)
         payload = self.payload_for(session)
         write_connection(self.runtime, session.session_id, 12345, session.token, session.deadline)
@@ -56,7 +56,6 @@ class RecoveryTests(WebFixture):
         self.assertEqual(report["warnings"], [])
         self.assertGreaterEqual(report["removed_items"], 4)
         self.assertFalse(directory.exists())
-        self.assertTrue(self.audio.exists())
         self.assertTrue(self.audio.exists())
         self.assertIn("synthetic-formal-key", formal_key.read_text(encoding="utf-8"))
         self.assertEqual(self.recover(), {"removed_items": 0, "warnings": []})

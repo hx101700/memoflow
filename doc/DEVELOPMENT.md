@@ -64,7 +64,7 @@ Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端�
 | `application/transcription.py` | 一次执行、状态查询和重新导出 |
 | `application/delivery.py` | 三种 writer 的顺序调用与交付汇总 |
 | `utils/environment.py` / `auth.py` | Runtime、隔离进程环境和运行凭据 |
-| `utils/installation.py` | 固定来源测速、pip 下载与本机安装、日志与子进程回收 |
+| `utils/installation.py` | Python/npm 固定来源测速、安装进度与结构化输出、子进程回收 |
 | `utils/bailian.py` | 公开 CLI 参数映射、BL 进程、登录链接转交和脱敏错误 |
 | `utils/files.py` / `job_files.py` / `session_files.py` | 文件摘要与原子替换、任务协议、会话连接与交接回执 |
 | `utils/hotwords.py` / `media.py` | Excel 导入/模板、媒体探测和单声道副本 |
@@ -72,7 +72,7 @@ Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端�
 | `utils/path_picker.py` / `_path_dialog.py` | 原生文件/目录窗口、共享取消与子进程回收 |
 | `models.py` / `utils/i18n.py` | 共享类型、请求范围的本机消息语言 |
 | `frontend/App.vue` / `components/` | 两步页面与 Element Plus 输入、表格、预览、结束提示 |
-| `frontend/useTranscription.ts` / `model.ts` | 页面用例编排、纯状态和输入版本 |
+| `frontend/useTranscription.ts` / `model.ts` | 页面用例编排、纯状态和操作权限 |
 | `frontend/api.ts` / `types.ts` | 本机 HTTP/事件传输与协议类型 |
 | `frontend/preferences.ts` / `i18n.ts` | 语言、外观偏好与文案 |
 
@@ -89,7 +89,7 @@ Session、PathPicker 持有实际生命周期；无状态操作使用模块函�
 
 预览有“复制给 Codex”按钮，复制明确开始请求及 `session_id`。Skill 必须从当前用户确认消息读取编号；仅“继续”不能选择会话，不从启动回执、历史或目录代替用户选择。会话编号是定位信息，保护请求的令牌是另一数据。
 
-`confirm --session ID` 定位私有连接信息并调用受保护的本机 HTTP。Session 锁内检查截止时间、预览状态和版本，核对音频 size/mtime，生成任务编号，先保存候选回执，再写配置及摘要，最后原子发布 config.json 作为完成标记。读取回执时，只有对应配置已发布才视为交接成功；成功后配置不可修改，重复确认读取同一份回执。CLI 先读持久回执，因此响应丢失、网页服务已经结束时仍可恢复原编号。
+`confirm --session ID` 定位私有连接信息并调用受保护的本机 HTTP。Session 锁内检查截止时间、预览状态和版本，核对音频 size/mtime，再按本次任务编号、音频及结果路径检查完整 Windows 命令长度。通过后先保存候选回执，再写配置及摘要，最后原子发布 config.json 作为完成标记。长度超限时保留预览供返回修改，不创建任务文件。读取回执时，只有对应配置已发布才视为交接成功；成功后配置不可修改，重复确认读取同一份回执。CLI 先读持久回执，因此响应丢失、网页服务已经结束时仍可恢复原编号。
 
 会话有效期为从创建起固定两小时，使用一次计时器及操作时截止时间检查。到期与交接共用状态保护，只有一个终态。没有活动上报、心跳、逐次草稿保存或云端进度轮询。页面通过单向事件连接收到交接、到期或取消结果，呈现结束提示，由用户关闭标签页。
 
@@ -124,27 +124,31 @@ Session、PathPicker 持有实际生命周期；无状态操作使用模块函�
 | 选择音频 | 系统窗口确认普通文件并返回规范路径，登记 audio_id | 原文件引用与页面展示 |
 | 导入热词 | 有界接收 Excel 字节，在内存读取工作表 | 热词数据数组 |
 | 预览 | 选项与增强规则、音频探测和 SHA、输出根目录 | 内存预览快照与版本 |
-| 交接 | 预览就绪、截止时间、音频 size/mtime | 不可变授权配置 |
+| 交接 | 预览就绪、截止时间、音频 size/mtime、实际 Windows 命令长度 | 不可变授权配置 |
 | 执行 | 配置协议/摘要、音频完整摘要、当前凭据 | 本次 BL 命令 |
 | 重导 | 已保存成功记录与原始 JSON 摘要 | 固定任务目录的三种文件 |
 
-热词从 Excel 去除表头、忽略完全空白行，保留无效单元格及原值供修正。网页行序号按当前数组从 1 连续编号，删除后重排，与用于组件复用的稳定键分开；错误定位使用当前数据位置。分页不改变编号含义。
+热词从 Excel 去除表头、忽略完全空白行，保留无效单元格及原值供修正。网页行序号按当前数组从 1 连续编号，删除后重排。后端错误的行号在接收时绑定组件稳定键；后续删行时，提示随原词条保留。表格最大高度为 420px，更多行在组件内滚动，表头保持可见。
 
 Excel 使用 BytesIO 在内存读取并填充数据数组，文件不可读、表头或结构不符时提示导入问题。热词与上下文内容仅在点击“确认并预览”后通过 `/api/validate` 校验：热词调用 `validate_hotword_rows()` → `build_vocabulary()`，上下文调用 `validate_context()`。编辑、导入成功、失焦和语言切换均不触发内容校验。相同文本的重复行与权重问题在最终检查后定位标红；输入原值保留供修改。
 
-上下文按 400 个 Unicode 字符及可传输字符检查，错误指出具体长度或字符位置并保留原文；本机不推断其是否与录音语义相关。热词与上下文可同时使用。Excel 只是导入来源，执行消费确认快照的 vocabulary。
+检查期间保留表单及摘要，只暂时禁用输入、导入和选择操作；成功后展示这次输入的预览，失败后恢复编辑。主表单不维护额外修订计数，也不因检查期间的变动自动请求返回编辑。真正发出下一次 `/api/validate` 前替换旧词表诊断，保留数据、稳定行键和导入记录；新响应显示当次结果。Key 异步读取仍保留独立版本，用于丢弃认证方式切换后的迟到响应。
+
+编辑单元格只清除该格已过时的诊断。重复错误带本次检查的 `duplicate_group`；修改词语或删行后，组内仍有两条以上未改词语时保留红标，剩一条才移除重复提示。该处理维护已有检查结果，不在前端重新实现热词规则；新内容仍在下次预览时检查。导入失败保留原表格和原有行错误。
+
+上下文按 400 个 Unicode 字符及可传输字符检查，错误指出具体长度或字符位置并保留原文；本机不推断其是否与录音语义相关。热词与上下文可同时使用，关闭对应开关清空该区域的内容和提示。API Key 的显示、保存与认证选择独立。Excel 只是导入来源，执行消费确认快照的 vocabulary。
 
 输出根由默认位置或本次原生目录窗口批准；选择试写、预览和实际生成分别在各自写入边界复用 `check_output_path()`。窗口起点不可用时从工作目录打开，取消保留原路径。多声道且启用发言人区分时，按预览提示创建单声道 FLAC，保留原文件与采样率，检查新副本事实和上传大小，失败停止。
 
 ## 认证与执行
 
-API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输入；专用受保护请求加载/保存私有 `.env`，配置只记录认证方式。预览前按需保存，执行时读取当前值。保存复用 python-dotenv，在会话目录的 .env 副本完成修改后替换正式 .env，使中断残留具有明确归属。Key 不进入任务配置、日志、聊天或浏览器持久存储。
+API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输入；专用受保护请求加载/保存私有 `.env`，配置只记录认证方式。网页可以单独保存 Key，预览前按需保存未提交的修改，执行时读取当前值。保存复用 python-dotenv，在会话目录的 .env 副本完成修改后替换正式 .env，使中断残留具有明确归属。Key 不进入任务配置、日志、聊天或浏览器持久存储。
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
 登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。固定 BL 2.1.0 的 cmd/start 会拆开 URL 中的 `&`，因此只在 console 登录预加载 `console-browser.cjs`，转交完整 URL，由 Python 系统 URL 处理器打开一次。BL 包未修改，回调和凭据由 BL 管理；BL 升级时须重新核对是否可移除此适配。
 
-`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。Windows 参数长度检查和运行凭据读取各执行一次；来源见 [model.md](../skills/asr-transcription/references/model.md)。
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.1.0 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
 `transcribe --job ID` 读取交接授权，核对协议与当前模型，再独占创建 execution 目录。一次任务只有一次尝试，准备失败也保留占用；重复调用读取既有状态，不自动重试。它约束本地尝试次数，不是云端恰好一次保证。启动后 Codex 持续等待同一进程，直到文档交付或明确失败。
 
@@ -187,9 +191,11 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 ## 界面和构建
 
-页面使用 Vue 3、TypeScript、Element Plus。优先复用公开 props、插槽和默认交互；卡片、输入、表格、分页、摘要、按钮、结果及图标由组件库承担。CSS 负责布局、响应式和有限主题差异，避免复制组件交互。
+页面使用 Vue 3、TypeScript、Element Plus。优先复用公开 props、插槽和默认交互；卡片、输入、表格、滚动、摘要、按钮、结果及图标由组件库承担。CSS 负责布局、响应式和有限主题差异，避免复制组件交互。
 
-偏好只保存当前来源下的界面语言与主题；随机端口变化时不保证跨会话继承。界面切换不改变音频语言、地域或输出文档格式。HTTP 请求携带界面语言，后端用请求范围语言上下文返回已登记消息。首页设置 HttpOnly、SameSiteStrict Cookie；URL 和前端状态不持有连接令牌。
+偏好只保存当前来源下的界面语言与主题；随机端口变化时不保证跨会话继承。界面切换不改变表格、滚动位置、预览版本、音频语言、地域或输出文档格式。网页错误及警告使用 `LocalizedText={zh,en}`，动态参数在后端一次生成两种文字，页面按当前语言呈现，无需重发请求或重新校验。HTTP 的界面语言只用于原生窗口、模板示例等当次呈现；CLI 异常仍为可打印文本。首页设置 HttpOnly、SameSiteStrict Cookie；URL 和前端状态不持有连接令牌。
+
+音频使用大块 `ElButton` 打开原生文件窗口，规格说明位于框内；选中反馈使用绿色文件图标与 success 标签，选择框保持中性背景；等待使用原生 v-loading 遮罩。Excel 使用 `ElUpload` 的按钮入口在内存导入，与下载模板并排。热词编辑使用 `ElTable` 与 `ElInput`，表尾添加入口使用公开的 `append` 插槽。错误标红通过 `row-class-name`；组件原有聚焦、禁用、滚动和主题行为保持一致。
 
 Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求 `^20.19.0 || >=22.12.0`，与 BL 运行所需 Node 18.17+ 分开维护。
 
@@ -204,8 +210,22 @@ npm run test:browser
 
 `build:login` 从仓库 `scripts/console-browser.cts` 生成固定适配产物。浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-安装器按锁定版本准备 Python 依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`；npm 失败停止。安装恢复不扩展为云端转写重试。
+安装器按锁定版本准备 Python 依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`。
+
+首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
+
+`run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
+
+Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机有限命令 `run_process()` 和安装命令 `run_installer()` 持有本次 `Popen`，在超时、中断或异常退出时共用 `stop_process_tree()` 结束其进程树；正常完成不触发停止。选择窗口只依赖标准库与 tkinter，直接使用 `sys.base_prefix/python.exe`，使取消动作对应实际窗口进程。停止范围限于本次创建的进程，不枚举其他 Python 或浏览器进程；BL 登录和识别沿用各自的生命周期。
 
 `scripts/build_zip.py` 按固定逐文件映射生成 ZIP：Skill 资源直接作为归档根，加上仓库根最新版 README.md 和 README.en.md。README 字节原样入包，仓库资料用完整 GitHub 链接，语言切换与 LICENSE 用包内链接。不维护第二份 README。排除开发 doc、AGENTS、UML、测试、Vue/TS 源码、构建工具、依赖环境、凭据和用户数据。
 
 开发在 dev，master 用于验收里程碑。项目版本仅在通过验收并发布 master 时改变；当前及经授权更新的预览均沿用 v0.1.0。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
+
+界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
+
+当前灰阶参考 [OpenAI Apps SDK UI 原色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-primitive.css)与[语义色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-semantic.css)，以及 [Codex 公开外观示例](https://learn.chatgpt.com/docs/reference/settings#appearance)。页面、卡片、输入区使用中性灰，通过 Element Plus 背景、文本与边框变量映射；蓝色链接、绿色成功提示和红色错误保留明确语义。此处只参考公开色板，未引入 OpenAI 的 React 组件、字体或图标资源。
+
+编辑视图在宽度至少 1100px 时显示右侧 `SettingsSummary.vue`，通过 CSS Grid 分列、sticky 跟随，并按可用高度允许摘要内部滚动。摘要只读取当前表单中的文件名、大小、识别选项、增强计数和认证选择；不读取 Key、不请求校验或产生预览版本。较窄窗口保持单列；正式预览仍由 ReviewPanel 独立展示，遵循原来的确认交接协议。
+
+全局提示与字段卡片由同一个主列控制宽度。加载失败或事件连接中断时，前端进入 unavailable，统一显示一个错误结果页并隐藏填写引导、步骤和操作栏。cancelled／expired／handed_off保持独立终态说明。

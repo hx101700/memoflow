@@ -98,8 +98,8 @@ class SessionControlTests(WebFixture):
         self.assertEqual(self.session.expire()["state"], "handed_off")
         self.assertTrue(Path(config["audio"]["path"]).is_file())
 
-    def test_fixed_expiry_ends_page_and_cleans_only_unsubmitted_copies(self):
-        """验证操作不延长两小时有效期，到期清理副本并保留源文件和凭据。"""
+    def test_fixed_expiry_ends_page_and_preserves_original_inputs(self):
+        """验证操作不延长两小时有效期，到期结束页面并保留原文件和凭据。"""
         key = self.runtime.path(".env")
         key.write_text("DASHSCOPE_API_KEY=synthetic-key", encoding="utf-8")
         self.ready()
@@ -114,7 +114,6 @@ class SessionControlTests(WebFixture):
         self.thread.join(timeout=5)
         self.assertTrue(self.audio.exists())
         self.assertFalse(self.runtime.path(".state/jobs").exists())
-        self.assertTrue(self.audio.exists())
         self.assertTrue(key.exists())
 
     def test_cancel_sends_terminal_event_without_creating_a_job(self):

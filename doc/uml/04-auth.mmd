@@ -18,7 +18,7 @@ alt 使用指定API Key
     S-->>W: 仅向本机页面返回显示值
     W->>V: ViewEffects.setApiKey()调用setValue()
     U->>V: 填写或修改密码输入框
-    V-->>W: changed事件；actions.keyChanged()作废预览
+    V-->>W: changed事件；actions.keyChanged()记录凭据修改
     alt 单独保存API Key
         U->>V: 点击保存API Key
         V-->>W: save事件，调用actions.saveApiKey()
@@ -39,17 +39,24 @@ alt 使用指定API Key
     end
     alt 单独保存API Key
         W-->>U: 本机保存成功提示，不创建任务
+        U->>C: 告知凭据配置完成
+        C->>P: cancel --session 本次编辑会话ID
+        P->>S: 受保护POST /api/cancel
+        S-->>W: ended：cancelled，结束编辑会话
     else 确认并预览
         W->>S: POST /api/validate，凭据字段仅含auth_mode
+        Note over U,S: 按图03完成预览及用户明确交接，才产生job_id
     end
     Note over V,F: Key只驻留KeyDisplay局部ref和本机凭据文件<br/>切换方式、进入预览或组件关闭时清空输入<br/>页面状态只记录凭据读取/修改状态；持久偏好只含语言与主题
-    C->>P: 已交接任务调用transcribe --job ID
-    P->>K: prepare_command()，由转写用例调用
-    K->>F: auth.bailian_environment()读取执行当时的Key
-    F-->>K: 运行时Key
-    K-->>P: PreparedCommand(argv, env)
-    P->>K: run_recognition(runtime, command, private_values)
-    K->>B: Popen(argv, env含DASHSCOPE_API_KEY)
+    opt 已取得成功交接的任务
+        C->>P: transcribe --job ID
+        P->>K: prepare_command()，由转写用例调用
+        K->>F: auth.bailian_environment()读取执行当时的Key
+        F-->>K: 运行时Key
+        K-->>P: PreparedCommand(argv, env)
+        P->>K: run_recognition(runtime, command, private_values)
+        K->>B: Popen(argv, env含DASHSCOPE_API_KEY)
+    end
 else 使用控制台配置
     Note over C,P: 状态不明时按需console-status；已知配置可直接复用<br/>首次配置或主动重新登录时调用login
     opt 模型Key被BL明确拒绝，用户选择修复控制台配置
@@ -76,12 +83,14 @@ else 使用控制台配置
         K-->>P: configured、console_configured
         P-->>C: 登录及本地状态回执
     end
-    C->>P: 已交接任务调用transcribe --job ID
-    P->>K: prepare_command()构造工作目录的隔离环境
-    K-->>P: PreparedCommand(argv, env)
-    P->>K: run_recognition(runtime, command, private_values)
-    K->>B: Popen(argv, BAILIAN_CONFIG_DIR=WORKSPACE/.asr-transcription/.state/bailian)
-    B->>F: 使用当前工作目录的BL模型凭据
+    opt 已取得成功交接的任务且模型凭据已配置
+        C->>P: transcribe --job ID
+        P->>K: prepare_command()构造工作目录的隔离环境
+        K-->>P: PreparedCommand(argv, env)
+        P->>K: run_recognition(runtime, command, private_values)
+        K->>B: Popen(argv, BAILIAN_CONFIG_DIR=WORKSPACE/.asr-transcription/.state/bailian)
+        B->>F: 使用当前工作目录的BL模型凭据
+    end
 end
 Note over K,A: Python转交BL输出的官方URL<br/>授权会话、回调及凭据保存由BL负责
 Note over U,C: 授权只使用系统默认浏览器<br/>Codex不另开授权页<br/>也不通过computer-use检查页面

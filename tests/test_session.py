@@ -46,7 +46,7 @@ class SessionTests(WebFixture):
         """验证预览生成内存快照和用户核对信息。"""
         result = self.session.validate(self.payload)
         self.assertEqual(result["summary"]["audio"]["channels"], 2)
-        self.assertTrue(any("单声道" in warning for warning in result["summary"]["warnings"]))
+        self.assertTrue(any("单声道" in warning["zh"] for warning in result["summary"]["warnings"]))
         self.assertFalse(self.runtime.path(".state/jobs").exists())
         self.assertFalse(self.runtime.output_root.exists())
 

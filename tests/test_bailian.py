@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 from asr_runtime import BAILIAN_VERSION, MODEL
 from asr_runtime.utils.auth import read_api_key
-from asr_runtime.utils.bailian import BailianFailure, PreparedCommand, check_command_length, console_status, explain_cli_error, login_console, prepare_command, redact_message, run_recognition
+from asr_runtime.utils.bailian import BailianFailure, PreparedCommand, check_command_length, check_recognition_command, console_status, explain_cli_error, login_console, prepare_command, redact_message, run_recognition
 from asr_runtime.utils.environment import SetupError, find_node
 from asr_runtime.utils.bailian import bl_command
 from tests.support import RuntimeTestCase, CONTRACT_BL_ENTRY, contract_runtime
@@ -116,6 +116,17 @@ class BailianTests(RuntimeTestCase):
         check_command_length(["a" * 32766])
         with self.assertRaisesRegex(SetupError, "32768"):
             check_command_length(["a" * 32767])
+
+    def test_handoff_length_check_matches_execution_argv_without_credentials_or_installation(self):
+        """验证交接检查与执行共用完整参数，交接阶段只检查命令长度。"""
+        with patch("asr_runtime.utils.bailian.installed_bl_version", side_effect=AssertionError("不能查询安装")), \
+                patch("asr_runtime.utils.auth.read_api_key", side_effect=AssertionError("不能读取凭据")), \
+                patch("asr_runtime.utils.bailian.check_command_length", wraps=check_command_length) as check:
+            check_recognition_command(self.runtime, self.arguments)
+        checked_argv = check.call_args.args[0]
+        prepared = prepare_command(self.runtime, self.arguments, "api_key")
+        self.assertEqual(tuple(checked_argv), prepared.argv)
+        self.popen.assert_not_called()
 
     def test_command_length_counts_surrogate_pairs(self):
         """验证命令长度按UTF-16计算代理对。"""

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ElAlert, ElCard, ElDescriptions, ElDescriptionsItem, ElDivider, ElTable, ElTableColumn } from "element-plus";
-import { durationText, fileSize, languageName, type Translate } from "../i18n";
+import { durationText, fileSize, languageName, localize, type Translate } from "../i18n";
 import type { Language, Model } from "../types";
 
 const props = defineProps<{ model: Model; language: Language; t: Translate }>();
@@ -34,14 +34,14 @@ const rows = computed<[string, string][]>(() => {
   <ElCard v-if="model.preview" id="review" class="review-panel" shadow="never" header-class="panel-title" tabindex="-1" :aria-label="t('review')">
     <template #header><h2>{{ t('review') }}</h2></template>
     <ElDescriptions border :column="1" :label-width="148">
-      <ElDescriptionsItem v-for="[label, value] in rows" :key="label" :label="label">{{ value }}</ElDescriptionsItem>
+      <ElDescriptionsItem v-for="([label, value], index) in rows" :key="index" :label="label">{{ value }}</ElDescriptionsItem>
     </ElDescriptions>
-    <ElAlert v-for="warning in model.preview.summary.warnings" :key="warning" :title="warning" type="warning" :closable="false" show-icon class="review-warning" />
+    <ElAlert v-for="(warning, index) in model.preview.summary.warnings" :key="index" :title="localize(warning, language)" type="warning" :closable="false" show-icon class="review-warning" />
     <ElDivider content-position="left">{{ t('hotwordsLabel') }}</ElDivider>
-    <ElTable v-if="model.preview.configuration.hotword_rows.length" :data="model.preview.configuration.hotword_rows" border max-height="360" :aria-label="t('hotwordFile')">
-      <ElTableColumn type="index" :label="t('rowNumber')" width="70" />
-      <ElTableColumn prop="text" :label="t('textColumn')" />
-      <ElTableColumn prop="weight" :label="t('weightColumn')" width="110" />
+    <ElTable v-if="model.preview.configuration.hotword_rows.length" :data="model.preview.configuration.hotword_rows" :header-cell-style="{ fontWeight: '600' }" border max-height="360" class="hotword-table" :aria-label="t('hotwordFile')">
+      <ElTableColumn type="index" :label="t('rowNumber')" width="70" align="center" />
+      <ElTableColumn prop="text" :label="t('textColumn')" header-align="center" />
+      <ElTableColumn prop="weight" :label="t('weightColumn')" width="110" align="center" />
     </ElTable>
     <p v-else class="subtle">{{ t('disabled') }}</p>
     <ElDivider content-position="left">{{ t('contextLabel') }}</ElDivider>

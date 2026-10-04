@@ -5,7 +5,7 @@ from string import Formatter
 from threading import Barrier
 import unittest
 
-from asr_runtime.utils.i18n import _ENGLISH, language_scope, translate
+from asr_runtime.utils.i18n import _ENGLISH, language_scope, localize, translate
 from asr_runtime.application.rules import ValidationError, build_vocabulary
 from asr_runtime.models import HotwordRow
 
@@ -58,24 +58,36 @@ class LocalizationTests(unittest.TestCase):
                     {name for _, name, _, _ in formatter.parse(english) if name},
                 )
         with language_scope("en"):
-            text = translate("已忽略{count}个完全空白行。").format(count=2)
+            text = translate("已忽略{count}个完全空白行。", count=2)
         self.assertEqual(text, "Empty rows skipped: 2.")
 
+    def test_localized_messages_keep_both_languages_and_raw_values(self) -> None:
+        """验证双语结果与当前语言无关，模板参数中的花括号保持原文。"""
+        template = "资源路径指向Skill目录外：{relative}"
+        path = "录音/{original}.wav"
+        expected = {"zh": f"资源路径指向Skill目录外：{path}",
+                    "en": f"The resource path points outside the Skill installation: {path}"}
+        for language in ("zh-CN", "en"):
+            with language_scope(language):
+                self.assertEqual(localize(template, relative=path), expected)
+                self.assertEqual(localize(path), {"zh": path, "en": path})
+
     def test_hotword_notices_translate_locations_and_keep_user_terms(self) -> None:
-        """验证行号提示使用英文，用户词条保持原文。"""
+        """验证重复错误同时携带双语与关联行号，用户词条保持原文。"""
         rows = [HotwordRow(text="产品术语", weight=4), HotwordRow(text="产品术语", weight=4),
                 HotwordRow(text=None, weight=None)]
         with language_scope("en"), self.assertRaises(ValidationError) as caught:
             build_vocabulary(rows)
         self.assertEqual([issue["row"] for issue in caught.exception.details], [1, 2])
-        self.assertIn("row 2", caught.exception.details[0]["message"])
-        self.assertIn("row 1", caught.exception.details[1]["message"])
-        self.assertTrue(all("keep one entry" in issue["message"] for issue in caught.exception.details))
+        self.assertTrue(all(issue["duplicate_group"] == 1 for issue in caught.exception.details))
+        self.assertTrue(all(issue["message"] == {
+            "zh": "存在重复数据，请保留至一行", "en": "Duplicate entries. Keep only one row.",
+        } for issue in caught.exception.details))
         with language_scope("en"):
             result = build_vocabulary([rows[0], rows[2]])
         self.assertEqual(result["vocabulary"], {"产品术语": 4})
         self.assertEqual(result["warnings"], [
-            "Empty rows skipped: 1.",
+            {"zh": "已忽略1个完全空白行。", "en": "Empty rows skipped: 1."},
         ])
         with language_scope("en"), self.assertRaises(ValidationError) as caught:
             build_vocabulary([rows[0], HotwordRow(text="产品术语", weight=5)])

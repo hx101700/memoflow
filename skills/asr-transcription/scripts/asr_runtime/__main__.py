@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="asr-transcription录音转写工具；转写须明确授权上传。")
-    parser.add_argument("--workspace", type=Path, required=True, help="保存录音副本、运行环境与结果的现有工作文件夹")
+    parser.add_argument("--workspace", type=Path, required=True, help="保存运行环境与结果的现有工作文件夹")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("doctor", "bootstrap", "api-key-status", "console-status", "login"):
         commands.add_parser(name)

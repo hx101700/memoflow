@@ -118,7 +118,11 @@ class WebServerTests(WebFixture):
         cookie = headers["Set-Cookie"].split(";", 1)[0]
         for endpoint in ("/api/confirm", "/api/cancel"):
             with self.subTest(endpoint=endpoint):
-                self.assertEqual(self.request("POST", endpoint, {}, token=False, headers={"Cookie": cookie})[0], 403)
+                # 来源检查先于正文读取；直接等待拒绝回执，避免继续向已关闭的连接发送正文。
+                status, _, _ = self.request("POST", endpoint, token=False, headers={
+                    "Cookie": cookie, "Content-Type": "application/json", "Content-Length": "2",
+                })
+                self.assertEqual(status, 403)
         self.assertFalse(self.runtime.path(".state/jobs").exists())
 
     def test_native_audio_selection_and_hotword_template(self):
@@ -151,7 +155,7 @@ class WebServerTests(WebFixture):
                                    headers={"Content-Type": "application/octet-stream",
                                             "X-File-Name": quote("../escape.xlsx")})
         self.assertEqual(status, 422)
-        self.assertIn("所选文件名或格式不符合要求", json.loads(body)["error"])
+        self.assertIn("所选文件名或格式不符合要求", json.loads(body)["error"]["zh"])
         self.assertFalse(self.runtime.path("escape.xlsx").exists())
 
     def test_missing_api_key_returns_empty_editable_value(self):
@@ -211,36 +215,39 @@ class WebServerTests(WebFixture):
         self.assertEqual(self.request("POST", "/api/edit", {"validation_id": preview["validation_id"]})[0], 200)
         self.assertEqual(self.request("POST", "/api/save-api-key", {"value": "synthetic-key"})[0], 200)
 
-    def test_request_language_applies_to_errors_and_resets_for_chinese(self) -> None:
-        """验证请求语言覆盖协议与字段错误，并保持默认中文。"""
+    def test_errors_include_both_languages_independently_of_request_language(self) -> None:
+        """验证一次错误响应提供完整双语，无需切换语言后再次校验。"""
         english = {"Accept-Language": "en-US"}
         status, _, body = self.request("GET", "/api/session", token=False, headers=english)
         self.assertEqual(status, 403)
-        self.assertIn("Reopen the local page from Codex", json.loads(body)["error"])
+        self.assertIn("Reopen the local page from Codex", json.loads(body)["error"]["en"])
+        self.assertIn("重新打开", json.loads(body)["error"]["zh"])
         invalid = {**self.payload, "audio_id": "missing"}
         status, _, body = self.request("POST", "/api/validate", invalid, headers=english)
         self.assertEqual(status, 422)
-        self.assertEqual(json.loads(body)["error"], "Choose an audio file.")
+        expected = {"zh": "请选择音频文件。", "en": "Choose an audio file."}
+        self.assertEqual(json.loads(body)["error"], expected)
         for headers in (None, {"Accept-Language": "fr"}):
             with self.subTest(headers=headers):
                 status, _, body = self.request("POST", "/api/validate", invalid, headers=headers)
-                self.assertEqual(json.loads(body)["error"], "请选择音频文件。")
+                self.assertEqual(json.loads(body)["error"], expected)
 
-    def test_concurrent_http_languages_are_independent(self) -> None:
-        """验证并发HTTP请求使用各自的提示语言。"""
+    def test_concurrent_http_languages_return_the_same_bilingual_error(self) -> None:
+        """验证并发请求的双语响应一致。"""
         invalid = {**self.payload, "audio_id": "missing"}
 
-        def error_in(language: str) -> str:
-            """读取指定页面语言下的字段错误。"""
+        def error_in(language: str) -> dict[str, str]:
+            """读取指定请求语言下的双语字段错误。"""
             body = self.request("POST", "/api/validate", invalid,
                                 headers={"Accept-Language": language})[2]
-            return str(json.loads(body)["error"])
+            return json.loads(body)["error"]
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             english = pool.submit(error_in, "en")
             chinese = pool.submit(error_in, "zh-CN")
-            self.assertEqual(english.result(timeout=5), "Choose an audio file.")
-            self.assertEqual(chinese.result(timeout=5), "请选择音频文件。")
+            expected = {"zh": "请选择音频文件。", "en": "Choose an audio file."}
+            self.assertEqual(english.result(timeout=5), expected)
+            self.assertEqual(chinese.result(timeout=5), expected)
 
     def test_english_context_error_preserves_dynamic_limits(self) -> None:
         """验证上下文超限提示先翻译模板再填入实际数量。"""
@@ -250,9 +257,10 @@ class WebServerTests(WebFixture):
         self.assertEqual(status, 422)
         error = json.loads(body)
         self.assertEqual(error["field"], "context")
-        self.assertIn("401 characters", error["error"])
-        self.assertIn("400-character limit by 1", error["error"])
-        self.assertNotIn("词", error["error"])
+        self.assertIn("401 characters", error["error"]["en"])
+        self.assertIn("400-character limit by 1", error["error"]["en"])
+        self.assertIn("超出 1 个", error["error"]["zh"])
+        self.assertNotIn("词", error["error"]["en"])
 
     def test_english_preview_translates_audio_warnings_and_keeps_filename(self) -> None:
         """验证音频警告随页面语言显示，保留用户文件名。"""
@@ -264,12 +272,17 @@ class WebServerTests(WebFixture):
         summary = json.loads(body)["summary"]
         self.assertEqual(summary["audio"]["name"], self.audio.name)
         self.assertEqual(len(summary["warnings"]), 3)
-        self.assertIn("mono FLAC copy", summary["warnings"][0])
-        self.assertIn("longer than 2 hours", summary["warnings"][1])
-        self.assertIn("2 audio tracks", summary["warnings"][2])
+        self.assertIn("mono FLAC copy", summary["warnings"][0]["en"])
+        self.assertIn("单声道 FLAC 副本", summary["warnings"][0]["zh"])
+        self.assertIn("longer than 2 hours", summary["warnings"][1]["en"])
+        self.assertIn("2 audio tracks", summary["warnings"][2]["en"])
+        self.request("POST", "/api/preview-ready", {"validation_id": json.loads(body)["validation_id"]})
+        with patch("asr_runtime.application.inputs.probe_audio", side_effect=AssertionError("语言切换不重新校验")):
+            restored = json.loads(self.request("GET", "/api/session", headers={"Accept-Language": "zh-CN"})[2])
+        self.assertEqual(restored["preview"]["summary"]["warnings"], summary["warnings"])
 
-    def test_english_hotword_row_error_identifies_template_header(self) -> None:
-        """验证工作簿和行级错误都使用英文并保留行号。"""
+    def test_bad_hotword_header_returns_one_template_instruction(self) -> None:
+        """验证模板不匹配提供单一双语指引，不添加无法编辑的表头行错误。"""
         workbook = Workbook()
         workbook.active.append(["wrong", "header"])
         content = io.BytesIO()
@@ -281,10 +294,11 @@ class WebServerTests(WebFixture):
         self.assertEqual(status, 422)
         error = json.loads(body)
         self.assertEqual(error["field"], "hotword_rows")
-        self.assertIn("The first row must contain text and weight", error["error"])
-        self.assertEqual(error["details"][0], {
-            "row": 1, "field": "header", "message": "Use the column headers from the template.",
+        self.assertEqual(error["error"], {
+            "zh": "当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。",
+            "en": "This Excel file does not match the template. Download the template, fill it in, and upload it again.",
         })
+        self.assertEqual(error["details"], [])
 
     def test_hotword_import_returns_invalid_rows_for_inline_correction(self):
         """验证HTTP导入只提供原始行，整单预览才报告和复查词条问题。"""
@@ -310,6 +324,11 @@ class WebServerTests(WebFixture):
         self.assertEqual(error["field"], "hotword_rows")
         self.assertEqual([(item["row"], item["field"]) for item in error["details"]],
                          [(1, "text"), (2, "weight"), (3, "text")])
+        for index in (0, 2):
+            self.assertEqual(error["details"][index]["duplicate_group"], 1)
+            self.assertEqual(error["details"][index]["message"], {
+                "zh": "存在重复数据，请保留至一行", "en": "Duplicate entries. Keep only one row.",
+            })
         imported["rows"][1]["weight"] = "4"
         imported["rows"].pop(2)
         status, _, body = self.request("POST", "/api/validate", payload)
@@ -350,12 +369,35 @@ class WebServerTests(WebFixture):
         self.assertEqual(json.loads(body), {"ok": True, "value": ""})
         status, _, body = self.request("POST", "/api/save-api-key", {"value": ""}, headers=english)
         self.assertEqual(status, 422)
-        self.assertEqual(json.loads(body)["error"], "Enter your API key.")
+        self.assertEqual(json.loads(body)["error"], {"zh": "请输入 API Key。", "en": "Enter your API key."})
         secret = "synthetic secret-key"
         status, _, body = self.request("POST", "/api/save-api-key", {"value": secret}, headers=english)
         self.assertEqual(status, 422)
-        self.assertIn("spaces or line breaks", json.loads(body)["error"])
+        self.assertIn("spaces or line breaks", json.loads(body)["error"]["en"])
+        self.assertIn("空格或换行", json.loads(body)["error"]["zh"])
         self.assertNotIn(secret, body.decode("utf-8"))
+
+    def test_native_picker_and_file_errors_keep_both_languages(self) -> None:
+        """验证低层异常在英文请求中仍保留可切回中文的提示。"""
+        from asr_runtime.utils.environment import SetupError
+        from asr_runtime.utils.i18n import language_scope
+
+        with language_scope("en"):
+            error = SetupError("请选择普通文件，不能选择目录。")
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", side_effect=error):
+            status, _, body = self.request("POST", "/api/select-audio", {"picker_id": "invalid"},
+                                          headers={"Accept-Language": "en"})
+        self.assertEqual(status, 422)
+        self.assertEqual(json.loads(body)["error"], {
+            "zh": "请选择普通文件，不能选择目录。", "en": "Choose a file instead of a folder.",
+        })
+        self.audio.unlink()
+        status, _, body = self.request("POST", "/api/validate", self.payload, headers={"Accept-Language": "en"})
+        self.assertEqual(status, 422)
+        self.assertEqual(json.loads(body)["error"], {
+            "zh": "无法读取指定文件，请检查路径和访问权限。",
+            "en": "The file could not be read. Check its location and access permissions.",
+        })
 
     def test_english_template_keeps_schema_and_translates_example(self) -> None:
         """验证英文模板沿用现有热词结构并使用英文示例。"""

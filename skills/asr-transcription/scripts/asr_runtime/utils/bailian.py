@@ -50,15 +50,25 @@ def installed_bl_version(runtime: Runtime) -> str | None:
         raise SetupError("工作区BL包信息损坏，请检查安装目录。") from exc
 
 
-def bl_command(runtime: Runtime, arguments: list[str]) -> list[str]:
-    """核对工作区BL版本并构造Node启动参数。"""
-    if installed_bl_version(runtime) != BAILIAN_VERSION or not runtime.bl_entry.is_file():
-        raise SetupError(f"需要工作区BL {BAILIAN_VERSION}，请先运行bootstrap。")
+def _node_command(runtime: Runtime, arguments: list[str]) -> list[str]:
+    """组合Node入口、固定BL参数与登录开页适配。"""
     # --quiet是已核实的禁止命令结束后自动全局升级的路径；不猜造环境开关。
     command = [str(find_node())]
     if os.name == "nt" and arguments[:2] == ["auth", "login"] and "--console" in arguments:
         command.extend(["--require", str(runtime.resource("scripts/bailian/console-browser.cjs"))])
     return [*command, str(runtime.bl_entry), *arguments, "--quiet"]
+
+
+def bl_command(runtime: Runtime, arguments: list[str]) -> list[str]:
+    """核对工作区BL版本并构造Node启动参数。"""
+    if installed_bl_version(runtime) != BAILIAN_VERSION or not runtime.bl_entry.is_file():
+        raise SetupError(f"需要工作区BL {BAILIAN_VERSION}，请先运行bootstrap。")
+    return _node_command(runtime, arguments)
+
+
+def check_recognition_command(runtime: Runtime, arguments: list[str]) -> None:
+    """按实际Node入口检查待交接识别命令的Windows长度。"""
+    check_command_length(_node_command(runtime, arguments))
 
 
 def verify_bl_installation(runtime: Runtime) -> None:
@@ -124,8 +134,8 @@ def check_command_length(argv: list[str]) -> None:
     length = len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1
     if length > 32767:
         raise SetupError(
-            f"识别命令共{length}个UTF-16单元，超过Windows的32767上限。"
-            "请减少热词或缩短路径后重新配置；未截断热词、未启动BL。"
+            "识别命令共{length}个UTF-16单元，超过Windows的32767上限。"
+            "请减少热词或缩短路径后重新配置；未截断热词、未启动BL。", length=length,
         )
 
 

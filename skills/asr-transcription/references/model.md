@@ -34,7 +34,7 @@ API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Fil
 | 模型/地域 | qwen-audio-3.1-asr-flash-filetrans，首版北京[A01] |
 | 输入 | 单文件；模型<=2GB、<=12小时，任意采样率[A02] |
 | 容器 | aac/amr/avi/flac/flv/m4a/mkv/mov/mp3/mp4/mpeg/ogg/opus/wav/webm/wma/wmv；只处理音频，不提供视频编辑[A02] |
-| 临时上传 | 官方1GB，项目采用1,000,000,000字节阈值；限制实际上传副本，超限不压缩/切片重试[A06] |
+| 临时上传 | 官方1GB，项目采用1,000,000,000字节阈值；限制实际上传的原文件或声道合并文件，超限不压缩/切片重试[A06] |
 | 临时资源 | 有效48小时，与主账号/模型绑定；没有本流程可主动删除临时音频的公开入口，不能承诺立即清除[A06] |
 | 说话人 | 模型要求单声道，建议<=2小时；产品按用户要求默认开启，人数2–100为参考值，不保证真实人数[A03] |
 | 语言 | API可多语种，但当前BL --language只收单值；产品自动或一种语言[A03/A13] |
@@ -46,7 +46,7 @@ API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Fil
 
 Excel的5MB、20MiB解压、200个内部文件、10001行和两列是本地解析资源限制，集中在utils/hotwords.py，不冒称模型限额。模型输入规则集中在application/rules.py，界面从服务端取得显示限制。
 
-2026-10-04复核[A04]：热词和上下文规则保持上述来源。网页热词表的导入、手填和预览共用同一规则；权重文本只接受明确的`1`–`5`或`50`，Excel真实公式与普通文本分别处理。官方说明超过400字符的上下文会从末尾截断，本项目在本机提示用户精简后重查，避免静默丢失内容；不使用关键词规则判断上下文与录音的语义相关性。
+2026-10-04复核[A04]：热词和上下文规则保持上述来源。导入和手填的热词统一在“确认并预览”时校验；权重文本只接受明确的`1`–`5`或`50`，Excel真实公式与普通文本分别处理。官方说明超过400字符的上下文会从末尾截断，本项目在本机提示用户精简后重查，避免静默丢失内容；不使用关键词规则判断上下文与录音的语义相关性。
 
 同日核对[A05]原页面：`text`要求实际词语及上述长度，`weight`常用值为4；未列出禁止英文缩写的规则。仅小写字母和数字、长度不超过10的限制针对预编译词表`prefix`，不是热词内容。该SDK页面的通用权重表为1–5；本项目使用Qwen 3.1即时热词，权重50的支持以[A03/A04]中明确针对该模型的说明为准。
 
@@ -79,7 +79,9 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 热词由`json.dumps`编码为一个JSON参数，再由BL的parseInstantVocabulary通过JSON.parse还原。bailian-cli-core/dist/index.mjs中的buildAsrContextMessages将上下文直接包装为input_text。本项目使用参数数组、Node入口和shell=False；Windows参数引用交给Python标准库处理。[Python参数传递规则](https://docs.python.org/3.12/library/subprocess.html#converting-an-argument-sequence-to-a-string-on-windows)、[JSON序列化](https://docs.python.org/3.12/library/json.html#json.dumps)
 
-完整命令受Windows的32767个UTF-16单元限制（含末尾NUL）；超限在执行准备阶段明确停止。[CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
+完整命令受Windows的32767个UTF-16单元限制（含末尾NUL）。交接时生成实际任务编号和路径后，复用正式参数映射检查完整Node命令；超限在配置与回执写入前返回，保留当前预览供用户返回修改。此检查不读取凭据或启动BL；执行时仍核对当次完整命令。[CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
+
+固定BL 2.1.0的即时热词参数接收JSON文本，未提供读取词典文件的公开参数。因此模型允许的2000条词语在Windows上仍可能超过整条命令长度；超限时需要减少词条或缩短路径，不把输入另存文件并假定CLI能够读取。参数入口见[recognize.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/speech/recognize.ts)。
 
 ### Windows登录转交
 
@@ -106,6 +108,16 @@ BL中间件会检查版本并可能写update-state.json；quiet阻止后续自�
 安装工具固定为[pip 26.2.1](https://pypi.org/pypi/pip/26.2.1/json)，wheel路径和SHA-256维护在`utils/installation.py`。从同一wheel采样至多256KiB、约5秒；仅用于来源排序，不落盘或参与安装。正式下载使用`--retries 2 --resume-retries 5 --timeout 120`，其中timeout是socket等待超时。安装进程没有总时限。pip 25.2默认启用续传，26.2进一步修正部分断流与Range处理；支持206时续接，不支持时重新下载，完整文件仍须通过摘要检查。[参数定义](https://pip.pypa.io/en/stable/cli/pip/)、[版本记录](https://pip.pypa.io/en/stable/news/#v26-2)、[固定版本下载器](https://github.com/pypa/pip/blob/26.2.1/src/pip/_internal/network/download.py)
 
 `pip download`先保存完整wheel，失败才换第二个来源；`pip install --no-index --find-links`只使用本机文件，本机安装错误不再次换源。跨来源或跨进程不保留未完成下载的断点；已有完整wheel可复用。这些策略仅用于依赖准备，云端转写仍不自动重试。Skill没有随包wheel。PyAV许可见[官方LICENSE](https://github.com/PyAV-Org/PyAV/blob/v18.1.0/LICENSE.txt)；项目自身LICENSE不替代第三方许可。
+
+BL 首次安装复用同一前缀采样方法，并行比较 `registry.npmjs.org` 与 [npmmirror](https://npmmirror.com/) 上固定版本的 `bailian-cli-2.1.0.tgz`：最多 256 KiB、约 5 秒，仅排序，不保存采样包。正式安装由 npm 完成；当前命令指定 `registry`，npm 默认的 `replace-registry-host=npmjs` 将原锁中的官方 tarball 地址切换到所选来源，版本与 integrity 保持原值，不改全局配置。该公开配置见 [npm 11](https://docs.npmjs.com/cli/v11/using-npm/config/#replace-registry-host) 与 [npm 9](https://docs.npmjs.com/cli/v9/using-npm/config/#replace-registry-host)。
+
+两类来源的 5 秒采样窗口均从响应就绪后开始，评分包含此前的连接与响应头等待；单次 socket 等待上限为 5 秒，完整测速总耗时可能更长。采样结果仅代表该时刻的一段请求，不能保证 npm/pip 的完整安装速度。
+
+每个来源至多运行一次 `npm ci` 进程，保留 `ignore-scripts`、关闭 audit/fund、隔离用户配置，设置 `fetch-retries=2`。stdout 的临时 JSON 用于读取 `error.code`，stderr 实时保存为安装日志。仅已识别的下载或来源错误（如连接中断、404/5xx、下载校验失败）可换源；权限、磁盘、锁冲突、结果无法解析或未知错误立即停止，不通过匹配日志文字猜测。第二来源的 `npm ci` 会重建本次安装目录中的 `node_modules`，而启动前已存在的冲突安装仍保留并报错。[npm ci 行为](https://docs.npmjs.com/cli/v11/commands/npm-ci/)
+
+2026-10-05 用本机 npm 11.12.1 核对 [jsonError 的 code 输出](https://github.com/npm/cli/blob/v11.12.1/lib/utils/output-error.js)和 [npm-registry-fetch 的 HTTP 错误码](https://github.com/npm/npm-registry-fetch/blob/v19.1.1/lib/errors.js)。本机合约实际复现 E503、ECONNRESET、FETCH_ERROR、EIDLETIMEOUT、EINTEGRITY 的换源，以及 EUSAGE、E403、EBUSY 的停止；测试只使用合成包与 127.0.0.1。该版本是验证环境，不是新增 npm 版本锁。
+
+两次安装通过 `prefer-offline` 复用工作目录的 npm 缓存，缓存内容由 npm 校验；不自行操作其内部格式，也不把缓存复用描述成文件断点续传。npm 在单次进程内仍可能发起多次下载请求。来源均不可用时保留日志并停止，下载恢复不适用于云端识别。[npm 缓存与完整性](https://docs.npmjs.com/cli/v11/commands/npm-cache/)
 
 ## 本机进程与临时文件
 

@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlsplit
 
 from .utils.environment import Runtime, SetupError
 from .utils.hotwords import hotwords_template
-from .utils.i18n import language_scope, translate
+from .utils.i18n import language_scope, localize
 from .utils.session_files import read_connection, read_receipt, write_connection
 from .application.recovery import CleanupReport, finish_session, recover_workspace
 from .application.session import Session
@@ -112,10 +112,10 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
             expected_host = f"127.0.0.1:{self.server.server_port}"
             origin = self.headers.get("Origin")
             if self.headers.get("Host") != expected_host or (origin is not None and origin != f"http://{expected_host}"):
-                self.json(403, {"ok": False, "error": translate("请求来源不被允许。")})
+                self.json(403, {"ok": False, "error": localize("请求来源不被允许。")})
                 return False
             if self.command == "POST" and origin != f"http://{expected_host}":
-                self.json(403, {"ok": False, "error": translate("缺少有效的本地页面来源。")})
+                self.json(403, {"ok": False, "error": localize("缺少有效的本地页面来源。")})
                 return False
             if authenticated:
                 token = self.headers.get("X-ASR-Token", "")
@@ -127,7 +127,7 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                     except CookieError:
                         token = ""
                 if not hmac.compare_digest(token.encode("utf-8"), session.token.encode("ascii")):
-                    self.json(403, {"ok": False, "error": translate("会话无效，请从Codex重新打开本地页面链接。")})
+                    self.json(403, {"ok": False, "error": localize("会话无效，请从Codex重新打开本地页面链接。")})
                     return False
             return True
 
@@ -152,7 +152,7 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                     elif path.path == "/api/hotwords-template":
                         self.send(200, hotwords_template(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     else:
-                        self.json(404, {"ok": False, "error": translate("未找到此页面或接口。")})
+                        self.json(404, {"ok": False, "error": localize("未找到此页面或接口。")})
                 except (ValidationError, SetupError, OSError) as exc:
                     self.error_response(exc)
 
@@ -175,9 +175,9 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
         def error_response(self, exc: Exception) -> None:
             """将字段错误或本机文件失败转换为网页可呈现的响应。"""
             if isinstance(exc, ValidationError):
-                self.json(422, {"ok": False, "error": str(exc), "field": exc.field, "details": exc.details})
+                self.json(422, {"ok": False, "error": exc.message, "field": exc.field, "details": exc.details})
             else:
-                self.json(422, {"ok": False, "error": translate("本地文件操作未完成，请检查路径与访问权限。")})
+                self.json(422, {"ok": False, "error": localize("本地文件操作未完成，请检查路径与访问权限。")})
 
         def do_POST(self) -> None:
             """解析受保护请求，分派编辑操作与本机代码交接。"""
@@ -197,7 +197,7 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                         raise ValidationError("请求必须为JSON。", "request")
                     length = int(self.headers.get("Content-Length", "0"))
                     if length > MAX_REQUEST_BYTES:
-                        self.json(413, {"ok": False, "field": "form", "error": translate("表格或文本内容过大，请减少后重新检查。")})
+                        self.json(413, {"ok": False, "field": "form", "error": localize("表格或文本内容过大，请减少后重新检查。")})
                         return
                     if length <= 0:
                         raise ValidationError("请求体不能为空。", "request")
@@ -225,11 +225,11 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
                     elif path == "/api/cancel-picker":
                         self.json(200, session.cancel_picker(payload.get("picker_id")))
                     else:
-                        self.json(404, {"ok": False, "error": translate("未找到此接口。")})
+                        self.json(404, {"ok": False, "error": localize("未找到此接口。")})
                 except (ValidationError, SetupError, OSError) as exc:
                     self.error_response(exc)
                 except (ValueError, TypeError):
-                    self.json(400, {"ok": False, "error": translate("请求格式不正确。")})
+                    self.json(400, {"ok": False, "error": localize("请求格式不正确。")})
                 finally:
                     if session.terminal_event.is_set():
                         self.server.shutdown()
@@ -286,7 +286,8 @@ def control_session(runtime: Runtime, session_id: str, action: Literal["confirm"
         response = connection.getresponse()
         payload = json.loads(response.read().decode("utf-8"))
         if response.status != 200 or not isinstance(payload, dict):
-            message = payload.get("error") if isinstance(payload, dict) else None
+            localized = payload.get("error") if isinstance(payload, dict) else None
+            message = localized.get("zh") if isinstance(localized, dict) else None
             raise SetupError(message or "会话操作未完成，请检查当前配置页面。")
         return payload
     except (SetupError, OSError, http.client.HTTPException, ValueError) as exc:

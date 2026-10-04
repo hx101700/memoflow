@@ -3,8 +3,10 @@
 import json
 import shutil
 import sys
+import tempfile
 import venv
-from typing import TextIO
+from pathlib import Path
+from typing import TextIO, cast
 
 from .. import BAILIAN_VERSION
 from ..utils.bailian import installed_bl_version, verify_bl_installation
@@ -20,8 +22,44 @@ from ..utils.environment import (
 )
 from ..utils.installation import (
     PIP_SHA256, PIP_VERSION, PIP_WHEEL_PATH, PythonIndex,
-    rank_python_indexes, run_installer,
+    rank_npm_registries, rank_python_indexes, run_installer,
 )
+
+_NPM_DOWNLOAD_ERRORS = {
+    "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EIDLETIMEOUT", "EAI_AGAIN", "ENOTFOUND",
+    "ENETUNREACH", "EHOSTUNREACH", "FETCH_ERROR", "EINTEGRITY", "E404", "E408", "E429",
+}
+
+
+def _install_bailian(runtime: Runtime, node: Path, npm: Path) -> None:
+    """按测速顺序用npm安装锁定BL，仅下载类失败时切换另一个来源。"""
+    print("正在比较npm官方源与npmmirror的文件下载速度。", file=sys.stderr, flush=True)
+    registries = rank_npm_registries()
+    log_path = runtime.path(".runtime/bootstrap.log")
+    with log_path.open("w", encoding="utf-8") as log:
+        for registry in registries:
+            message = f"正在从{registry}安装百炼CLI。"
+            print(message, file=sys.stderr, flush=True)
+            log.write(f"\n{message}\n")
+            arguments = [str(node), str(npm), "ci", "--prefix", str(runtime.bl_directory),
+                         "--registry", registry, "--ignore-scripts", "--no-audit", "--no-fund",
+                         "--fetch-retries=2", "--prefer-offline", "--json", "--loglevel=http"]
+            # npm将结构化结果写stdout，stderr继续提供实时进度；临时结果随上下文关闭。
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8", dir=runtime.path(".runtime/tmp")) as output:
+                if run_installer(runtime, arguments, log, stdout_file=cast(TextIO, output)) == 0:
+                    return
+                output.seek(0)
+                try:
+                    code = json.load(output)["error"]["code"]
+                except (ValueError, KeyError, TypeError):
+                    code = None
+            if not isinstance(code, str) or not (code in _NPM_DOWNLOAD_ERRORS or
+                    len(code) == 4 and code.startswith("E5") and code[1:].isdigit()):
+                raise SetupError(f"npm安装失败（{code if isinstance(code, str) else '未提供错误码'}）；本地日志：{log_path}")
+            message = f"当前npm来源下载失败（{code}）。"
+            print(message, file=sys.stderr, flush=True)
+            log.write(message + "\n")
+    raise SetupError(f"百炼CLI安装失败，已尝试两个来源；本地日志：{log_path}")
 
 
 def _download_python_packages(
@@ -134,13 +172,7 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
         for name in ("package.json", "package-lock.json"):
             shutil.copyfile(source / name, destination / name)
 
-        log_path = runtime.path(".runtime/bootstrap.log")
-        with log_path.open("w", encoding="utf-8") as log:
-            exit_code = run_installer(runtime,
-                [str(node), str(npm), "ci", "--prefix", str(destination), "--ignore-scripts", "--no-audit",
-                 "--no-fund", "--fetch-retries=0"], log)
-        if exit_code:
-            raise SetupError(f"npm安装失败，未自动重试；本地日志：{log_path}")
+        _install_bailian(runtime, node, npm)
         verify_bl_installation(runtime)
 
     key_file = runtime.path(".env")

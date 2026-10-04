@@ -60,9 +60,25 @@ else 前置条件满足
     opt BL尚未安装
         B->>S: 读取scripts/bailian的package与lock
         B->>F: 复制到.asr-transcription/.tools/bailian
-        B->>I: run_installer：npm ci安装锁定BL
-        I->>M: 单次npm ci
-        M->>F: 保存BL及依赖
+        B->>B: _install_bailian(runtime, node, npm)
+        B->>I: rank_npm_registries()
+        Note over I,M: 并行采样固定BL 2.1.0 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序
+        I-->>B: 两个npm来源的优先顺序
+        loop 按顺序最多两个来源；成功后结束循环
+            B->>I: run_installer：npm ci --json --prefer-offline<br/>指定registry，沿用npm默认的npmjs地址替换规则
+            I->>M: npm ci --fetch-retries=2<br/>--ignore-scripts --no-audit --no-fund
+            M->>F: 复用npm缓存并校验完整性<br/>重建本次安装的node_modules
+            M-->>I: 退出码；stdout临时JSON，stderr实时进度
+            I-->>B: 退出码；进度已保存到bootstrap.log
+            opt npm非零退出
+                B->>F: 读取临时JSON的error.code
+                break 权限、磁盘、锁或未知错误，或下载来源已耗尽
+                    B-->>E: SetupError，保留安装日志
+                    E-->>C: 停止并报告具体错误
+                end
+            end
+            Note over B,M: 仅已识别的下载／来源错误才继续另一来源<br/>如连接中断、404/5xx、下载校验失败；不猜日志文字<br/>原锁与integrity保持；缓存复用不等于断点续传
+        end
         B->>M: verify_bl_installation()验证入口与版本
     end
     opt 私有.env不存在
@@ -73,5 +89,5 @@ else 前置条件满足
     E-->>C: JSON安装回执
 end
 Note over B,F: 环境准备保留既有Key和任务<br/>安装后的命令使用工作目录venv与同一--workspace<br/>Python安装和检查使用隔离模式，从指定环境加载依赖
-Note over I,F: run_installer逐行写本机日志及stderr进度<br/>stdout保留最终JSON；中断时回收本次安装子进程
+Note over I,F: run_installer转发进度并保存本机日志<br/>CLI stdout保留最终JSON；npm结果使用临时JSON<br/>中断时回收本次安装进程树
 Note over E,S: Skill内scripts/asr.py、scripts/asr_runtime/__main__.py<br/>application/bootstrap.py；utils/installation.py、environment.py、bailian.py

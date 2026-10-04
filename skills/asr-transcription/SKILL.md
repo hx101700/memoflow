@@ -1,6 +1,6 @@
 ---
 name: asr-transcription
-description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。用于录音转文字、凭据配置和已有任务重导；不用于改写现有文字纪要。
+description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。用于录音转文字、百炼凭据配置和已有转写任务重导；不用于改写现有文字纪要。
 ---
 
 # 录音转写
@@ -30,10 +30,10 @@ description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。�
 
 | 认证情况 | 动作 |
 | --- | --- |
-| `auth_mode=api_key` | 直接执行，工具读取网页保存的当前 Key。 |
+| `auth_mode=api_key` | 直接执行，工具读取网页保存的当前 Key；无需 `console-status` 或 `login`。 |
 | 控制台模式，已知有模型凭据且没有鉴权失败 | 复用当前工作目录的 BL 配置。 |
 | 控制台模式，凭据状态未知 | 调用一次 `console-status`，读取 `configured`。 |
-| 缺少模型凭据，或用户要求重新登录 | 首次调用 `login` 就使用正常桌面执行权限；Codex 工具支持时设置 `sandbox_permissions=require_escalated`。按[控制台登录](references/usage.md#控制台登录)操作，保留原进程，提示用户授权完成后回复“已完成”。 |
+| 控制台模式缺少模型凭据，或用户要求重新登录 | 首次调用 `login` 就使用正常桌面执行权限；Codex 工具支持时设置 `sandbox_permissions=require_escalated`。按[控制台登录](references/usage.md#控制台登录)操作，保留原进程，提示用户授权完成后回复“已完成”。 |
 
 `login` 最终回执已包含 BL 本地状态，直接读取 `configured`；它表示模型凭据存在，在线有效性由实际 BL 调用判断。用户回复“已完成”后读取原登录结果并执行**同一个已交接任务**，不要求重新粘贴会话编号或再次授权。BL 授权页只由系统浏览器打开一次。
 

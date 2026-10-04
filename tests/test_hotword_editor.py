@@ -22,8 +22,19 @@ class HotwordEditorTests(RuntimeTestCase):
         details = caught.exception.details
         self.assertEqual([item["row"] for item in details if item["field"] == "text"], [1, 2, 3, 4])
         self.assertEqual([item["row"] for item in details if item["field"] == "weight"], [2])
-        self.assertTrue(all("重复" in item["message"] for item in details if item["field"] == "text"))
+        self.assertTrue(all("重复" in item["message"]["zh"] for item in details if item["field"] == "text"))
+        self.assertTrue(all(item["duplicate_group"] == 1 for item in details if item["field"] == "text"))
+        self.assertNotIn("duplicate_group", next(item for item in details if item["field"] == "weight"))
         self.assertEqual(validate_hotword_rows(rows[:1])["vocabulary"], {"IPO": 4})
+
+    def test_duplicate_groups_identify_only_related_text_errors(self):
+        """验证多个重复词组具有独立标识，普通格级错误保持独立。"""
+        rows = [{"text": word, "weight": weight} for word, weight in
+                (("IPO", 4), ("ASR", 4), ("IPO", 99), ("ASR", 4), ("Other", 99))]
+        with self.assertRaises(ValidationError) as caught:
+            validate_hotword_rows(rows)
+        self.assertEqual([(issue["row"], issue.get("duplicate_group")) for issue in caught.exception.details],
+                         [(1, 1), (2, 2), (3, None), (3, 1), (4, 2), (5, None)])
 
     def workbook(self, rows):
         """保存带固定表头的测试工作簿。"""
@@ -71,7 +82,7 @@ class HotwordEditorTests(RuntimeTestCase):
             validate_hotword_rows(report["rows"])
         self.assertEqual([(issue["row"], issue["field"]) for issue in caught.exception.details],
                          [(1, "text"), (2, "weight")])
-        self.assertTrue(all("不接受公式" in issue["message"] for issue in caught.exception.details))
+        self.assertTrue(all("不接受公式" in issue["message"]["zh"] for issue in caught.exception.details))
         report["rows"][0].update(text="术语", invalid_fields=[])
         report["rows"][1].update(weight="4", invalid_fields=[])
         self.assertEqual(validate_hotword_rows(report["rows"])["count"], 2)
@@ -87,8 +98,8 @@ class HotwordEditorTests(RuntimeTestCase):
         self.assertNotIn("issues", report)
         with self.assertRaises(ValidationError) as caught:
             validate_hotword_rows(report["rows"])
-        self.assertEqual([issue["row"] for issue in caught.exception.details if "公式" in issue["message"]], [1])
-        self.assertEqual([issue["row"] for issue in caught.exception.details if "重复" in issue["message"]], [1, 2])
+        self.assertEqual([issue["row"] for issue in caught.exception.details if "公式" in issue["message"]["zh"]], [1])
+        self.assertEqual([issue["row"] for issue in caught.exception.details if "重复" in issue["message"]["zh"]], [1, 2])
         self.assertNotIn("invalid_fields", report["rows"][1])
         self.assertEqual(validate_hotword_rows([report["rows"][1]])["vocabulary"], {"=1+1": 4})
         # 网页输入保存为固定文本，编辑动作会移除原Excel的类型标记。

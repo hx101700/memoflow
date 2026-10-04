@@ -15,8 +15,9 @@ class FileError(ValueError):
     """表示可向用户展示的本机文件错误。"""
 
     def __init__(self, message: str) -> None:
-        """按当前界面语言提供文件操作提示。"""
+        """保留文件错误原文，并提供当前语言的异常说明。"""
         super().__init__(translate(message))
+        self.template = message
 
 
 def resolve_input(value: object, allowed_suffixes: Collection[str]) -> Path:

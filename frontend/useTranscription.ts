@@ -1,6 +1,6 @@
 import { nextTick, reactive, shallowRef } from "vue";
 import { UiError, uiError } from "./api";
-import { availability, checkRequiredInputs, configuration, createModel, invalidatePreview, receiveEnd, receiveValidation } from "./model";
+import { availability, checkRequiredInputs, configuration, createModel, receiveEnd, receiveValidation } from "./model";
 import type { Translate } from "./i18n";
 import type { Api, DirectoryKind, EditableSnapshot, FormValues, HotwordField, HotwordRow, SessionEnd } from "./types";
 
@@ -26,8 +26,12 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   // 保存可见错误，并按用户当前操作定位输入。
   function fail(reason: unknown, field?: string): void {
     if (!active()) return;
-    error.value = uiError(reason, t("failed"), field);
-    if (error.value.field === "hotword_rows") model.hotwords.issues = error.value.details;
+    error.value = uiError(reason, () => t("failed"), field);
+    if (error.value.field === "hotword_rows" && error.value.details.length) {
+      model.hotwords.issues = error.value.details.map(issue => ({ ...issue,
+        key: issue.row === undefined ? undefined : form.hotwordRows[issue.row - 1]?.key,
+      }));
+    }
     view.focus(error.value.field ?? "error-panel");
   }
 
@@ -80,12 +84,12 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   async function persistApiKey(): Promise<boolean> {
     const revision = model.auth.revision;
     const value = view.getApiKey();
-    if (!value) throw new UiError(t("keyNotReady"), "auth_mode");
+    if (!value) throw new UiError(() => t("keyNotReady"), "auth_mode");
     model.auth.status = "saving";
     try { await api.request("/api/save-api-key", { value }); }
     catch (reason) {
       if (revision === model.auth.revision) model.auth.status = "failed";
-      throw uiError(reason, t("failed"), "auth_mode");
+      throw uiError(reason, () => t("failed"), "auth_mode");
     }
     if (revision !== model.auth.revision || !active()) return false;
     model.auth.status = "ready";
@@ -112,33 +116,44 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   // 恢复已撤销预览的编辑权限，并读取当前凭据。
   async function resumeEditing(): Promise<void> {
     model.phase = "editing";
-    invalidatePreview(model);
+    model.preview = null;
     await nextTick();
     await updateAuth();
     if (model.auth.status !== "failed") view.focus("config-fields");
   }
 
-  // 词表编辑后清除上一轮检查提示并作废旧预览。
-  function hotwordsChanged(): void {
-    model.hotwords.issues = [];
-    model.hotwords.warnings = [];
-    actions.changed();
+  // 清除已改单元格的旧错误；重复组保留到只剩一个未改词条。
+  function hotwordsChanged(key?: number, field?: HotwordField): void {
+    if (key !== undefined) {
+      const group = model.hotwords.issues.find(issue => issue.key === key && issue.duplicate_group !== undefined)?.duplicate_group;
+      model.hotwords.issues = model.hotwords.issues.filter(issue =>
+        !(issue.key === key && (!field || issue.field === field)));
+      if ((!field || field === "text") && group !== undefined &&
+          model.hotwords.issues.filter(issue => issue.duplicate_group === group).length < 2) {
+        model.hotwords.issues = model.hotwords.issues.filter(issue => issue.duplicate_group !== group);
+      }
+    }
+    if (error.value?.field === "hotword_rows" && !model.hotwords.issues.length) error.value = null;
+  }
+
+  // 清除当前字段的旧错误，保留其余区域的检查结果。
+  function clearError(field: string): void {
+    if (error.value?.field === field) error.value = null;
   }
 
   const actions = {
-    // 标记凭据输入已修改，使当前预览失效。
+    // 标记凭据输入已修改，清除对应提示。
     keyChanged(): void {
       if (!availability(model).changeAuth) return;
       model.auth.revision += 1;
       model.auth.status = "dirty";
-      error.value = null;
-      invalidatePreview(model);
+      clearError("auth_mode");
     },
 
     // 将当前 Key 单独保存到工作目录并返回保存结果。
     async saveApiKey(): Promise<boolean> {
       if (!form.useApiKey || !availability(model).changeAuth || !["dirty", "failed"].includes(model.auth.status)) return false;
-      error.value = null;
+      clearError("auth_mode");
       try { return await persistApiKey(); }
       catch (reason) { fail(reason); return false; }
     },
@@ -150,7 +165,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         if (model.session.terminal) { ended(model.session.terminal); return; }
         stopListening = api.listen(ended, () => {
           if (!active()) return;
-          error.value = new UiError(t("network"));
+          error.value = new UiError(() => t("network"));
           model.phase = "unavailable";
           view.setApiKey("");
         });
@@ -162,7 +177,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
           await registerPreview();
         } else model.phase = "editing";
       } catch (reason) {
-        error.value = uiError(reason, t("failed"));
+        error.value = uiError(reason, () => t("unavailableHelp"));
         model.phase = "unavailable";
         stopListening?.();
       }
@@ -175,16 +190,34 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     async setAuthMode(useApiKey: boolean): Promise<void> {
       if (!availability(model).changeAuth) return;
       form.useApiKey = useApiKey;
-      error.value = null;
-      invalidatePreview(model);
+      clearError("auth_mode");
       await updateAuth();
     },
 
-    // 输入改变时作废旧预览及对应的错误说明。
-    changed(): void {
+    // 输入改变时清除对应字段的错误说明。
+    changed(field?: string): void {
       if (!availability(model).editable) return;
-      error.value = null;
-      invalidatePreview(model);
+      if (field) clearError(field);
+    },
+
+    // 关闭热词增强时清空表格、导入信息和对应提示。
+    setHotwordsEnabled(enabled: boolean): void {
+      if (!availability(model).editHotwords) return;
+      form.hotwordsEnabled = enabled;
+      if (!enabled) {
+        form.hotwordRows = [];
+        model.hotwordImport = { status: "empty", name: "" };
+        model.hotwords = { issues: [], warnings: [] };
+      } else if (!form.hotwordRows.length) actions.addHotword();
+      actions.changed("hotword_rows");
+    },
+
+    // 关闭上下文增强时清空参考文本和对应提示。
+    setContextEnabled(enabled: boolean): void {
+      if (!availability(model).editable) return;
+      form.contextEnabled = enabled;
+      if (!enabled) form.context = "";
+      actions.changed("context");
     },
 
     // 按组件标识更新单元格并清除该格的导入类型标记。
@@ -197,7 +230,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         row.invalid_fields = row.invalid_fields.filter(invalid => invalid !== field);
         if (!row.invalid_fields.length) delete row.invalid_fields;
       }
-      hotwordsChanged();
+      hotwordsChanged(key, field);
     },
 
     // 在词表末尾添加独立标识的可编辑词条。
@@ -212,29 +245,28 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       if (!availability(model).editHotwords) return;
       form.hotwordRows = form.hotwordRows.filter(entry => entry.key !== key);
       form.hotwordRows.forEach((row, index) => { row.row = index + 1; });
-      hotwordsChanged();
+      hotwordsChanged(key);
     },
 
     // 读取单份 Excel 的字节，取得可编辑热词数组。
     async importHotwords(files: readonly File[]): Promise<void> {
       const session = model.session;
       if (!session || !availability(model).importHotwords || !files.length) return;
-      error.value = null;
-      invalidatePreview(model);
-      model.hotwordImport = { status: "empty", name: "", size: 0 };
+      model.hotwordImport = { status: "empty", name: "" };
       const imported = model.hotwordImport;
       try {
-        if (files.length !== 1) throw new UiError(t("singleFile"), "hotword_rows");
+        if (files.length !== 1) throw new UiError(() => t("singleFile"), "hotword_rows");
         const file = files[0];
-        if (!file.name.toLowerCase().endsWith(".xlsx")) throw new UiError(t("wrongHotwords"), "hotword_rows");
-        if (file.size > session.limits.hotwords_bytes) throw new UiError(t("tooLarge", { size: session.limits.hotwords_bytes / 1_000_000 }), "hotword_rows");
+        if (!file.name.toLowerCase().endsWith(".xlsx")) throw new UiError(() => t("wrongHotwords"), "hotword_rows");
+        if (file.size > session.limits.hotwords_bytes) throw new UiError(() => t("tooLarge", { size: session.limits.hotwords_bytes / 1_000_000 }), "hotword_rows");
         imported.status = "importing";
         imported.name = file.name;
         const result = await api.request("/api/import-hotwords", undefined, file);
         if (!active()) return;
         setRows(result.rows);
+        clearError("hotword_rows");
         Object.assign(model.hotwords, { issues: [], warnings: result.warnings });
-        Object.assign(imported, { status: "ready", name: result.name, size: result.size_bytes });
+        Object.assign(imported, { status: "ready", name: result.name });
         view.focus("hotword_rows");
       } catch (reason) { imported.status = "failed"; fail(reason, "hotword_rows"); }
     },
@@ -250,8 +282,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         if (model.picker?.id !== id || !active()) return;
         if (!result.cancelled) {
           model.audio = { audio_id: result.audio_id, name: result.name, path: result.path, size_bytes: result.size_bytes };
-          error.value = null;
-          invalidatePreview(model);
+          clearError("audio_id");
         }
       } catch (reason) { failure = reason; }
       finally { if (model.picker?.id === id) model.picker = null; }
@@ -269,8 +300,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         if (model.picker?.id !== id || !active()) return;
         if (!result.cancelled) {
           model.directories[kind] = result.path;
-          error.value = null;
-          invalidatePreview(model);
+          clearError(`${kind}_directory`);
         }
       } catch (reason) { failure = reason; }
       finally { if (model.picker?.id === id) model.picker = null; }
@@ -292,8 +322,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     resetDirectory(kind: DirectoryKind): void {
       if (!availability(model).chooseDirectory) return;
       model.directories[kind] = "default";
-      error.value = null;
-      invalidatePreview(model);
+      clearError(`${kind}_directory`);
     },
 
     // 后端撤销当前预览后恢复填写，并按需重新读取已保存 Key。
@@ -330,43 +359,36 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       const session = model.session;
       if (!session || !availability(model).validate) return;
       error.value = null;
-      invalidatePreview(model);
       let config;
       try {
         config = configuration(model, form, session.limits, t);
         checkRequiredInputs(config, t);
       } catch (reason) { fail(reason); return; }
-      const revision = model.revision;
       model.phase = "validating";
       if (form.useApiKey && model.auth.status !== "ready") {
         try {
           const saved = await persistApiKey();
           if (!active()) return;
-          if (!saved || revision !== model.revision) { model.phase = "editing"; return; }
+          if (!saved) return;
         } catch (reason) {
           if (!active()) return;
-          // Key保存期间凭据不可改动，其他表单变化不能使本次凭据错误过期。
           model.phase = "editing";
           fail(reason);
           return;
         }
       }
       try {
+        // 新一轮检查替换旧诊断，保留表格数据、行键和导入记录。
+        model.hotwords.issues = [];
         const result = await api.request("/api/validate", config);
         if (!active()) return;
-        if (!receiveValidation(model, revision, result, config)) {
-          await api.request("/api/edit", { validation_id: result.validation_id });
-          if (!active()) return;
-          model.phase = "editing";
-          model.statusMessage = "changed";
-          return;
-        }
+        receiveValidation(model, result, config);
         Object.assign(model.hotwords, { issues: [], warnings: [] });
         await registerPreview();
       } catch (reason) {
         if (!active()) return;
         if (!model.preview) model.phase = "editing";
-        if (revision === model.revision) fail(reason);
+        fail(reason);
       }
     },
 
@@ -374,7 +396,6 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     async downloadTemplate(): Promise<void> {
       if (!availability(model).template) return;
       model.downloadingTemplate = true;
-      error.value = null;
       try { view.download(await api.template()); }
       catch (reason) { fail(reason); }
       finally { model.downloadingTemplate = false; }

@@ -1,7 +1,10 @@
 """验证来源采样和安装进度的本机行为。"""
 
+import ctypes
+from ctypes import wintypes
 import io
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -12,19 +15,20 @@ from contextlib import redirect_stderr, redirect_stdout
 from http.client import HTTPResponse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from tempfile import TemporaryFile
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.request import Request, urlopen
 
 from asr_runtime.utils import installation
 from asr_runtime.utils.environment import SetupError
-from asr_runtime.utils.installation import PythonIndex, rank_python_indexes, run_installer
+from asr_runtime.utils.installation import PythonIndex, rank_npm_registries, rank_python_indexes, run_installer
 from tests.support import RuntimeTestCase
 
 
 class IndexSamplingTests(unittest.TestCase):
     def sample_source(self, name: str, *, delay: float = 0, unavailable: bool = False,
-                      ignore_range: bool = False) -> tuple[PythonIndex, list[str | None]]:
+                      ignore_range: bool = False, header_delay: float = 0) -> tuple[PythonIndex, list[str | None]]:
         """启动只提供合成字节的来源并登记测试结束时的回收操作。"""
         ranges: list[str | None] = []
 
@@ -35,6 +39,7 @@ class IndexSamplingTests(unittest.TestCase):
                 if unavailable:
                     self.send_error(503)
                     return
+                time.sleep(header_delay)
                 size = 512 * 1024 if ignore_range else 256 * 1024
                 self.send_response(200 if ignore_range else 206)
                 self.send_header("Content-Length", str(size))
@@ -101,7 +106,7 @@ class IndexSamplingTests(unittest.TestCase):
             return response
 
         with patch.object(installation, "urlopen", side_effect=open_response):
-            self.assertGreater(installation._sample_python_index(source), 0)
+            self.assertGreater(installation._sample_download(source.wheel_base_url + installation.PIP_WHEEL_PATH), 0)
         self.assertEqual(received, 256 * 1024)
         self.assertEqual(ranges, ["bytes=0-262143"])
 
@@ -110,8 +115,26 @@ class IndexSamplingTests(unittest.TestCase):
         source, _ = self.sample_source("slow", delay=0.1)
         started = time.monotonic()
         with patch.object(installation, "_SAMPLE_SECONDS", 0.15):
-            self.assertGreater(installation._sample_python_index(source), 0)
+            self.assertGreater(installation._sample_download(source.wheel_base_url + installation.PIP_WHEEL_PATH), 0)
         self.assertLess(time.monotonic() - started, 0.7)
+
+    def test_slow_headers_still_allow_body_sampling(self) -> None:
+        """验证响应头等待超过采样时段后仍读取正文，评分包含连接耗时。"""
+        source, _ = self.sample_source("slow-headers", header_delay=0.1)
+        with patch.object(installation, "_SAMPLE_SECONDS", 0.05):
+            speed = installation._sample_download(source.wheel_base_url + installation.PIP_WHEEL_PATH)
+        self.assertGreater(speed, 0)
+        self.assertLess(speed, 256 * 1024 / 0.1)
+
+    def test_npm_ranks_file_throughput_and_keeps_unavailable_source(self) -> None:
+        """验证npm复用文件前缀测速，并保留失败来源供正式安装诊断。"""
+        slow, _ = self.sample_source("slow", delay=0.01)
+        fast, _ = self.sample_source("fast")
+        missing, _ = self.sample_source("missing", unavailable=True)
+        with patch.object(installation, "NPM_REGISTRIES", (slow.wheel_base_url, fast.wheel_base_url)):
+            self.assertEqual(rank_npm_registries(), [fast.wheel_base_url, slow.wheel_base_url])
+        with patch.object(installation, "NPM_REGISTRIES", (missing.wheel_base_url, fast.wheel_base_url)):
+            self.assertEqual(rank_npm_registries(), [fast.wheel_base_url, missing.wheel_base_url])
 
 
 class InstallerProcessTests(RuntimeTestCase):
@@ -161,7 +184,8 @@ class InstallerProcessTests(RuntimeTestCase):
         argument = '名称 "test" & echo unsafe > executed.txt | $() ; `value`'
         code = "import json, os, sys; print(json.dumps([sys.argv[1:], os.getcwd()]))"
         log = io.StringIO()
-        with redirect_stderr(io.StringIO()):
+        with redirect_stderr(io.StringIO()), \
+                patch.object(installation.subprocess, "run", side_effect=AssertionError("正常结束无需终止进程")):
             result = run_installer(self.runtime, [sys.executable, "-I", "-c", code, argument], log)
         arguments, directory = json.loads(log.getvalue())
         self.assertEqual(result, 0)
@@ -169,33 +193,102 @@ class InstallerProcessTests(RuntimeTestCase):
         self.assertEqual(Path(directory), self.runtime.workspace)
         self.assertFalse((self.runtime.workspace / "executed.txt").exists())
 
+    def test_json_stdout_is_separate_from_live_stderr(self) -> None:
+        """验证结构化stdout独立保存，stderr实时写日志且保留调用方文件句柄。"""
+        log, progress = io.StringIO(), io.StringIO()
+        code = "import json,sys; print('下载失败', file=sys.stderr); print(json.dumps({'error':{'code':'E503'}})); sys.exit(1)"
+        with TemporaryFile(mode="w+", encoding="utf-8", dir=self.runtime.path(".runtime/tmp")) as output:
+            with redirect_stderr(progress):
+                result = run_installer(self.runtime, [sys.executable, "-I", "-X", "utf8", "-c", code], log,
+                                       stdout_file=output)
+            self.assertFalse(output.closed)
+            output.seek(0)
+            self.assertEqual(json.load(output), {"error": {"code": "E503"}})
+        self.assertEqual(result, 1)
+        self.assertEqual(log.getvalue(), "下载失败\n")
+        self.assertEqual(progress.getvalue(), log.getvalue())
+
     def test_interruption_and_log_failure_reap_the_process(self) -> None:
-        """验证用户中断或写日志异常都会终止并回收当前子进程。"""
+        """验证用户中断或写日志异常同时结束启动器与已经就绪的实际worker。"""
+        kernel = None
+        if os.name == "nt":
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         for error in (KeyboardInterrupt(), OSError("synthetic log failure")):
             with self.subTest(error=type(error).__name__):
                 processes: list[subprocess.Popen[str]] = []
+                actual_pids: list[int] = []
+                handles = []
                 start = subprocess.Popen
 
                 def record_process(argv: list[str], **kwargs: Any) -> subprocess.Popen[str]:
                     """保存实际启动的子进程供生命周期断言使用。"""
                     process: subprocess.Popen[str] = start(argv, **kwargs)
-                    processes.append(process)
+                    if argv[0] == sys.executable:
+                        processes.append(process)
                     return process
 
                 class FailingLog(io.StringIO):
                     def write(self, text: str) -> int:
-                        """在进程输出到达时模拟用户中断或日志写入失败。"""
+                        """取得真实worker句柄后模拟用户中断或日志写入失败。"""
+                        actual_pids.append(int(text.strip()))
+                        if kernel is not None:
+                            handle = kernel.OpenProcess(0x00100001, False, actual_pids[-1])
+                            if not handle:
+                                raise AssertionError("无法持有本例实际worker的句柄")
+                            handles.append(handle)
                         raise error
 
-                code = "import time; print('ready', flush=True); time.sleep(30)"
-                with patch.object(installation.subprocess, "Popen", side_effect=record_process):
-                    with self.assertRaises(type(error)):
-                        run_installer(self.runtime, [sys.executable, "-I", "-u", "-c", code], FailingLog())
-                self.assertEqual(len(processes), 1)
-                self.assertIsNotNone(processes[0].returncode)
-                self.assertIsNotNone(processes[0].stdout)
-                assert processes[0].stdout is not None
-                self.assertTrue(processes[0].stdout.closed)
+                code = "import os,time; print(os.getpid(), flush=True); time.sleep(30)"
+                try:
+                    with patch.object(installation.subprocess, "Popen", side_effect=record_process):
+                        with self.assertRaises(type(error)):
+                            run_installer(self.runtime, [sys.executable, "-I", "-u", "-c", code], FailingLog())
+                    self.assertEqual(len(processes), 1)
+                    self.assertIsNotNone(processes[0].returncode)
+                    self.assertIsNotNone(processes[0].stdout)
+                    assert processes[0].stdout is not None
+                    self.assertTrue(processes[0].stdout.closed)
+                    if kernel is not None:
+                        self.assertEqual(kernel.WaitForSingleObject(handles[0], 0), 0)
+                        if sys.prefix != sys.base_prefix:
+                            self.assertNotEqual(processes[0].pid, actual_pids[0])
+                finally:
+                    if kernel is not None:
+                        for handle in handles:
+                            if kernel.WaitForSingleObject(handle, 0) == 0x102:
+                                kernel.TerminateProcess(handle, 1)
+                                kernel.WaitForSingleObject(handle, 2000)
+                            kernel.CloseHandle(handle)
+                    for process in processes:
+                        if process.poll() is None:
+                            process.kill()
+                        process.wait(timeout=5)
+
+    @unittest.skipUnless(os.name == "nt", "Windows安装使用taskkill结束进程树")
+    def test_taskkill_failure_reports_the_owned_pid_and_closes_output(self) -> None:
+        """验证进程树清理失败明确报告本次PID并关闭输出管道。"""
+        process = Mock(pid=12345)
+        process.poll.return_value = None
+        process.stdout = io.StringIO("ready\n")
+        log = Mock()
+        log.write.side_effect = OSError("synthetic log failure")
+        with patch.object(installation.subprocess, "Popen", return_value=process), \
+                patch.object(installation.subprocess, "run", return_value=subprocess.CompletedProcess([], 5)) as stop:
+            with self.assertRaisesRegex(SetupError, "PID 12345，退出码 5"):
+                run_installer(self.runtime, [sys.executable, "-I", "-c", "pass"], log)
+        self.assertEqual(stop.call_args.args[0], [
+            str(Path(os.environ["SystemRoot"]) / "System32/taskkill.exe"), "/PID", "12345", "/T", "/F",
+        ])
+        self.assertFalse(stop.call_args.kwargs["shell"])
+        self.assertEqual(stop.call_args.kwargs["creationflags"], subprocess.CREATE_NO_WINDOW)
+        process.kill.assert_not_called()
+        process.wait.assert_not_called()
+        self.assertTrue(process.stdout.closed)
 
     def test_start_failure_has_a_setup_error(self) -> None:
         """验证找不到安装命令时返回环境错误。"""

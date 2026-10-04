@@ -20,9 +20,11 @@ from .i18n import translate
 class SetupError(Exception):
     """表示可向用户解释的环境配置错误。"""
 
-    def __init__(self, message: str) -> None:
-        """按当前界面语言提供配置与运行环境提示。"""
-        super().__init__(translate(message))
+    def __init__(self, message: str, **params: object) -> None:
+        """保留错误模板供网页翻译，并提供当前语言的异常说明。"""
+        super().__init__(translate(message, **params))
+        self.template = message
+        self.params = params
 
 
 def process_is_running(pid: int) -> bool | None:
@@ -115,14 +117,14 @@ class Runtime:
         path = (root / relative).resolve()
         # Windows junction / 符号链接不能把凭据和临时文件引向运行目录外。
         if not path.is_relative_to(root):
-            raise SetupError(translate("运行路径指向私有目录外：{relative}").format(relative=relative))
+            raise SetupError("运行路径指向私有目录外：{relative}", relative=relative)
         return path
 
     def resource(self, relative: str) -> Path:
         """解析Skill资源路径并检查其位于安装目录内。"""
         path = (self.skill_root / relative).resolve()
         if not path.is_relative_to(self.skill_root):
-            raise SetupError(translate("资源路径指向Skill目录外：{relative}").format(relative=relative))
+            raise SetupError("资源路径指向Skill目录外：{relative}", relative=relative)
         return path
 
     def check_output_path(self, path: Path) -> None:
@@ -191,7 +193,6 @@ def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dic
         "NPM_CONFIG_PREFIX": str(runtime.bl_directory),
         "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
         "NPM_CONFIG_UPDATE_NOTIFIER": "false",
-        "NPM_CONFIG_FETCH_RETRIES": "0",
         "NPM_CONFIG_AUDIT": "false",
         "NPM_CONFIG_FUND": "false",
         # 已审阅BL的postinstall只预下载推荐器Wiki，ASR不需要该技能资产。
@@ -227,28 +228,59 @@ def npm_entry(node: Path) -> Path:
     return path
 
 
+def stop_process_tree(process: subprocess.Popen[str]) -> None:
+    """结束本次命令及其Windows子进程，并等待退出。"""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        # Windows venv有启动器和实际Python两层，中断时需共同结束。
+        stopped = subprocess.run(
+            [str(Path(os.environ["SystemRoot"]) / "System32/taskkill.exe"),
+             "/PID", str(process.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            shell=False, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if stopped.returncode:
+            raise SetupError(f"无法结束本机进程树（PID {process.pid}，退出码 {stopped.returncode}），请检查仍在运行的命令。")
+    else:
+        process.kill()
+    process.wait()
+
+
 def run_process(
     runtime: Runtime, argv: list[str], timeout: float = 60, *, isolated_config: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """在工作区执行本机命令，返回捕获的进程输出。"""
     try:
-        return subprocess.run(
+        process = subprocess.Popen(
             argv,
             cwd=runtime.workspace,
             env=child_environment(runtime, isolated_config=isolated_config),
             stdin=subprocess.DEVNULL,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout,
             shell=False,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
+    except OSError as exc:
+        raise SetupError(f"无法启动子进程：{type(exc).__name__}") from exc
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
     except subprocess.TimeoutExpired as exc:
         raise SetupError("子进程等待超时，已停止，未自动重试。") from exc
     except OSError as exc:
-        raise SetupError(f"无法启动子进程：{type(exc).__name__}") from exc
+        raise SetupError(f"子进程输出读取失败：{type(exc).__name__}") from exc
+    finally:
+        try:
+            stop_process_tree(process)
+        finally:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
 
 
 def check_node(runtime: Runtime) -> tuple[Path, str]:

@@ -62,7 +62,7 @@ Codex 会使用这个 Skill 打开本机转写网页。按页面提示添加录�
 
 ## 参与贡献
 
-欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)、功能建议和 PR。代码结构、开发约定与验证方法见[开发文档](https://github.com/hx101700/memoflow/blob/dev/doc/README.md)。
+欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)、功能建议和 PR。代码结构、开发约定与验证方法见[开发文档](https://github.com/hx101700/memoflow/blob/dev/doc/README.md)。如果能帮助到您，欢迎 **star 和 fork** 本项目，谢谢！
 
 ## 相关链接
 

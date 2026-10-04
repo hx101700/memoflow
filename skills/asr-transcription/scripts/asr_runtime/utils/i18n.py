@@ -1,9 +1,10 @@
-"""按本机网页的请求语言呈现提示，命令行默认使用中文。"""
+"""生成网页双语提示，并按请求语言呈现原生窗口和命令行文本。"""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from ..models import LocalizedText
 
 _LANGUAGE: ContextVar[str] = ContextVar("ui_language", default="zh-CN")
 _ENGLISH: dict[str, str] = {
@@ -67,10 +68,10 @@ _ENGLISH: dict[str, str] = {
     "含非ASCII字符时，热词总长度最多15个字符。": "A hotword containing non-ASCII characters can have up to 15 characters in total.",
     "纯ASCII热词按空格切分后最多7段。": "An ASCII-only hotword can contain up to 7 space-separated parts.",
     "权重必须为1至5的整数或50。": "Set the weight to an integer from 1 to 5, or to 50.",
-    "与第{other_row}行热词重复，请删除重复行，仅保留一行。": "This hotword also appears in row {other_row}. Remove duplicate rows and keep one entry.",
+    "存在重复数据，请保留至一行": "Duplicate entries. Keep only one row.",
     "热词总数超过2000个，请减少。": "The list exceeds 2,000 hotwords. Remove some entries.",
     "超级热词（权重50）最多50个。": "You can use up to 50 super hotwords with a weight of 50.",
-    "请修改热词表格中标红的单元格后重新检查。": "Correct the cells marked in red in the hotword table, then check again.",
+    "热词表输入存在错误，请处理标红行数据。": "The hotword table contains errors. Correct the rows marked in red.",
     "请至少填写一个热词及其权重，或关闭热词增强。": "Enter at least one hotword and its weight, or turn off hotword enhancement.",
     "热词表格格式无效，请重新填写或导入。": "The hotword table format is invalid. Enter the rows again or import a workbook.",
     "热词表格最多支持10000行，请减少后重新检查。": "The hotword table supports up to 10,000 rows. Remove some rows and check again.",
@@ -94,10 +95,8 @@ _ENGLISH: dict[str, str] = {
     "多个工作表时请将待使用的工作表命名为“热词”。": "If the workbook has multiple sheets, name the sheet to use 热词.",
     "请使用普通工作表填写热词，不支持图表工作表。": "Enter hotwords in a regular worksheet. Chart sheets are not supported.",
     "热词工作表仅支持两列、最多10001行（含表头和空行）。": "The hotword sheet must have two columns and no more than 10,001 rows, including the header and empty rows.",
-    "首行必须依次为text、weight，或中文列名热词、权重。": "The first row must contain text and weight in that order. The Chinese headers 热词 and 权重 are also accepted.",
-    "请按模板修改表头。": "Use the column headers from the template.",
+    "当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。": "This Excel file does not match the template. Download the template, fill it in, and upload it again.",
     "仅读取名为“热词”的工作表，其他工作表不参与此次转写。": "Only the sheet named 热词 is used for this transcription.",
-    "已按中文别名读取表头：热词对应text，权重对应weight。": "The Chinese column headers were recognized: 热词 as text, and 权重 as weight.",
     "请输入 API Key。": "Enter your API key.",
     "API Key 中含有空格或换行，请检查后重新填写。": "The API key contains spaces or line breaks. Check the value and enter it again.",
     "尚未配置 API Key，请在网页中填写并保存。": "No API key is configured. Enter and save your key on the transcription page.",
@@ -117,13 +116,23 @@ _ENGLISH: dict[str, str] = {
     "资源路径指向Skill目录外：{relative}": "The resource path points outside the Skill installation: {relative}",
     "Skill安装目录用于保存程序资源，请选择其他位置保存转写结果。": "Choose an output folder outside the Skill installation, which contains the program files.",
     "任务编号应为Codex交接回执中的32位小写十六进制编号。": "Use the 32-character lowercase hexadecimal task ID returned by Codex after handoff.",
-    "任务目录不能重定向。": "The task folder must remain in its original location."
+    "任务目录不能重定向。": "The task folder must remain in its original location.",
+    "识别命令共{length}个UTF-16单元，超过Windows的32767上限。请减少热词或缩短路径后重新配置；未截断热词、未启动BL。": "The recognition command uses {length} UTF-16 code units, exceeding the Windows limit of 32767. Reduce the hotword list or use shorter file paths and configure again. No hotwords were truncated and BL was not started.",
+    "未找到Node.js；请安装包含npm的Node.js，再运行bootstrap。": "Node.js was not found. Install Node.js with npm, then run bootstrap.",
 }
 
 
-def translate(message: str) -> str:
+def localize(template: str, **params: object) -> LocalizedText:
+    """一次生成参数一致的中英文提示，供页面随语言即时切换。"""
+    english = _ENGLISH.get(template, template)
+    return {"zh": template.format(**params) if params else template,
+            "en": english.format(**params) if params else english}
+
+
+def translate(message: str, **params: object) -> str:
     """按当前请求语言查找完整消息模板，保留未登记的原文。"""
-    return _ENGLISH.get(message, message) if _LANGUAGE.get() == "en" else message
+    template = _ENGLISH.get(message, message) if _LANGUAGE.get() == "en" else message
+    return template.format(**params) if params else template
 
 
 @contextmanager

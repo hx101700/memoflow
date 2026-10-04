@@ -5,9 +5,9 @@ import sys
 from unittest.mock import patch
 
 from asr_runtime import BAILIAN_VERSION
-from asr_runtime.application.bootstrap import bootstrap
+from asr_runtime.application.bootstrap import _install_bailian, bootstrap
 from asr_runtime.utils.environment import SetupError, locked_python_versions, run_process
-from asr_runtime.utils.installation import PIP_SHA256, PIP_VERSION, PYTHON_INDEXES
+from asr_runtime.utils.installation import NPM_REGISTRIES, PIP_SHA256, PIP_VERSION, PYTHON_INDEXES
 from tests.support import RuntimeTestCase
 
 
@@ -30,6 +30,7 @@ class BootstrapTests(RuntimeTestCase):
             ("npm_entry", self.runtime.root / "npm-cli.js"),
             ("verify_bl_installation", None),
             ("rank_python_indexes", list(PYTHON_INDEXES)),
+            ("rank_npm_registries", list(NPM_REGISTRIES)),
         ):
             patcher = patch(f"asr_runtime.application.bootstrap.{name}", return_value=value)
             patcher.start()
@@ -172,7 +173,7 @@ class BootstrapTests(RuntimeTestCase):
         python = self.runtime.path(".venv/Scripts/python.exe")
         calls = []
 
-        def run(_runtime, argv, _log):
+        def run(_runtime, argv, _log, **kwargs):
             """记录安装命令并模拟对应依赖落盘。"""
             calls.append(argv)
             if "ci" in argv:
@@ -207,7 +208,9 @@ class BootstrapTests(RuntimeTestCase):
         npm_command = next(argv for argv in calls if "ci" in argv)
         self.assertEqual(npm_command[:3], [str(node), str(npm), "ci"])
         self.assertIn("--prefix", npm_command)
-        self.assertIn("--fetch-retries=0", npm_command)
+        self.assertIn("--fetch-retries=2", npm_command)
+        self.assertIn("--prefer-offline", npm_command)
+        self.assertEqual(npm_command[npm_command.index("--registry") + 1], NPM_REGISTRIES[0])
 
     def test_existing_nonempty_destination_stops_without_retry(self):
         """验证非空BL目标目录保留原内容并拒绝安装。"""
@@ -222,3 +225,41 @@ class BootstrapTests(RuntimeTestCase):
             with self.assertRaisesRegex(SetupError, "非空"):
                 bootstrap(self.runtime)
         run.assert_not_called()
+
+    def test_npm_download_failure_switches_once_in_ranked_order(self):
+        """验证下载错误切换到测速给出的第二来源，并保留同一个锁和缓存位置。"""
+        self.runtime.prepare()
+        registries = list(reversed(NPM_REGISTRIES))
+
+        def install(_runtime, argv, _log, *, stdout_file):
+            """模拟第一个来源返回结构化下载错误，第二个完成安装。"""
+            if argv[argv.index("--registry") + 1] == registries[0]:
+                json.dump({"error": {"code": "E503"}}, stdout_file)
+                return 1
+            return 0
+
+        self.install.side_effect = install
+        with patch("asr_runtime.application.bootstrap.rank_npm_registries", return_value=registries):
+            _install_bailian(self.runtime, self.runtime.root / "node.exe", self.runtime.root / "npm-cli.js")
+        commands = [call.args[1] for call in self.install.call_args_list]
+        self.assertEqual([command[command.index("--registry") + 1] for command in commands], registries)
+        self.assertTrue(all("--fetch-retries=2" in command and "--json" in command for command in commands))
+        self.assertEqual(len({command[command.index("--prefix") + 1] for command in commands}), 1)
+
+    def test_npm_local_or_unknown_failure_stops_without_switching(self):
+        """验证权限、磁盘、锁冲突和不明回执直接停止，避免无效换源。"""
+        self.runtime.prepare()
+        reports = [json.dumps({"error": {"code": code}}) for code in ("EPERM", "EACCES", "ENOSPC", "EUSAGE", "UNKNOWN")]
+        for report in [*reports, "not json", "{}", '{"error":{"code":[]}}']:
+            with self.subTest(report=report):
+                self.install.reset_mock()
+
+                def fail_install(_runtime, _argv, _log, *, stdout_file):
+                    """提供本次安装失败的独立结构化结果。"""
+                    stdout_file.write(report)
+                    return 1
+
+                self.install.side_effect = fail_install
+                with self.assertRaisesRegex(SetupError, "npm安装失败"):
+                    _install_bailian(self.runtime, self.runtime.root / "node.exe", self.runtime.root / "npm-cli.js")
+                self.install.assert_called_once()
