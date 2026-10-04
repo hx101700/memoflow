@@ -1,6 +1,6 @@
 [中文](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.md) | English
 
-MemoFlow aims to turn recordings into meeting minutes that follow your preferred style and format. This v0.1.0 development preview delivers the first step: transcribe a recording in Codex and receive timestamped Word, Excel, and Markdown documents to review and correct.
+MemoFlow aims to turn recordings into meeting minutes that follow your preferred style and format. The first release, v0.1.0, delivers the first step: transcribe a recording in Codex and receive timestamped Word, Excel, and Markdown documents to review and correct.
 
 ### Features
 
@@ -29,6 +29,6 @@ Create an Alibaba Cloud account and complete the platform's identity verificatio
 
 After installation, ask Codex to transcribe a recording and follow the page it opens. The package also includes the latest Chinese and English README files.
 
-This preview supports Windows 10/11 x64 and requires Python 3.12 x64, Node.js 18.17+, and npm. Recognition uses Model Studio in China (Beijing) and may incur charges. Personalized meeting minutes and learning from feedback are planned for a later stage.
+This release supports Windows 10/11 x64 and requires Python 3.12 x64, Node.js 18.17+, and npm. Recognition uses Model Studio in China (Beijing) and may incur charges. Personalized meeting minutes and learning from feedback are planned for a later stage.
 
 See the [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.en.md) for details, or share problems and suggestions through [Issues](https://github.com/hx101700/memoflow/issues).

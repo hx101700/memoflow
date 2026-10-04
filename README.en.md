@@ -15,7 +15,7 @@ Stage one is currently available as the `asr-transcription` Skill: transcribe on
 
 ## Install the Skill
 
-Download the stage-one development preview, `asr-transcription.zip`, from [Releases](https://github.com/hx101700/memoflow/releases).
+Download `asr-transcription.zip` from [Releases](https://github.com/hx101700/memoflow/releases).
 
 First, [register an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [official setup guide](https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen) to complete account verification and activate Model Studio.
 
@@ -25,7 +25,7 @@ Send the distribution package `asr-transcription.zip` to Codex with this request
 Install this ZIP as the asr-transcription Skill. Read its SKILL.md and prepare the required environment in the current task folder.
 ```
 
-The Skill location holds tools and instructions. Your workspace holds the runtime environment, credentials, tasks, and results. It defaults to the current task folder; you can ask Codex to use another location. Windows 10/11 x64, Python 3.12 x64, and Node.js 18.17+ with npm are required. Initial setup needs internet access. See the [usage guide](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) for details.
+The Skill location holds tools and instructions. Your workspace holds the runtime environment, credentials, tasks, and results. It defaults to the current task folder; you can ask Codex to use another location. Windows 10/11 x64, Python 3.12 x64, and Node.js 18.17+ with npm are required. Initial setup needs internet access. See the [usage guide](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) for details.
 
 ## Quick start
 
@@ -71,6 +71,6 @@ Audio is selected in the system file dialog and read from its original path. Exc
 | Alibaba Cloud Model Studio | [Console](https://bailian.console.aliyun.com/) · [Documentation](https://help.aliyun.com/zh/model-studio/) |
 | BL CLI | [Official site](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
 | Accuracy enhancement | [Hotwords and context](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
-| MemoFlow | [Usage guide](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) · [Downloads](https://github.com/hx101700/memoflow/releases) |
+| MemoFlow | [Usage guide](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) · [Downloads](https://github.com/hx101700/memoflow/releases) |
 
 Licensed under [Apache-2.0](LICENSE).

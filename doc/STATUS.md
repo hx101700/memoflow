@@ -6,10 +6,11 @@
 
 MemoFlow 第一阶段由 asr-transcription Skill 完成单录音网页配置、BL 识别及原始 JSON、Word、Excel、Markdown 交付。个性化纪要与反馈学习尚未实现。
 
-固定模型 qwen-audio-3.1-asr-flash-filetrans，北京地域，BL 2.1.0；开发分支 dev，版本 0.1.0。本轮交付包含 UI 调整、流程审查修正与安装自动换源，沿用现有 [v0.1.0 开发预览](https://github.com/hx101700/memoflow/releases/tag/v0.1.0)。master 留待验收里程碑，用户已安装的 Skill 保持原样。
+固定模型 qwen-audio-3.1-asr-flash-filetrans，北京地域，BL 2.1.0。首个正式版本为 [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0)，发布分支及仓库默认入口为 master，后续开发继续使用 dev。本轮交付包含 UI 调整、流程审查修正与安装自动换源，用户已安装的 Skill 保持原样。
 
 ## 本轮完成
 
+- 正式发布前再次逐条核对 Skill、文档、全部 UML 与实际调用，未发现新的发布阻断问题。运行代码保持 f47372d 的实现；本次同步正式版标识、发布规则及使用指南链接。
 - BL 首次安装也会比较 npm 官方源与 npmmirror，按速度排序后使用原生 npm ci；每源至多一个安装进程，只有已识别的下载或来源错误才换源。保留锁、完整性校验及 npm 缓存，权限、磁盘、锁冲突与未知错误直接停止。独立新目录中两个真实来源均安装并验证 BL 2.1.0 成功。
 - Python/npm 复用前缀采样；响应头等待较长时仍会读取正文，评分包含连接等待。采样排序仅代表当前链路，不保证完整下载速度或任意网络下成功。
 - 逐模块审查代码、Skill、双语说明、前端文本、10 份 UML 和发行清单。审查依据、修正与保留边界见 [REVIEW](REVIEW.md)。
@@ -27,12 +28,14 @@ MemoFlow 第一阶段由 asr-transcription Skill 完成单录音网页配置、B
 
 ## 验证与交付
 
-最终完整 Python 检查 **428 项通过（114.829 秒）**，严格 mypy **31 个源文件通过**，包含 11 项真实 npm 本机合约。两个来源的独立 BL 在线安装验证分别用时 33.891 秒、12.421 秒，原锁未改变；这些只是本次链路结果。
+正式发布前完整 Python 检查 **428 项通过（124.899 秒）**，严格 mypy **31 个源文件通过**，包含 11 项真实 npm 本机合约。两个来源的独立 BL 在线安装验证分别用时 33.891 秒、12.421 秒，原锁未改变；这些只是当次链路结果。
 
-前端及网页协议本轮未改动，沿用 2026-10-04 的 **55 项前端测试**、Vue 类型检查、Vite 构建及 Edge 完整回归（32.378 秒）证据，覆盖校验冻结、表格错误、语言/主题、预览交接、20 个桌面终态视图及 5 个手机视图。
+本轮重新执行 **55 项前端测试**、Vue 类型检查、Vite 构建及 Edge 完整回归（46.127 秒），全部通过，构建产物没有代码变化。检查覆盖校验冻结、表格错误、语言/主题、预览交接、20 个桌面终态视图及 5 个手机视图。
 
-本机 [asr-transcription.zip](../dist/asr-transcription.zip) 已重新生成，48 个文件、341519 字节；CRC、固定清单及每个文件与当前源码字节一致。ZIP 含最新版双语 README，排除开发 doc、AGENTS、UML、测试、环境和用户数据。摘要及验证边界见 [ACCEPTANCE](ACCEPTANCE.md)。
+最终 ZIP 已在独立空目录完整安装，CPython 3.12.1、全部 8 个锁定 Python 包及 BL 2.1.0 检查通过，用时 195.516 秒。通过该环境启动网页并验证首页、JS、CSS、会话接口，再由 cancel 正常退出；Skill 资源字节与文件清单均保持不变。
 
-下一步是使用此包进行新的 Codex 对话完整验收，覆盖整个 Skill 安装、原生窗口、真实认证/识别及 Office 阅读。本轮的 BL 安装验证未覆盖这条完整人机链路；预览附件按 [ACCEPTANCE](ACCEPTANCE.md) 的包摘要核对，具体发布提交可从标签及 Git 历史定位。
+本机 [asr-transcription.zip](../dist/asr-transcription.zip) 为这份已验收包，48 个文件、341513 字节；CRC、固定清单及每个文件与当前源码字节一致。ZIP 含最新版双语 README，排除开发 doc、AGENTS、UML、测试、环境和用户数据。摘要及验证边界见 [ACCEPTANCE](ACCEPTANCE.md)。
+
+后续继续收集新 Codex 对话、原生窗口、真实认证/识别及 Office 阅读的目标环境证据。此次安装及本机检查不代替整条真实人机链路；发布附件按 [ACCEPTANCE](ACCEPTANCE.md) 的包摘要核对，具体发布提交可从 master、标签及 Git 历史定位。
 
 用户验收页面的工作目录为 .runtime/ui-complete-review-20261004；.runtime/ui-sidebar-review-20261004、.runtime/ui-neutral-review-20261004、.runtime/ui-user-review-final-20261004 及较早的 ui-* 目录可能含用户选择或保存的内容，应保留。旧服务加载的是启动时的 Python 代码；验证本轮后端修正应启动新会话，不将静态资源刷新视为后端已更新。

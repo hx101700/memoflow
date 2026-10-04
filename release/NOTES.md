@@ -1,6 +1,6 @@
 中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.en.md)
 
-MemoFlow 希望把录音整理成符合你习惯和格式要求的会议纪要。v0.1.0 开发预览先完成第一步：在 Codex 中转写录音，拿到带时间戳的 Word、Excel 和 Markdown，供你检查与校对。
+MemoFlow 希望把录音整理成符合你习惯和格式要求的会议纪要。首个正式版本 v0.1.0 完成第一步：在 Codex 中转写录音，拿到带时间戳的 Word、Excel 和 Markdown，供你检查与校对。
 
 ### 功能特性
 
