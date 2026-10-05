@@ -2,23 +2,30 @@
 
 此Skill将单个本地录音转写为原始JSON、Word、Excel和Markdown，完成后由用户校对。模型固定为`qwen-audio-3.1-asr-flash-filetrans`，地域为北京。
 
+本页对应 `dev` 的独立运行时安装器。[开发版 Release](https://github.com/hx101700/memoflow/releases/tag/dev-runtime)提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者安装依赖与 BL 均需联网。正式版 v0.1.0 保持原有安装流程，按其包内说明准备系统 Python/Node。
+
 ## 运行准备
 
-本机需要Windows 10/11 x64、CPython 3.12 x64（含venv、ensurepip和tkinter）、Node.js 18.17.0或更高版本及npm。依赖安装需要联网。运行时可从[Python](https://www.python.org/downloads/windows/)和[Node.js](https://nodejs.org/en/download)官方页面获取。
+支持已更新、包含系统 curl 的 Windows 10/11 x64。首次安装使用系统自带的 Windows PowerShell，将完整 Python 3.12.10、Node.js 24.21.0（含 npm 11.19.0）及依赖准备到工作目录，无需预先安装 Python 或 Node.js。固定版本和摘要随 Skill 维护，系统已有版本不会被更改。
 
 复用本次会话已约定的工作目录；无约定时使用当前Codex任务的现有目录并告知用户。只有缺少可用目录或目录位于Skill内时才另行选择。Skill目录存放代码和参考资料；工作目录保存环境、凭据、任务和结果，录音在网页中通过文件选择器添加。所有命令都显式传入同一个`--workspace`，保存位置应在Skill目录之外。
 
-在PowerShell中准备位置并安装依赖：
+在 PowerShell 中准备独立运行环境。下载使用 Windows 的 TLS 实现，需要正常网络执行权限；Codex 工具支持时，从首次安装就传 `sandbox_permissions=require_escalated`，避免受限令牌导致 `SEC_E_NO_CREDENTIALS`。遵循宿主工具权限机制，普通 Windows 终端可直接运行：
 
 ```powershell
 $skillDir = '替换为此Skill的安装目录'
 $workspaceDir = '替换为用户工作目录'
 $scriptPath = Join-Path $skillDir 'scripts/asr.py'
-python -S -X utf8 $scriptPath --workspace $workspaceDir bootstrap
+$bootstrapPath = Join-Path $skillDir 'scripts/bootstrap.ps1'
+& "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $bootstrapPath -Workspace $workspaceDir
 $pythonPath = Join-Path $workspaceDir '.asr-transcription/.venv/Scripts/python.exe'
 ```
 
-bootstrap从Skill中的Python/npm依赖锁安装到工作目录的`.asr-transcription`，完成依赖检查后返回安装状态及`key_file`。成功后即可使用环境；doctor用于故障诊断。已有可用环境直接复用，已有Key文件保留。安装进度持续输出到stderr并同步写入本机日志；stdout输出最终JSON。正常下载没有总耗时上限，等待同一次进程结束。
+`bootstrap.ps1` 优先使用 Skill 包内 `assets/runtimes` 中的原始 Python/Node ZIP，核对固定摘要后解压到工作目录 `.asr-transcription/.tools/python` 与 `.tools/node`。轻量包没有这些归档，安装器复用工作目录中已验证的完整缓存，缺少时使用系统 curl 从官方来源下载。无需手工解压运行时；准备完毕后继续由现有 Python `bootstrap` 安装依赖。基础 Python 包含 tkinter、venv 与 ensurepip，后续工具使用私有解释器和 Node 的绝对路径。
+
+联网下载的完整 ZIP 保留在 `.asr-transcription/.runtime/runtime-downloads` 中复用；未完成的 `.part` 由 curl 续接，摘要失败的文件会丢弃。连续 120 秒几乎没有数据传输时，curl 结束当前连接并按原生有限重试处理，不设置整个安装的总时限。两个包均不附带已安装的业务依赖。ExecutionPolicy Bypass 仅影响这次 PowerShell 进程，不更改机器的策略配置。
+
+Python `bootstrap` 从 Skill 中的 Python/npm 依赖锁安装到工作目录，完成检查后返回安装状态及 `key_file`。成功后即可使用；已有可用环境直接复用，Key 和任务保留。安装进度输出到 stderr，依赖安装日志保存在本机，stdout 输出最终 JSON。等待同一次进程结束，正常下载没有总耗时上限。
 
 需要下载Python依赖时，先比较官方PyPI和阿里云镜像的文件前缀速度，优先使用较快来源，并准备锁定的pip 26.2.1。pip自行恢复中断下载，单个业务依赖最多恢复5次；该来源最终失败后，自动尝试另一个来源一次。已完整下载的wheel保存在`.asr-transcription/.runtime/wheels`供后续安装复用，换源不跨进程续接未完成的文件。两个来源都失败时停止并保留`python-install.log`，不要在Codex中额外循环重跑或改动摘要。
 
@@ -30,9 +37,11 @@ bootstrap从Skill中的Python/npm依赖锁安装到工作目录的`.asr-transcri
 & $pythonPath -X utf8 $scriptPath --workspace $workspaceDir doctor
 ```
 
-工作目录的虚拟环境解释器缺失或无法运行时，使用首次准备环境的 CPython 3.12 执行 `python -S -X utf8 $scriptPath --workspace $workspaceDir doctor`。诊断只报告问题，修复按实际回执处理。
+虚拟环境解释器缺失或无法运行、但私有基础 Python 仍可用时，使用 `& (Join-Path $workspaceDir '.asr-transcription/.tools/python/python.exe') -E -S -B -X utf8 $scriptPath --workspace $workspaceDir doctor`。基础运行时尚未准备时，先执行上面的 PowerShell 入口。诊断只报告问题，修复按实际回执处理。
 
-Python依赖从HTTPS PyPI或阿里云镜像下载并校验摘要，然后从本机wheel安装。BL由npm按锁文件安装；更换来源不改变版本或完整性摘要。短时测速仅用于选择当前来源，不能保证后续下载速度或在任何网络下安装成功。Skill不附带Python、Node、wheel或已安装依赖，不修改系统PATH或全局包。
+Python 依赖从 HTTPS PyPI 或阿里云镜像下载并校验摘要，然后从本机 wheel 安装。BL 由私有 Node 配套的 npm 按锁安装，更换来源不改变版本或摘要。安装不修改系统 PATH、注册表或全局包。独立运行时减少版本和路径冲突，但仍需可用网络、目录写入权限及正常 Windows 交互桌面；组织策略或安全软件阻止执行时，应按具体错误处理，不能保证所有机器都能运行。
+
+虚拟环境记录创建时的基础 Python 路径，不能把已安装的工作目录视为可随意搬迁的便携包。旧版由系统 Python 创建的环境也不属于当前私有运行时。安装器发现基础路径不一致时保留旧环境并停止；先结束使用该环境的任务，再仅删除工作目录中的 `.asr-transcription/.venv`，重新执行上面的 PowerShell 入口。Key、BL 配置、任务和结果保留，不删除整个 `.asr-transcription`。
 
 ## 认证与运行
 
@@ -162,6 +171,9 @@ $jobId = '替换为交接回执中的任务编号'
 
 | 内容 | 位置 |
 | --- | --- |
+| 独立 Python / Node.js | `WORKSPACE/.asr-transcription/.tools/python/` / `.tools/node/` |
+| Python 依赖与 pip | `WORKSPACE/.asr-transcription/.venv/` |
+| 百炼 CLI | `WORKSPACE/.asr-transcription/.tools/bailian/` |
 | API Key | `WORKSPACE/.asr-transcription/.env` |
 | BL 配置 | `WORKSPACE/.asr-transcription/.state/bailian/` |
 | 活动会话连接信息 | `WORKSPACE/.asr-transcription/.state/sessions/SESSION_ID/connection.json` |

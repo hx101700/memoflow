@@ -53,7 +53,7 @@ def installed_bl_version(runtime: Runtime) -> str | None:
 def _node_command(runtime: Runtime, arguments: list[str]) -> list[str]:
     """组合Node入口、固定BL参数与登录开页适配。"""
     # --quiet是已核实的禁止命令结束后自动全局升级的路径；不猜造环境开关。
-    command = [str(find_node())]
+    command = [str(runtime.node_entry)]
     if os.name == "nt" and arguments[:2] == ["auth", "login"] and "--console" in arguments:
         command.extend(["--require", str(runtime.resource("scripts/bailian/console-browser.cjs"))])
     return [*command, str(runtime.bl_entry), *arguments, "--quiet"]
@@ -62,7 +62,8 @@ def _node_command(runtime: Runtime, arguments: list[str]) -> list[str]:
 def bl_command(runtime: Runtime, arguments: list[str]) -> list[str]:
     """核对工作区BL版本并构造Node启动参数。"""
     if installed_bl_version(runtime) != BAILIAN_VERSION or not runtime.bl_entry.is_file():
-        raise SetupError(f"需要工作区BL {BAILIAN_VERSION}，请先运行bootstrap。")
+        raise SetupError(f"需要工作区BL {BAILIAN_VERSION}，请先运行Skill的scripts/bootstrap.ps1。")
+    find_node(runtime)
     return _node_command(runtime, arguments)
 
 

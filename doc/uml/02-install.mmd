@@ -1,6 +1,7 @@
 sequenceDiagram
 actor U as 用户
 participant C as Codex＋Skill
+participant P as PowerShell入口
 participant E as Python CLI入口
 participant B as bootstrap（函数模块）
 participant I as installation（函数模块）
@@ -8,16 +9,38 @@ participant R as Runtime对象
 participant M as 本机检查与安装子进程
 participant S as Skill只读资源
 participant F as 用户工作目录
-Note over U,F: Windows 10/11 x64；本机CPython 3.12 x64、Node 18.17+及npm
+Note over U,F: Windows 10/11 x64；使用系统Windows PowerShell<br/>无需预装Python或Node；完整包附运行时，轻量包用系统curl下载<br/>Python依赖与BL安装仍需联网
 U->>C: 安装asr-transcription Skill，选择独立工作目录
 C->>S: 读取SKILL.md与按需references
-Note over C,S: Skill包根包含SKILL.md、scripts、references、assets、agents、LICENSE<br/>双语README直接来自仓库根；开发文档与环境排除<br/>安装者决定Skill位置；本工具不自动注册用户Skill
-C->>E: python -S -X utf8 Skill/scripts/asr.py --workspace 用户目录 bootstrap
+Note over C,S: 两包共用Skill代码、资料与仓库双语README<br/>asr-transcription.zip额外附assets/runtimes中的两个官方ZIP<br/>asr-transcription-lite.zip不附运行时；均排除开发文档和用户数据<br/>安装者决定Skill位置；本工具不自动注册用户Skill
+C->>P: Skill/scripts/bootstrap.ps1 -Workspace 用户目录
+P->>S: 读取scripts/runtimes.json
+P->>P: 检查已有工作目录、架构与Skill边界
+loop Python 3.12.10完整包与Node 24.21.0（含npm）
+    opt 目标运行时目录尚不存在
+        alt 包内有对应原始运行时ZIP
+            P->>S: 读取assets/runtimes中的归档
+        else 轻量包无归档
+            opt 尚无摘要匹配的完整缓存
+                P->>M: Windows curl下载官方ZIP<br/>连接重试与中断续接
+                M->>F: 私有.runtime/runtime-downloads缓存
+            end
+            P->>F: 读取完整缓存
+        end
+        P->>P: 检查完整归档SHA-256
+        P->>F: 临时解压后发布到.tools/python或.tools/node
+    end
+end
+P->>M: 私有Python加载venv、ensurepip和Tcl/Tk
+break 运行时下载、摘要、权限或能力检查失败
+    P-->>C: 失败回执；保留完整缓存与已有数据
+end
+P->>E: 私有Python -E -S -B -X utf8<br/>Skill/scripts/asr.py --workspace 用户目录 bootstrap
 E->>R: Runtime(workspace, skill_root)
 R->>R: 规范化路径；工作目录须在Skill之外<br/>私有运行目录与Skill互不包含
 E->>B: bootstrap(runtime)
 B->>B: check_python()核对当前解释器
-B->>M: check_node()执行node --version
+B->>M: check_node(runtime)执行私有Node --version
 B->>S: resource()读取Python与BL依赖锁
 B->>F: 核对已有BL安装与目标目录
 alt 运行条件、锁或BL目录冲突
@@ -30,7 +53,8 @@ else 前置条件满足
     B->>R: prepare()创建私有运行目录与空npm配置
     R->>F: 写入.asr-transcription/.runtime及.state
     B->>F: 检查或创建.asr-transcription/.venv
-    B->>M: 用python -I核对venv平台与已装依赖版本
+    B->>M: 私有venv Python -I检查平台、base_prefix<br/>及已装依赖版本
+    Note over B,F: 旧venv基础路径不匹配时停止并保留<br/>结束使用后仅重建venv，任务和凭据保持原样
     opt Python依赖与锁不一致
         B->>I: run_installer：必要时执行ensurepip
         I->>M: 工作区Python -I准备pip
@@ -86,8 +110,10 @@ else 前置条件满足
         B->>F: 复制空模板至.asr-transcription/.env
     end
     B-->>E: installed / already_installed，Key文件位置
-    E-->>C: JSON安装回执
+    E-->>P: JSON安装回执
+    P-->>C: 转发回执
 end
 Note over B,F: 环境准备保留既有Key和任务<br/>安装后的命令使用工作目录venv与同一--workspace<br/>Python安装和检查使用隔离模式，从指定环境加载依赖
 Note over I,F: run_installer转发进度并保存本机日志<br/>CLI stdout保留最终JSON；npm结果使用临时JSON<br/>中断时回收本次安装进程树
-Note over E,S: Skill内scripts/asr.py、scripts/asr_runtime/__main__.py<br/>application/bootstrap.py；utils/installation.py、environment.py、bailian.py
+Note over P,F: 包内ZIP保持只读；下载的ZIP与完整wheel保留在工作目录<br/>运行时实际解压到工作目录；系统PATH与注册表保持原样<br/>旧venv可能引用创建位置；移动目录后按诊断修复，保留任务和凭据
+Note over P,S: Skill内scripts/bootstrap.ps1、scripts/runtimes.json<br/>scripts/asr.py、scripts/asr_runtime/__main__.py<br/>application/bootstrap.py；utils/installation.py、environment.py、bailian.py

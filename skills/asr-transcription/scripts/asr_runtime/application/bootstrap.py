@@ -1,4 +1,4 @@
-"""用本机Python、Node和pip/npm准备工作区运行依赖。"""
+"""用工作区Python、Node和pip/npm准备运行依赖。"""
 
 import json
 import shutil
@@ -71,7 +71,7 @@ def _download_python_packages(
         message = f"正在从{index.name}下载{label}。"
         print(message, file=sys.stderr, flush=True)
         log.write(f"\n{message}\n")
-        arguments = [str(runtime.path(".venv/Scripts/python.exe")), "-I", "-m", "pip",
+        arguments = [str(runtime.path(".venv/Scripts/python.exe")), "-I", "-X", "utf8", "-m", "pip",
                      "download", "--require-hashes", "--only-binary=:all:", "--no-cache-dir",
                      "--retries", "2", "--timeout", "120",
                      "--dest", str(runtime.path(".runtime/wheels"))]
@@ -91,11 +91,12 @@ def _download_python_packages(
 def _install_python_dependencies(runtime: Runtime) -> None:
     """选择下载来源、准备支持续传的pip并从本机wheel安装依赖。"""
     python = str(runtime.path(".venv/Scripts/python.exe"))
-    pip = [python, "-I", "-m", "pip"]
+    # -I忽略PYTHONUTF8，显式选项保证安装输出与UTF-8日志解码一致。
+    pip = [python, "-I", "-X", "utf8", "-m", "pip"]
     log_path = runtime.path(".runtime/python-install.log")
     with log_path.open("w", encoding="utf-8") as log:
         if not runtime.path(".venv/Lib/site-packages/pip").is_dir():
-            if run_installer(runtime, [python, "-I", "-m", "ensurepip", "--default-pip"], log):
+            if run_installer(runtime, [python, "-I", "-X", "utf8", "-m", "ensurepip", "--default-pip"], log):
                 raise SetupError(f"无法准备pip；本地日志：{log_path}")
         version = run_process(runtime, [python, "-I", "-c",
                               "from importlib.metadata import version; print(version('pip'))"])
@@ -118,7 +119,7 @@ def _install_python_dependencies(runtime: Runtime) -> None:
 
 
 def bootstrap(runtime: Runtime) -> dict[str, str]:
-    """检查本机运行时，按Skill依赖锁准备工作区环境与Key模板。"""
+    """检查工作区运行时，按Skill依赖锁准备环境与Key模板。"""
     check_python()
     node, _ = check_node(runtime)
 
@@ -158,10 +159,13 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
         raise SetupError("已有虚拟环境不完整，未覆盖或自动重建。")
     # 隔离模式使检查与安装使用标准库及venv依赖，避免导入工作区同名模块。
     checked = run_process(runtime, [str(python), "-I", "-c",
-        "import sys, sysconfig; raise SystemExit(sys.version_info[:2] != (3, 12) "
-        "or sys.implementation.name != 'cpython' or sysconfig.get_platform() != 'win-amd64')"])
+        "import sys, sysconfig; from pathlib import Path; "
+        "raise SystemExit(sys.version_info[:2] != (3, 12) or sys.implementation.name != 'cpython' "
+        "or sysconfig.get_platform() != 'win-amd64' or Path(sys.base_prefix).resolve() != Path(sys.argv[1]).resolve())",
+        str(runtime.base_python.parent)])
     if checked.returncode:
-        raise SetupError("工作区虚拟环境无法启动或不是Windows x64的CPython 3.12，未覆盖。")
+        raise SetupError("工作区虚拟环境无法启动或未绑定本地Windows x64 CPython 3.12。"
+                         "已保留该环境；请清理工作区.asr-transcription/.venv后重新运行Skill的scripts/bootstrap.ps1。")
     if installed_python_versions(runtime, expected) != expected:
         _install_python_dependencies(runtime)
         if installed_python_versions(runtime, expected) != expected:
@@ -179,4 +183,5 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
     if not key_file.exists():
         shutil.copyfile(runtime.resource("assets/env.example"), key_file)
     return {"status": "already_installed" if installed is not None else "installed",
-            "version": BAILIAN_VERSION, "directory": str(destination), "key_file": str(key_file)}
+            "version": BAILIAN_VERSION, "directory": str(destination), "key_file": str(key_file),
+            "python": str(python), "base_python": str(runtime.base_python), "node": str(node)}

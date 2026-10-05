@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 from asr_runtime import BAILIAN_VERSION
 from asr_runtime.application.bootstrap import bootstrap
-from asr_runtime.utils.environment import Runtime, SetupError, child_environment, check_python, find_node, installed_python_versions, locked_python_versions, run_process
+from asr_runtime.utils.environment import Runtime, SetupError, child_environment, check_node, check_python, find_node, installed_python_versions, locked_python_versions, run_process
 from asr_runtime.utils.bailian import bl_command, verify_bl_installation
 from asr_runtime.application.diagnostics import doctor
 from scripts.probe_bl import SYNTHETIC_AUDIO_URL, probe
@@ -26,6 +26,8 @@ class EnvironmentTests(RuntimeTestCase):
         self.assertEqual(self.runtime.resource("scripts/requirements.txt"),
                          self.runtime.skill_root / "scripts/requirements.txt")
         self.assertEqual(self.runtime.output_root, self.runtime.workspace / "transcriptions")
+        self.assertEqual(self.runtime.base_python, self.runtime.root / ".tools/python/python.exe")
+        self.assertEqual(self.runtime.node_entry, self.runtime.root / ".tools/node/node.exe")
         with self.assertRaises(SetupError):
             self.runtime.resource("../workspace/.env")
 
@@ -270,9 +272,10 @@ class EnvironmentTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         manifest = self.runtime.path(".tools/bailian/node_modules/bailian-cli/package.json")
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
-        with patch("asr_runtime.utils.bailian.find_node", return_value=self.runtime.root / "node.exe") as find:
+        with patch("asr_runtime.utils.bailian.find_node", return_value=self.runtime.node_entry) as find:
             command = bl_command(self.runtime, ["speech", "recognize", "--dry-run"])
-        find.assert_called_once_with()
+        find.assert_called_once_with(self.runtime)
+        self.assertEqual(command[0], str(self.runtime.node_entry))
         self.assertIn("--quiet", command)
         self.assertEqual(command[1], str(self.runtime.bl_entry))
 
@@ -285,18 +288,52 @@ class EnvironmentTests(RuntimeTestCase):
                 bootstrap(self.runtime)
         self.assertFalse(self.runtime.path(".venv").exists())
 
-    def test_node_requires_existing_path_installation(self):
-        """验证Node必须来自已有本机安装。"""
-        with patch("asr_runtime.utils.environment.shutil.which", return_value=None) as which:
-            with self.assertRaisesRegex(SetupError, "未找到Node.js"):
-                find_node()
-        which.assert_called_once_with("node")
+    def test_missing_local_node_ignores_path_installation(self):
+        """验证PATH中即使存在Node也不能替代缺失的工作区运行时。"""
+        outside = self.runtime.workspace / "system-node"
+        outside.mkdir()
+        (outside / "node.exe").touch()
+        with patch.dict(os.environ, {"PATH": str(outside)}):
+            with self.assertRaisesRegex(SetupError, "scripts/bootstrap.ps1"):
+                find_node(self.runtime)
 
-    def test_release_preparation_can_find_existing_node(self):
-        """验证发行准备能够找到已安装Node。"""
-        node = self.runtime.root / "existing/node.exe"
-        with patch("asr_runtime.utils.environment.shutil.which", return_value=str(node)):
-            self.assertEqual(find_node(), node.resolve())
+    def test_node_uses_private_entry_and_child_path(self):
+        """验证Node定位及子进程PATH优先使用工作区独立目录。"""
+        node = self.runtime.node_entry
+        node.parent.mkdir(parents=True)
+        node.touch()
+        outside = str(self.runtime.workspace / "system-node")
+        with patch.dict(os.environ, {"PATH": outside}):
+            self.assertEqual(find_node(self.runtime), node)
+            env = child_environment(self.runtime)
+        self.assertEqual(env["PATH"].split(os.pathsep), [str(node.parent), outside])
+
+    def test_node_version_check_runs_only_private_executable(self):
+        """验证Node版本检查使用工作区绝对入口并保留BL最低版本约束。"""
+        node = self.runtime.node_entry
+        node.parent.mkdir(parents=True)
+        node.touch()
+        with patch("asr_runtime.utils.environment.run_process",
+                   return_value=subprocess.CompletedProcess([], 0, "v24.21.0\n", "")) as run:
+            self.assertEqual(check_node(self.runtime), (node, "v24.21.0"))
+        run.assert_called_once_with(self.runtime, [str(node), "--version"])
+
+    def test_doctor_identifies_missing_private_python(self):
+        """验证诊断给出独立Python预期位置及统一安装入口。"""
+        with patch("asr_runtime.application.diagnostics.check_node",
+                   side_effect=SetupError("Node unavailable")):
+            report = doctor(self.runtime)
+        self.assertEqual(report["base_python"], str(self.runtime.base_python))
+        self.assertIn("工作区Python尚未安装，请运行Skill的scripts/bootstrap.ps1。", report["issues"])
+
+    def test_doctor_reports_python_bound_outside_workspace(self):
+        """验证诊断能指出当前解释器仍使用系统基础目录。"""
+        self.runtime.base_python.parent.mkdir(parents=True)
+        self.runtime.base_python.touch()
+        with patch("asr_runtime.application.diagnostics.check_node",
+                   side_effect=SetupError("Node unavailable")):
+            report = doctor(self.runtime)
+        self.assertIn("当前Python未绑定工作区独立运行时，请运行Skill的scripts/bootstrap.ps1检查环境。", report["issues"])
 
     def test_doctor_does_not_require_npm(self):
         """验证环境诊断直接检查已安装的BL和Python依赖。"""

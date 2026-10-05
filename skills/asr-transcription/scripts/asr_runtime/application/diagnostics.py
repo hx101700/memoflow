@@ -1,6 +1,7 @@
 """检查本机运行环境与工作区依赖。"""
 
 import sys
+from pathlib import Path
 
 from .. import BAILIAN_VERSION
 from ..utils.bailian import installed_bl_version, verify_bl_installation
@@ -16,6 +17,8 @@ def doctor(runtime: Runtime) -> dict[str, object]:
     report: dict[str, object] = {
         "platform": sys.platform,
         "python": sys.version.split()[0],
+        "base_python": str(runtime.base_python),
+        "python_base": str(Path(sys.base_prefix).resolve()),
         "workspace": str(runtime.workspace),
         "skill_root": str(runtime.skill_root),
         "runtime_root": str(runtime.root),
@@ -25,6 +28,10 @@ def doctor(runtime: Runtime) -> dict[str, object]:
         check_python()
     except SetupError as exc:
         issues.append(str(exc))
+    if not runtime.base_python.is_file():
+        issues.append("工作区Python尚未安装，请运行Skill的scripts/bootstrap.ps1。")
+    elif Path(sys.base_prefix).resolve() != runtime.base_python.parent:
+        issues.append("当前Python未绑定工作区独立运行时，请运行Skill的scripts/bootstrap.ps1检查环境。")
     try:
         node, node_version = check_node(runtime)
         report["node"] = {"path": str(node), "version": node_version}
@@ -48,7 +55,7 @@ def doctor(runtime: Runtime) -> dict[str, object]:
             expected = locked_python_versions(runtime)
             installed = installed_python_versions(runtime, expected)
             if installed is None:
-                issues.append("Python运行依赖缺失或无法加载，请运行bootstrap。")
+                issues.append("Python运行依赖缺失或无法加载，请运行Skill的scripts/bootstrap.ps1。")
             else:
                 report["python_packages"] = installed
                 for name, version in expected.items():

@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from ctypes import wintypes
 import os
 import re
-import shutil
 import subprocess
 import sys
 import sysconfig
@@ -138,6 +137,16 @@ class Runtime:
         return self.workspace / "transcriptions"
 
     @property
+    def base_python(self) -> Path:
+        """返回工作区独立Python解释器的入口。"""
+        return self.path(".tools/python/python.exe")
+
+    @property
+    def node_entry(self) -> Path:
+        """返回工作区独立Node.js的入口。"""
+        return self.path(".tools/node/node.exe")
+
+    @property
     def bl_directory(self) -> Path:
         """返回当前工作区独立安装BL的位置。"""
         return self.path(".tools/bailian")
@@ -177,10 +186,12 @@ def python_temporary_directory(runtime: Runtime) -> Iterator[None]:
 
 def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dict[str, str]:
     """构造子进程环境，并选择工作区凭据或独立检查配置。"""
-    allowed = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROCESSOR_ARCHITECTURE"}
+    allowed = {"PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROCESSOR_ARCHITECTURE"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+    inherited_path = os.environ.get("PATH", "")
     temp = str(runtime.path(".runtime/tmp"))
     env.update({
+        "PATH": os.pathsep.join(filter(None, (str(runtime.node_entry.parent), inherited_path))),
         "TEMP": temp,
         "TMP": temp,
         "TMPDIR": temp,
@@ -204,12 +215,12 @@ def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dic
     return env
 
 
-def find_node() -> Path:
-    """定位当前PATH中的Node，缺失时提示安装。"""
-    found = shutil.which("node")
-    if not found:
-        raise SetupError("未找到Node.js；请安装包含npm的Node.js，再运行bootstrap。")
-    return Path(found).resolve()
+def find_node(runtime: Runtime) -> Path:
+    """定位工作区Node，缺失时提示运行首次安装入口。"""
+    node = runtime.node_entry
+    if not node.is_file():
+        raise SetupError("工作区Node.js尚未安装，请运行Skill的scripts/bootstrap.ps1。")
+    return node
 
 
 def check_python() -> None:
@@ -224,7 +235,7 @@ def npm_entry(node: Path) -> Path:
     """定位与Node配套的npm入口脚本。"""
     path = node.parent / "node_modules/npm/bin/npm-cli.js"
     if not path.is_file():
-        raise SetupError("未找到Node安装目录下的npm-cli.js；请使用包含npm的Windows Node发行版。")
+        raise SetupError("工作区Node.js缺少配套npm，请运行Skill的scripts/bootstrap.ps1检查安装。")
     return path
 
 
@@ -285,7 +296,7 @@ def run_process(
 
 def check_node(runtime: Runtime) -> tuple[Path, str]:
     """运行Node版本检查，返回满足BL要求的入口与版本。"""
-    node = find_node()
+    node = find_node(runtime)
     result = run_process(runtime, [str(node), "--version"])
     version = result.stdout.strip()
     match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", version)

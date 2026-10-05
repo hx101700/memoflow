@@ -58,8 +58,8 @@ class BootstrapTests(RuntimeTestCase):
                           "raise RuntimeError('workspace module executed')\n", encoding="utf-8")
 
         def execute_version(runtime, argv, **kwargs):
-            """用当前测试解释器执行生产版本检查参数。"""
-            return run_process(runtime, [sys.executable, *argv[1:]], **kwargs)
+            """用当前测试解释器及其基础目录执行生产版本检查。"""
+            return run_process(runtime, [sys.executable, *argv[1:-1], sys.base_prefix], **kwargs)
 
         with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=self.expected), \
              patch("asr_runtime.application.bootstrap.run_process", side_effect=execute_version):
@@ -67,15 +67,31 @@ class BootstrapTests(RuntimeTestCase):
         self.assertEqual(report["status"], "already_installed")
         self.assertFalse((self.runtime.workspace / "sysconfig-executed").exists())
 
+    def test_venv_bound_to_another_python_is_preserved(self):
+        """验证旧系统解释器绑定被拒绝，保留venv并停止依赖安装。"""
+        marker = self.runtime.path(".venv/existing-environment")
+        marker.write_text("keep", encoding="utf-8")
+
+        def execute_version(runtime, argv, **kwargs):
+            """用真实测试解释器验证不同的工作区基础目录会被拒绝。"""
+            self.assertEqual(argv[-1], str(runtime.base_python.parent))
+            return run_process(runtime, [sys.executable, *argv[1:]], **kwargs)
+
+        with patch("asr_runtime.application.bootstrap.run_process", side_effect=execute_version):
+            with self.assertRaisesRegex(SetupError, "未绑定本地.*CPython 3.12"):
+                bootstrap(self.runtime)
+        self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
+        self.install.assert_not_called()
+
     def test_ensurepip_and_pip_use_isolated_python(self):
-        """验证缺少pip时两条安装命令都使用隔离模式。"""
+        """验证ensurepip和pip安装命令都使用隔离模式及UTF-8输出。"""
         self.runtime.path(".venv/Lib/site-packages/pip").rmdir()
         with patch("asr_runtime.application.bootstrap.installed_python_versions", side_effect=[None, self.expected]), \
              patch("asr_runtime.application.bootstrap.run_process", return_value=subprocess.CompletedProcess([], 0, PIP_VERSION, "")):
             bootstrap(self.runtime)
         commands = [call.args[1] for call in self.install.call_args_list]
-        self.assertEqual(commands[0][1:4], ["-I", "-m", "ensurepip"])
-        self.assertTrue(all(command[1:4] == ["-I", "-m", "pip"] for command in commands[1:]))
+        self.assertEqual(commands[0][1:6], ["-I", "-X", "utf8", "-m", "ensurepip"])
+        self.assertTrue(all(command[1:6] == ["-I", "-X", "utf8", "-m", "pip"] for command in commands[1:]))
 
     def test_conflicting_bl_is_rejected_before_python_mutation(self):
         """验证BL版本冲突在修改Python环境前停止。"""

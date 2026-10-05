@@ -246,7 +246,7 @@ assert.equal(native, 0);
 assert.equal(cp.execFile('node', ['--version'], {}, () => {}), 'native');
 assert.equal(native, 1);
 '''
-        result = subprocess.run([str(find_node()), "-e", script, str(adapter), LOGIN_URL],
+        result = subprocess.run([str(find_node(contract_runtime())), "-e", script, str(adapter), LOGIN_URL],
                                 capture_output=True, text=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
 

@@ -47,6 +47,8 @@ class PackageTests(RuntimeTestCase):
             ".asr-transcription/.state/sessions/private/connection.json",
             ".asr-transcription/.runtime/tmp/python-123-private/openpyxl.tmp",
             ".asr-transcription/.venv/Lib/site-packages/private.py",
+            ".asr-transcription/.tools/python/python.exe", ".asr-transcription/.tools/node/node.exe",
+            ".asr-transcription/.runtime/runtime-downloads/python.zip.part",
             "scripts/bailian/node_modules/private.js", "scripts/developer.py",
             "scripts/asr_runtime/debug.py", "scripts/asr_runtime/static/debug.ts",
             "frontend/App.vue", "frontend/main.ts", "frontend/tsconfig.json", "mypy.ini", "requirements-dev.txt",
@@ -63,13 +65,15 @@ class PackageTests(RuntimeTestCase):
             path = self.source / relative
             path.write_bytes(path.read_bytes() + b"\n<!-- current repository README -->\n")
         report = build_zip(self.source)
-        self.assertEqual(Path(report["path"]), self.source / "dist/asr-transcription.zip")
+        self.assertEqual(Path(report["path"]), self.source / "dist/asr-transcription-lite.zip")
         with ZipFile(report["path"]) as archive:
             names = archive.namelist()
             self.assertEqual(names, report["files"])
             self.assertEqual(set(names), set(REQUIRED_FILES) | set(REPOSITORY_FILES))
             self.assertEqual(len(names), report["file_count"])
             self.assertIn("SKILL.md", names)
+            self.assertIn("scripts/bootstrap.ps1", names)
+            self.assertIn("scripts/runtimes.json", names)
             self.assertTrue(all(name.split("/")[0] in
                                 {"SKILL.md", "LICENSE", "README.md", "README.en.md", "agents", "scripts", "references", "assets"}
                                 for name in names))
@@ -87,6 +91,40 @@ class PackageTests(RuntimeTestCase):
         with self.assertRaises(FileExistsError):
             build_zip(self.source, destination)
         self.assertEqual(destination.read_bytes(), b"previous-package")
+
+    def prepare_runtime_archives(self):
+        """构造可验证的小型运行时归档与本例发行摘要。"""
+        directory = self.temporary_root / "runtime-downloads"
+        directory.mkdir()
+        manifest = {}
+        for name in ("python", "node"):
+            archive = directory / f"{name}.zip"
+            with ZipFile(archive, "w") as output:
+                output.writestr(f"{name}.exe", "synthetic runtime")
+            manifest[name] = {"url": f"https://example.invalid/{name}.zip",
+                              "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}
+        (self.skill / "scripts/runtimes.json").write_text(json.dumps(manifest), encoding="utf-8")
+        return directory
+
+    def test_full_and_lite_packages_share_all_skill_files(self):
+        """验证完整包只额外附带两个官方归档，其余文件与轻量包逐字相同。"""
+        directory = self.prepare_runtime_archives()
+        lite = build_zip(self.source)
+        full = build_zip(self.source, runtime_directory=directory)
+        self.assertEqual(Path(full["path"]).name, "asr-transcription.zip")
+        with ZipFile(lite["path"]) as lite_zip, ZipFile(full["path"]) as full_zip:
+            self.assertEqual(set(full_zip.namelist()) - set(lite_zip.namelist()),
+                             {"assets/runtimes/python.zip", "assets/runtimes/node.zip"})
+            for name in lite_zip.namelist():
+                self.assertEqual(lite_zip.read(name), full_zip.read(name))
+
+    def test_runtime_digest_mismatch_prevents_package_creation(self):
+        """验证打包前拒绝损坏的运行时归档。"""
+        directory = self.prepare_runtime_archives()
+        (directory / "python.zip").write_bytes(b"damaged")
+        with self.assertRaisesRegex(ValueError, "运行时归档摘要不符"):
+            build_zip(self.source, runtime_directory=directory)
+        self.assertFalse((self.source / "dist").exists())
 
     def test_missing_skill_stops_before_creating_archive(self):
         """验证缺少 Skill 入口时在创建 ZIP 前停止。"""

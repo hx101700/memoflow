@@ -1,6 +1,7 @@
 """通过固定pip与本机合成wheel验证下载续传和摘要拒绝。"""
 
 import base64
+from contextlib import redirect_stderr
 import hashlib
 import io
 import re
@@ -10,9 +11,11 @@ import unittest
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
+from asr_runtime.application.bootstrap import _download_python_packages
 from asr_runtime.utils.environment import Runtime, run_process
-from asr_runtime.utils.installation import PIP_VERSION
+from asr_runtime.utils.installation import PIP_VERSION, PythonIndex, run_installer
 from tests.support import CONTRACT_WORKSPACE, SKILL_ROOT, RuntimeTestCase
 
 
@@ -57,7 +60,7 @@ class PipDownloadContractTests(RuntimeTestCase):
         if not cls.python.is_file():
             raise unittest.SkipTest("请先在.runtime/skill-contract-workspace完成bootstrap，以提供真实pip。")
         runtime = Runtime(CONTRACT_WORKSPACE, SKILL_ROOT)
-        result = run_process(runtime, [str(cls.python), "-I", "-m", "pip", "--version"])
+        result = run_process(runtime, [str(cls.python), "-I", "-X", "utf8", "-m", "pip", "--version"])
         if result.returncode or not result.stdout.startswith(f"pip {PIP_VERSION} "):
             raise unittest.SkipTest(f"下载合约需要验收目录中的pip {PIP_VERSION}。")
 
@@ -119,7 +122,7 @@ class PipDownloadContractTests(RuntimeTestCase):
     def download(self, url: str, digest: str) -> subprocess.CompletedProcess[str]:
         """使用真实pip下载本机wheel并核对给定摘要。"""
         return run_process(self.runtime, [
-            str(self.python), "-I", "-m", "pip", "download", "--no-index", "--no-deps",
+            str(self.python), "-I", "-X", "utf8", "-m", "pip", "download", "--no-index", "--no-deps",
             "--require-hashes", "--resume-retries", "2", "--retries", "0", "--timeout", "2",
             "--no-cache-dir", "--disable-pip-version-check", "--progress-bar", "off",
             "--dest", str(self.destination), f"{url}#sha256={digest}",
@@ -140,6 +143,33 @@ class PipDownloadContractTests(RuntimeTestCase):
         self.assertEqual(len(ranges), 2)
         self.assertIsNone(ranges[0])
         self.assertRegex(ranges[1] or "", r"^bytes=[1-9]\d*-$")
+
+    def test_production_download_log_preserves_chinese_workspace(self) -> None:
+        """验证生产下载命令经真实pip和日志转发后完整保留中文空格路径。"""
+        workspace = self.runtime.workspace / "中文 空格"
+        workspace.mkdir()
+        runtime = Runtime(workspace, self.runtime.skill_root)
+        runtime.prepare()
+        url, ranges = self.serve_wheel(truncate_first=False)
+        runtime.resource("scripts/requirements.txt").write_text(
+            f"{url} --hash=sha256:{self.digest}\n", encoding="utf-8")
+        index = PythonIndex("本机合约", url.rsplit("/", 1)[0] + "/simple/", "")
+        log_path = runtime.path(".runtime/python-install.log")
+
+        def execute_download(selected_runtime, arguments, log):
+            """从外层目录执行生产参数，让pip的相对保存路径也包含中文。"""
+            self.assertEqual(selected_runtime, runtime)
+            return run_installer(self.runtime, [str(self.python), *arguments[1:]], log)
+
+        with log_path.open("w", encoding="utf-8") as log, redirect_stderr(io.StringIO()), \
+                patch("asr_runtime.application.bootstrap.run_installer", side_effect=execute_download):
+            _download_python_packages(runtime, [index], log, installer=False)
+        output = log_path.read_text(encoding="utf-8")
+        saved_line = next(line for line in output.splitlines() if line.startswith("Saved "))
+        self.assertIn("中文 空格", saved_line)
+        self.assertNotIn("\ufffd", output)
+        self.assertEqual(runtime.path(".runtime/wheels/" + WHEEL_FILENAME).read_bytes(), self.wheel)
+        self.assertEqual(ranges, [None])
 
     def test_ignored_range_restarts_the_download(self) -> None:
         """验证服务端忽略Range时pip重新下载完整文件。"""

@@ -19,7 +19,7 @@ description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。�
 
 环境与凭据位于 `WORKSPACE/.asr-transcription`，默认输出为 `WORKSPACE/transcriptions`。准备完成后的命令使用 `WORKSPACE/.asr-transcription/.venv/Scripts/python.exe` 执行 `ENTRY`。
 
-首次准备需要 Windows x64 CPython 3.12、Node.js 18.17+ 及 npm，按[运行准备](references/usage.md#运行准备)执行 `bootstrap`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。安装由工具负责选源和有限续传，等待同一进程完成，失败后报告日志中的原因。
+首次在 Windows 10/11 x64 按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
 
 ## 新录音
 

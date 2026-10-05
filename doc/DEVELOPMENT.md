@@ -12,6 +12,7 @@ MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定�
 | --- | --- |
 | Codex 与 Skill | 选择工作目录、打开页面、根据用户明确指定的会话交接、处理认证、执行工具并交付结果 |
 | Vue 页面 | 文件选择、表格编辑、配置与预览、复制确认消息、显示结束状态 |
+| PowerShell 安装入口 | 校验包内或下载的 Python/Node 归档，在工作目录解压并调用 Python 安装入口 |
 | Python | 管理本机会话、保存确认快照、媒体准备、调用 BL、解析结果和生成文档 |
 | BL | 鉴权、临时上传、识别提交、轮询、下载与原始 JSON 落盘 |
 
@@ -26,18 +27,25 @@ skills/asr-transcription/          # Skill 安装资源，运行时只读
 ├── agents/openai.yaml
 ├── scripts/
 │   ├── asr.py
+│   ├── bootstrap.ps1
+│   ├── runtimes.json
 │   ├── requirements.txt
 │   ├── bailian/
 │   └── asr_runtime/
 ├── references/
-├── assets/env.example
+├── assets/
+│   ├── env.example
+│   └── runtimes/                  # 完整发行包内的两个官方ZIP
 └── LICENSE
 
 工作目录/
 ├── .asr-transcription/
 │   ├── .env
 │   ├── .venv/
-│   ├── .tools/bailian/
+│   ├── .tools/
+│   │   ├── python/
+│   │   ├── node/
+│   │   └── bailian/
 │   ├── .runtime/
 │   └── .state/
 │       ├── bailian/
@@ -52,7 +60,7 @@ skills/asr-transcription/          # Skill 安装资源，运行时只读
 
 ## 模块职责
 
-Python 路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端路径相对于仓库根。
+Python 模块路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，前端路径相对于仓库根。前置安装入口是 Skill 内 `scripts/bootstrap.ps1`，它读取同级 `runtimes.json`，完成基础运行时准备后调用现有 Python CLI。
 
 | 模块 | 职责 |
 | --- | --- |
@@ -197,7 +205,7 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 音频使用大块 `ElButton` 打开原生文件窗口，规格说明位于框内；选中反馈使用绿色文件图标与 success 标签，选择框保持中性背景；等待使用原生 v-loading 遮罩。Excel 使用 `ElUpload` 的按钮入口在内存导入，与下载模板并排。热词编辑使用 `ElTable` 与 `ElInput`，表尾添加入口使用公开的 `append` 插槽。错误标红通过 `row-class-name`；组件原有聚焦、禁用、滚动和主题行为保持一致。
 
-Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求 `^20.19.0 || >=22.12.0`，与 BL 运行所需 Node 18.17+ 分开维护。
+Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求由根 package.json 的 `^20.19.0 || >=22.12.0` 约束；Skill 使用固定 Node 24.21.0，满足该条件。开发命令在已有开发环境中执行：
 
 ```powershell
 npm ci
@@ -210,7 +218,11 @@ npm run test:browser
 
 `build:login` 从仓库 `scripts/console-browser.cts` 生成固定适配产物。浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-安装器按锁定版本准备 Python 依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`。
+用户首次从 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace`。脚本读取 `scripts/runtimes.json` 的固定官方 URL 与 SHA-256，优先核对和使用包内 `assets/runtimes` 的原始 ZIP；轻量包没有归档时复用工作目录缓存，必要时从官方来源下载。运行时解压到工作目录 `.asr-transcription/.tools/python` 和 `.tools/node` 后，用私有 Python 调用现有 `asr.py --workspace ... bootstrap`。它只负责基础运行时，不重复实现 pip/npm 依赖安装。Python 为安装管理器的完整 ZIP，含 Tk、venv 和 ensurepip；Node ZIP 含配套 npm。包内归档保持只读，联网下载的完整归档保留在工作目录缓存。
+
+运行命令始终使用工作目录内的 Python/Node 绝对路径。安装不注册系统 Python，不修改全局 PATH、npm registry 或用户的其他环境；网络和组织策略导致的失败仍按实际错误停止。bootstrap 的既有 venv 检查同时核对 `sys.base_prefix` 是否指向本工作目录的 `.tools/python`。旧版系统环境或迁移后路径不符时保留并停止；结束使用环境的任务后仅重建 `.venv`，凭据、BL 安装、任务与结果保留。doctor 同时提供当前 `python_base` 和预期 `base_python`，便于定位差异。
+
+Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`。
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
@@ -218,7 +230,16 @@ npm run test:browser
 
 Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机有限命令 `run_process()` 和安装命令 `run_installer()` 持有本次 `Popen`，在超时、中断或异常退出时共用 `stop_process_tree()` 结束其进程树；正常完成不触发停止。选择窗口只依赖标准库与 tkinter，直接使用 `sys.base_prefix/python.exe`，使取消动作对应实际窗口进程。停止范围限于本次创建的进程，不枚举其他 Python 或浏览器进程；BL 登录和识别沿用各自的生命周期。
 
-`scripts/build_zip.py` 按固定逐文件映射生成 ZIP：Skill 资源直接作为归档根，加上仓库根最新版 README.md 和 README.en.md。README 字节原样入包，仓库资料用完整 GitHub 链接，语言切换与 LICENSE 用包内链接。不维护第二份 README。排除开发 doc、AGENTS、UML、测试、Vue/TS 源码、构建工具、依赖环境、凭据和用户数据。
+`scripts/build_zip.py` 按固定逐文件映射生成两个 ZIP：Skill 资源直接作为归档根，加上仓库根最新版 README.md 和 README.en.md。完整包 `asr-transcription.zip` 额外包含 `assets/runtimes/python-3.12.10-amd64.zip` 与 `assets/runtimes/node-v24.21.0-win-x64.zip` 两个原始官方归档；轻量包 `asr-transcription-lite.zip` 不附运行时。两包代码与说明相同，Python 依赖和 BL 安装仍需联网。README 字节原样入包，仓库资料用完整 GitHub 链接，语言切换与 LICENSE 用包内链接。排除开发 doc、AGENTS、UML、测试、Vue/TS 源码、构建工具、已安装依赖、凭据和用户数据。
+
+在仓库根目录使用开发环境构建。未提供 `--runtime-directory` 时输出轻量包；提供包含两个原始官方 ZIP 的目录时，先校验摘要，再输出完整包：
+
+```powershell
+& ./.venv/Scripts/python.exe scripts/build_zip.py
+& ./.venv/Scripts/python.exe scripts/build_zip.py --runtime-directory '替换为两个官方ZIP所在目录'
+```
+
+默认输出到 `dist/`，已有同名文件不会覆盖；需要另选目标时使用 `--output`。
 
 开发在 dev，master 保存正式发布里程碑。首个正式版本为 v0.1.0；项目版本仅在下次通过验收并发布 master 时按变更递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
 

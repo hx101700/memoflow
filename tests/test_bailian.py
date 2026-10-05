@@ -31,7 +31,7 @@ class BailianTests(RuntimeTestCase):
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
         self.key = "asr-transcription-synthetic-process-key"
         self.runtime.path(".env").write_text(f"DASHSCOPE_API_KEY={self.key}\n", encoding="utf-8")
-        self.node = self.runtime.root / "node.exe"
+        self.node = self.runtime.node_entry
         self.arguments = [
             "speech", "recognize", "--model", MODEL,
             "--url", str(self.runtime.root / "本地 audio.wav"),
@@ -120,6 +120,7 @@ class BailianTests(RuntimeTestCase):
     def test_handoff_length_check_matches_execution_argv_without_credentials_or_installation(self):
         """验证交接检查与执行共用完整参数，交接阶段只检查命令长度。"""
         with patch("asr_runtime.utils.bailian.installed_bl_version", side_effect=AssertionError("不能查询安装")), \
+                patch("asr_runtime.utils.bailian.find_node", side_effect=AssertionError("不能探测运行时")), \
                 patch("asr_runtime.utils.auth.read_api_key", side_effect=AssertionError("不能读取凭据")), \
                 patch("asr_runtime.utils.bailian.check_command_length", wraps=check_command_length) as check:
             check_recognition_command(self.runtime, self.arguments)
@@ -358,7 +359,7 @@ class BailianTests(RuntimeTestCase):
                                      "base_url": "https://dashscope.aliyuncs.com"}), encoding="utf-8")
         self.popen.side_effect = _REAL_POPEN
         with patch("asr_runtime.utils.bailian.bl_command", side_effect=lambda runtime, args:
-                   [str(find_node()), str(contract_runtime().bl_entry), *args, "--quiet"]):
+                   [str(find_node(contract_runtime())), str(contract_runtime().bl_entry), *args, "--quiet"]):
             report = console_status(self.runtime)
         self.assertTrue(report["configured"])
         self.assertFalse(report["verified_online"])

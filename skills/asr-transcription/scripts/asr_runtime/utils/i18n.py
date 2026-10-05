@@ -118,7 +118,8 @@ _ENGLISH: dict[str, str] = {
     "任务编号应为Codex交接回执中的32位小写十六进制编号。": "Use the 32-character lowercase hexadecimal task ID returned by Codex after handoff.",
     "任务目录不能重定向。": "The task folder must remain in its original location.",
     "识别命令共{length}个UTF-16单元，超过Windows的32767上限。请减少热词或缩短路径后重新配置；未截断热词、未启动BL。": "The recognition command uses {length} UTF-16 code units, exceeding the Windows limit of 32767. Reduce the hotword list or use shorter file paths and configure again. No hotwords were truncated and BL was not started.",
-    "未找到Node.js；请安装包含npm的Node.js，再运行bootstrap。": "Node.js was not found. Install Node.js with npm, then run bootstrap.",
+    "工作区Node.js尚未安装，请运行Skill的scripts/bootstrap.ps1。": "Node.js is not installed in this workspace. Run scripts/bootstrap.ps1 from the Skill.",
+    "工作区Node.js缺少配套npm，请运行Skill的scripts/bootstrap.ps1检查安装。": "The workspace Node.js installation is missing npm. Run scripts/bootstrap.ps1 from the Skill to check the installation.",
 }
 
 

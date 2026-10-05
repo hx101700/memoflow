@@ -9,14 +9,14 @@
 - 第一阶段交付一个独立的 Codex Skill：单个录音通过本机网页配置，由 Codex 调用 BL，保存原始 JSON、Excel、Word、Markdown，交给用户校对。
 - 固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域、临时 OSS。热词与上下文可同时使用；发言人区分默认开启，多声道先提示再生成单声道 FLAC 副本，原文件保留。
 - 最终产品把语音输入整理为符合用户习惯和指定格式的会议纪要，并从用户提供的范例与确认后的修改中持续学习。第一阶段交付转写校对稿；第二阶段实现个性化纪要及反馈学习，当前代码尚未实现后者。
-- 支持 Windows 10/11 x64、CPython 3.12 x64（含 venv、ensurepip、tkinter）、Node.js 18.17+ 及 npm。依赖锁限定该平台，安装需要联网。
+- 支持已更新、包含系统 curl 的 Windows 10/11 x64。首次由 Windows PowerShell 准备工作目录内的 CPython 3.12.10 x64 完整运行时（含 venv、ensurepip、tkinter）及 Node.js 24.21.0（含 npm 11.19.0），无需系统预装 Python/Node。依赖锁限定该平台，安装需要联网；可用网络、写入权限及交互桌面仍是运行条件。
 
 ## Skill 与工作目录
 
 - Skill 源码在 `skills/asr-transcription/`，由 `SKILL.md`、`agents/openai.yaml`、`scripts/`、`references/`、`assets/` 组成。
-- `scripts/asr.py` 是调用入口，`scripts/asr_runtime/` 是内部 Python 执行包；Skill 名称仍为 `asr-transcription`。
+- `scripts/bootstrap.ps1` 准备私有 Python/Node，再调用 `scripts/asr.py bootstrap`；日常 CLI 入口为 `scripts/asr.py`，`scripts/asr_runtime/` 是内部 Python 执行包。运行时版本、官方地址和摘要在 `scripts/runtimes.json`，Skill 名称仍为 `asr-transcription`。
 - `Runtime(workspace, skill_root)` 区分用户工作目录与 Skill 资源。`resource()` 读取 Skill 文件；`path()` 定位 `<workspace>/.asr-transcription/` 内的运行文件；默认输出根为 `<workspace>/transcriptions/`。私有运行目录与 Skill 目录互不包含，`check_output_path()` 在选择和生成文件时保护 Skill 资源。
-- 运行命令使用 Skill 内 `scripts/asr.py` 的绝对路径，并显式传入 `--workspace`。凭据修复复用[错误说明](skills/asr-transcription/references/errors.md#鉴权失败与重新配置)中已核实的BL原生命令，限定当前工作目录与default Profile。依赖环境、BL 安装、凭据、处理文件和任务记录写入工作目录，运行时 Skill 文件保持只读。
+- 首次安装用 Skill 内 `scripts/bootstrap.ps1 -Workspace`；运行命令使用工作目录 `.venv/Scripts/python.exe` 和 Skill 内 `scripts/asr.py` 的绝对路径，并显式传入 `--workspace`。Python/Node 基础运行时位于私有 `.tools/python`、`.tools/node`，不回退系统 PATH。凭据修复复用[错误说明](skills/asr-transcription/references/errors.md#鉴权失败与重新配置)中已核实的BL原生命令，限定当前工作目录与default Profile。依赖环境、BL 安装、凭据、处理文件和任务记录写入工作目录，运行时 Skill 文件保持只读。
 - API Key 从私有运行目录 `.env` 读取；bootstrap 只复制空模板。网页允许用户填写或修改 Key，并单独保存到该固定文件；“确认并预览”也会按需保存尚未保存的修改。控制台模式使用 BL 在同一工作目录保存的配置。凭据不得写回 Skill。
 - 源码仓库包含 Skill 源文件，维护操作不自动安装到用户级或项目级 Skill 发现目录。
 
@@ -53,9 +53,10 @@
 - 仅修改当前仓库及明确批准的测试位置；保留 `data/` 原始用户数据。真实录音、Key、令牌、签名 URL、转写、原响应和运行日志不得提交或打包。
 - 开发在 `dev`，`master` 用于验收里程碑。提交、推送、合并、发布需用户明确意图；精确路径暂存，不强推或重写历史；同次网络推送失败两次即停止。
 - 项目版本号仅在通过验收并发布到 `master` 时变更。当前首个正式版本为 `0.1.0`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
-- 固定发行清单位于 `scripts/build_zip.py`。ZIP 直接包含 Skill 运行文件与仓库最新版 README.md、README.en.md；README 从仓库根读取，不维护包用副本。AGENTS、开发文档、测试、UML、运行环境及用户数据不入包。新增运行文件时同步清单和包边界检查。
+- 固定发行清单位于 `scripts/build_zip.py`。两个 ZIP 共用 Skill 运行文件与仓库最新版 README.md、README.en.md；README 从仓库根读取，不维护包用副本。`asr-transcription.zip` 额外在 `assets/runtimes` 保存两个原始官方运行时 ZIP；`asr-transcription-lite.zip` 不附运行时。AGENTS、开发文档、测试、UML、已安装依赖及用户数据不入包。新增运行文件时同步清单和包边界检查。本次开发包发布为 `dev-runtime` 预发布，正式版本标签和原附件保留。
 - 前端通过 Vite 构建到 Skill 的 `scripts/asr_runtime/static/`，核心产物为 `index.html`、`app.js` 和 `app.css`，同时交付 `favicon.svg` 与第三方许可说明。发行包使用构建产物；Vue/TypeScript 源码、开发配置、构建依赖及 `node_modules` 保留在开发仓库。
 - Python 依赖由 Skill 中 `scripts/requirements.txt` 锁定版本与摘要；安装工具 pip 26.2.1 的文件与摘要固定在 `utils/installation.py`，BL 锁在 `scripts/bailian/`。Python 安装前比较 PyPI 与阿里云镜像的文件前缀吞吐；每个下载阶段按来源顺序各启动至多一次 `pip download`，连接重试2次、业务依赖的中断恢复最多5次由 pip 完成，仍失败才切换另一源。完整 wheel 保存在工作目录，安装阶段仅使用本机文件。
+- 基础运行时优先使用包内 `assets/runtimes` 的原始官方 ZIP；轻量包缺少归档时复用工作目录缓存，必要时从官方来源下载。均校验固定摘要，再解压到工作目录。安装从首次调用就使用正常 Windows 网络权限，Codex 工具支持时传 `sandbox_permissions=require_escalated`，避免受限令牌使系统 curl 的 Schannel 初始化失败。使用 Python 安装管理器发布的完整运行时 ZIP，而非缺少 Tk/pip 的嵌入式包。不修改系统 PATH、注册表或全局安装。PowerShell 的 ExecutionPolicy Bypass 仅限本次进程，组织策略阻止时报告实际原因。虚拟环境依赖其创建位置，移动工作目录后按诊断修复环境，保留凭据、任务与结果。
 - 首次安装 BL 时比较 npm 官方源与 npmmirror 的固定 BL 包前缀吞吐，按顺序每源至多执行一次 `npm ci`。连接重试由 npm 的 `fetch-retries=2` 处理；只有已识别的结构化下载或来源错误才切换另一源，例如连接中断、404/5xx、下载校验失败，权限、磁盘、锁冲突及未知错误直接停止。复用 npm 缓存和完整性校验，不承诺未完成文件的断点续传；保留原依赖锁，不修改全局 registry。两类安装恢复均不扩展为云端转写重试。
 - Python 安装与依赖检查子进程使用 `-I`，从指定虚拟环境加载依赖；用户工作目录中的同名模块不参与检查或安装。
 - 开发探针 `scripts/probe_bl.py` 不进入发行包，只使用固定虚构 URL；BL 合约测试使用 `127.0.0.1` 模拟服务与合成凭据。本机测试不等于真实云端验收。

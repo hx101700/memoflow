@@ -103,6 +103,12 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 BL中间件会检查版本并可能写update-state.json；quiet阻止后续自动升级/提示，不完全禁止版本查询。DO_NOT_TRACK=1关闭遥测。依据：[middleware.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/runtime/src/middleware.ts)、[update-checker.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/runtime/src/utils/update-checker.ts)。
 
+首次安装由 `scripts/bootstrap.ps1` 准备工作目录内的基础运行时，固定来源与 SHA-256 见 `scripts/runtimes.json`。完整包的 `assets/runtimes` 直接附原始官方 ZIP；轻量包由官方来源下载，相同摘要适用于两种来源。Python 使用官方 [Windows 运行时索引](https://www.python.org/ftp/python/index-windows.json)中的 `python-3.12.10-amd64.zip` 完整包。官方允许直接解压安装管理器提供的 ZIP 并从目标目录运行；嵌入式包不含 Tcl/Tk 和 pip，不能满足本项目的文件窗口和依赖安装。[完整运行时解压](https://docs.python.org/3/using/windows.html#offline-installs)、[嵌入式包范围](https://docs.python.org/3/using/windows.html#the-embeddable-package)
+
+运行时下载复用 Windows 自带 curl 的 HTTPS、连接重试与续接，摘要由 PowerShell `Get-FileHash` 校验。系统 curl 使用 Schannel；受限令牌下已观察到 `SEC_E_NO_CREDENTIALS`，因此安装入口从首次调用就遵循执行工具的正常网络权限机制。[Windows curl 官方说明](https://learn.microsoft.com/en-us/windows/curl/)
+
+Node 使用 [24.21.0 Windows x64 ZIP](https://nodejs.org/dist/v24.21.0/)，随包 npm 为 11.19.0，版本对应关系与摘要来自 [Node 发布索引](https://nodejs.org/dist/index.json)和 [SHASUMS256](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt)。两套运行时均从工作目录绝对路径调用，不依赖系统 Python/Node，也不修改全局 PATH 或注册表。已创建的 Python venv 保留基础解释器路径，不保证搬迁后可用。[venv 可移植性说明](https://docs.python.org/3.12/library/venv.html#how-venvs-work)
+
 安装使用官方[npm ci](https://docs.npmjs.com/cli/v11/commands/npm-ci/)和[pip require-hashes](https://pip.pypa.io/en/stable/topics/secure-installs/)；BL与Python依赖分别由`package-lock.json`、`requirements.txt`锁定。Python包摘要来自官方PyPI，对应Windows x64 CPython3.12或py3-none-any包：[PyAV](https://pypi.org/pypi/av/18.1.0/json)、[dotenv](https://pypi.org/pypi/python-dotenv/1.2.3/json)、[python-docx](https://pypi.org/pypi/python-docx/1.2.0/json)、[lxml](https://pypi.org/pypi/lxml/6.1.3/json)、[typing-extensions](https://pypi.org/pypi/typing-extensions/4.16.0/json)。安装前比较官方PyPI和[阿里云镜像](https://developer.aliyun.com/mirror/pypi/)的文件前缀吞吐，再分别使用一个`--index-url`下载；`--extra-index-url`没有来源优先级，不能作为按顺序的备用源。[pip来源选择说明](https://pip.pypa.io/en/stable/cli/pip_install/#finding-packages)
 
 安装工具固定为[pip 26.2.1](https://pypi.org/pypi/pip/26.2.1/json)，wheel路径和SHA-256维护在`utils/installation.py`。从同一wheel采样至多256KiB、约5秒；仅用于来源排序，不落盘或参与安装。正式下载使用`--retries 2 --resume-retries 5 --timeout 120`，其中timeout是socket等待超时。安装进程没有总时限。pip 25.2默认启用续传，26.2进一步修正部分断流与Range处理；支持206时续接，不支持时重新下载，完整文件仍须通过摘要检查。[参数定义](https://pip.pypa.io/en/stable/cli/pip/)、[版本记录](https://pip.pypa.io/en/stable/news/#v26-2)、[固定版本下载器](https://github.com/pypa/pip/blob/26.2.1/src/pip/_internal/network/download.py)
@@ -115,7 +121,7 @@ BL 首次安装复用同一前缀采样方法，并行比较 `registry.npmjs.org
 
 每个来源至多运行一次 `npm ci` 进程，保留 `ignore-scripts`、关闭 audit/fund、隔离用户配置，设置 `fetch-retries=2`。stdout 的临时 JSON 用于读取 `error.code`，stderr 实时保存为安装日志。仅已识别的下载或来源错误（如连接中断、404/5xx、下载校验失败）可换源；权限、磁盘、锁冲突、结果无法解析或未知错误立即停止，不通过匹配日志文字猜测。第二来源的 `npm ci` 会重建本次安装目录中的 `node_modules`，而启动前已存在的冲突安装仍保留并报错。[npm ci 行为](https://docs.npmjs.com/cli/v11/commands/npm-ci/)
 
-2026-10-05 用本机 npm 11.12.1 核对 [jsonError 的 code 输出](https://github.com/npm/cli/blob/v11.12.1/lib/utils/output-error.js)和 [npm-registry-fetch 的 HTTP 错误码](https://github.com/npm/npm-registry-fetch/blob/v19.1.1/lib/errors.js)。本机合约实际复现 E503、ECONNRESET、FETCH_ERROR、EIDLETIMEOUT、EINTEGRITY 的换源，以及 EUSAGE、E403、EBUSY 的停止；测试只使用合成包与 127.0.0.1。该版本是验证环境，不是新增 npm 版本锁。
+结构化错误入口为固定 npm 的 [jsonError.code 输出](https://github.com/npm/cli/blob/v11.19.0/lib/utils/output-error.js)。来源切换按返回码区分下载错误与本机失败；合约检查使用合成包和 127.0.0.1，已执行结果见仓库验收记录。
 
 两次安装通过 `prefer-offline` 复用工作目录的 npm 缓存，缓存内容由 npm 校验；不自行操作其内部格式，也不把缓存复用描述成文件断点续传。npm 在单次进程内仍可能发起多次下载请求。来源均不可用时保留日志并停止，下载恢复不适用于云端识别。[npm 缓存与完整性](https://docs.npmjs.com/cli/v11/commands/npm-cache/)
 

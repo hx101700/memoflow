@@ -17,6 +17,7 @@
 /.venv/
 /.tools/
 /node_modules/
+/skills/asr-transcription/assets/runtimes/
 /dist/
 /build/
 *.egg-info/

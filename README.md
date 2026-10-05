@@ -15,17 +15,24 @@ MemoFlow 的目标是把录音整理成符合你习惯和指定格式的会议�
 
 ## Skill 安装
 
-从 [Releases](https://github.com/hx101700/memoflow/releases) 下载 `asr-transcription.zip`。
+从[开发版 Release](https://github.com/hx101700/memoflow/releases/tag/dev-runtime)选择一个安装包：
+
+- **asr-transcription.zip（推荐）**：包含 Python 和 Node.js 运行时，减少首次安装的下载量。
+- **asr-transcription-lite.zip**：不包含运行时，首次安装时从官方来源下载。
+
+两种包的功能相同，Python 依赖和百炼 CLI 的首次安装仍需联网。
 
 使用前，请先[注册阿里云账号](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account)，按[官方指引](https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen)完成实名认证、开通百炼服务等准备。
 
-将发行包 `asr-transcription.zip` 和下面这句话发给 Codex：
+将选定的 ZIP 和下面这句话发给 Codex：
 
 ```text
 请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
 ```
 
-Skill 安装位置存放工具与说明；工作目录存放运行环境、凭据、任务和结果，默认使用当前任务文件夹，也可以告诉 Codex 使用其他位置。当前支持 Windows 10/11 x64，需要 Python 3.12 x64 和 Node.js 18.17+（含 npm），首次准备环境需要联网。详细说明见[使用指南](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md)。
+支持 Windows 10/11 x64，安装器会在工作目录准备独立的 Python、Node.js 和依赖，无需提前安装，也不修改系统环境。Skill 安装位置存放工具与说明；工作目录存放运行环境、凭据、任务和结果，默认使用当前任务文件夹，也可以告诉 Codex 使用其他位置。详细操作见[开发版使用指南](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md)。
+
+以上安装改进在 `dev` 预发布中提供。正式版 [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 保持原有安装流程，仍需预装 Python 3.12 和 Node.js 18.17+。
 
 ## 快速开始
 
@@ -71,6 +78,6 @@ Codex 会使用这个 Skill 打开本机转写网页。按页面提示添加录�
 | 阿里云百炼 | [控制台](https://bailian.console.aliyun.com/) · [官方文档](https://help.aliyun.com/zh/model-studio/) |
 | 百炼 CLI | [官方主页](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
 | 识别精度增强 | [热词与上下文说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
-| MemoFlow | [使用指南](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) · [版本下载](https://github.com/hx101700/memoflow/releases) |
+| MemoFlow | [使用指南](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) · [版本下载](https://github.com/hx101700/memoflow/releases) |
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。

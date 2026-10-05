@@ -21,7 +21,7 @@ from urllib.parse import unquote
 from asr_runtime.application.bootstrap import _install_bailian
 from asr_runtime.utils.environment import Runtime, SetupError, find_node, npm_entry
 from asr_runtime.utils.installation import run_installer
-from tests.support import RuntimeTestCase
+from tests.support import RuntimeTestCase, contract_runtime
 
 
 def package_tarball(name: str, content: bytes = b"module.exports = 42;") -> bytes:
@@ -47,7 +47,7 @@ class NpmInstallContractTests(RuntimeTestCase):
         """准备独立npm环境、合成依赖锁及真实本机Node/npm入口。"""
         super().setUp()
         self.runtime.prepare()
-        self.node = find_node()
+        self.node = find_node(contract_runtime())
         self.npm = npm_entry(self.node)
         self.destination = self.runtime.bl_directory
         self.destination.mkdir(parents=True)

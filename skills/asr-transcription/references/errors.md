@@ -7,10 +7,14 @@
 | 现象 | 处理方法 |
 | --- | --- |
 | 安装较慢或暂时没有新输出 | 查看同一进程的stderr进度或本机安装日志。下载继续时等待；pip的120秒网络等待、npm的HTTP请求期限都不是整个安装的总时限。不要并行启动另一份安装。 |
-| Python下载中断或摘要不匹配 | 安装器先由pip有限恢复下载，再尝试另一来源；两个来源都失败才返回最终错误。保留日志中的下载地址、Expected与Got进一步排查，保持锁定摘要。完整文件与未完成片段分别处理，后者不能直接用于安装。 |
+| 安装包内运行时摘要不匹配 | 重新获取完整的 asr-transcription.zip 并按安装说明使用。保留工作目录中的已有凭据与任务，不修改锁定摘要或执行损坏的运行时归档。 |
+| 基础 Python / Node.js 下载失败 | 查看 PowerShell 入口返回的官方地址和具体错误，恢复网络后重跑同一入口。只有摘要匹配的完整 ZIP 才会解压，不能跳过校验或改用全局安装掩盖问题。 |
+| curl 提示 SEC_E_NO_CREDENTIALS | 已观察到 Windows 受限令牌会使系统 curl 的 TLS 初始化失败。按执行工具的权限机制重新运行相同 bootstrap 入口（Codex 使用 require_escalated）；不关闭证书校验。 |
+| Python依赖下载中断或摘要不匹配 | 安装器先由pip有限恢复下载，再尝试另一来源；两个来源都失败才返回最终错误。保留日志中的下载地址、Expected与Got进一步排查，保持锁定摘要。完整文件与未完成片段分别处理，后者不能直接用于安装。 |
 | 百炼CLI下载失败 | 安装器先比较npm官方源与npmmirror。npm按锁下载并校验，已识别的下载或来源错误会切换另一个来源；每源至多一次npm ci，npm自身可能重取失败请求。缓存由npm管理，换源不保证续接未完成的文件。两个来源都失败时保留bootstrap.log并停止。 |
 | npm提示权限、磁盘、锁文件或未知错误 | 这些错误不会通过换源消失，安装器直接停止。保留bootstrap.log中的error.code与具体原因，处理本机问题；不删除依赖锁、关闭校验或反复重跑安装。 |
 | 安装提示目录冲突 | 让 Codex 检查提示中的安装目录及已有文件。保留凭据和用户数据，确认残留内容后再决定修复方式。 |
+| 更换工作目录后环境不可用，或提示虚拟环境来自其他 Python | 旧版系统 Python 创建的 venv 或搬迁后的 venv 可能引用其他基础路径。先结束使用它的任务，仅清理当前工作目录的 .asr-transcription/.venv，再运行 bootstrap.ps1；保留 Key、BL 配置、任务与结果，不删除整个运行目录。 |
 | 转写页面没有出现 | 保留启动回执和同一serve进程，区分本机服务是否响应与浏览器是否显示，按下方“页面打开问题”处理。 |
 | 提示运行目录或保存位置位于 Skill 内 | 选择 Skill 安装目录之外的工作目录和保存位置；这些位置用于存放环境、任务、处理文件及结果，原录音从用户选择的位置读取。 |
 | 登录完成后仍提示配置不足 | 让 Codex 查看本地登录状态，确认模型调用凭据是否存在。页面登录成功不等于模型权限已验证。 |
@@ -64,10 +68,11 @@ BL 2.1.0发现已保存的模型Key时，不会仅因重新控制台登录就请
 
 ```powershell
 $blEntry = Join-Path $workspaceDir '.asr-transcription/.tools/bailian/node_modules/bailian-cli/dist/bailian.mjs'
+$nodePath = Join-Path $workspaceDir '.asr-transcription/.tools/node/node.exe'
 $previousBlConfigDir = $env:BAILIAN_CONFIG_DIR
 try {
     $env:BAILIAN_CONFIG_DIR = Join-Path $workspaceDir '.asr-transcription/.state/bailian'
-    & node $blEntry config set --config default --key api_key '--value=' --quiet
+    & $nodePath $blEntry config set --config default --key api_key '--value=' --quiet
     if ($LASTEXITCODE -ne 0) { throw 'BL未完成本机Key配置更新。' }
 } finally {
     $env:BAILIAN_CONFIG_DIR = $previousBlConfigDir
