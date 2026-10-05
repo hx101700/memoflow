@@ -222,6 +222,8 @@ npm run test:browser
 
 运行命令始终使用工作目录内的 Python/Node 绝对路径。安装不注册系统 Python，不修改全局 PATH、npm registry 或用户的其他环境；网络和组织策略导致的失败仍按实际错误停止。bootstrap 的既有 venv 检查同时核对 `sys.base_prefix` 是否指向本工作目录的 `.tools/python`。旧版系统环境或迁移后路径不符时保留并停止；结束使用环境的任务后仅重建 `.venv`，凭据、BL 安装、任务与结果保留。doctor 同时提供当前 `python_base` 和预期 `base_python`，便于定位差异。
 
+安装日志统一保存为 UTF-8。普通 pip 命令显式传入 `-X utf8`；Python 3.12 的 ensurepip 内部子进程使用本地编码，因此只在该调用按 `locale.getencoding()` 解码。二者均保持 `-I` 隔离模式，不修改标准库或系统编码。
+
 Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿里云镜像同一 pip wheel 前缀，排序只是当时短时吞吐，不保证全程速度。pip 自行处理有限连接重试、下载恢复与摘要检查；每阶段每源至多启动一次下载，最终失败才换源。完整 wheel 保存在私有目录，本机安装使用 `--no-index`。
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
@@ -241,7 +243,7 @@ Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机�
 
 默认输出到 `dist/`，已有同名文件不会覆盖；需要另选目标时使用 `--output`。
 
-开发在 dev，master 保存正式发布里程碑。首个正式版本为 v0.1.0；项目版本仅在下次通过验收并发布 master 时按变更递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
+开发在 dev，master 保存正式发布里程碑。当前正式版本为 v0.1.1；项目版本仅在下次通过验收并发布 master 时按变更递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
 
 界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
 

@@ -77,14 +77,17 @@ def rank_npm_registries() -> list[str]:
     return [registry for _, registry in sorted(zip(speeds, NPM_REGISTRIES), key=lambda item: item[0], reverse=True)]
 
 
-def run_installer(runtime: Runtime, argv: list[str], log: TextIO, *, stdout_file: TextIO | None = None) -> int:
+def run_installer(
+    runtime: Runtime, argv: list[str], log: TextIO, *,
+    stdout_file: TextIO | None = None, encoding: str = "utf-8",
+) -> int:
     """执行安装命令，逐行保存并显示进度，结束或中断后回收子进程。"""
     try:
         process = subprocess.Popen(
             argv, cwd=runtime.workspace, env=child_environment(runtime),
             stdin=subprocess.DEVNULL, stdout=stdout_file if stdout_file is not None else subprocess.PIPE,
             stderr=subprocess.PIPE if stdout_file is not None else subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace", bufsize=1, shell=False,
+            text=True, encoding=encoding, errors="replace", bufsize=1, shell=False,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
     except OSError as exc:

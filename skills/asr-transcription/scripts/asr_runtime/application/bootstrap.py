@@ -1,6 +1,7 @@
 """用工作区Python、Node和pip/npm准备运行依赖。"""
 
 import json
+import locale
 import shutil
 import sys
 import tempfile
@@ -96,7 +97,9 @@ def _install_python_dependencies(runtime: Runtime) -> None:
     log_path = runtime.path(".runtime/python-install.log")
     with log_path.open("w", encoding="utf-8") as log:
         if not runtime.path(".venv/Lib/site-packages/pip").is_dir():
-            if run_installer(runtime, [python, "-I", "-X", "utf8", "-m", "ensurepip", "--default-pip"], log):
+            # ensurepip的内部pip进程仅继承-I，按Windows本地编码统一读取两层输出。
+            if run_installer(runtime, [python, "-I", "-m", "ensurepip", "--default-pip"], log,
+                             encoding=locale.getencoding()):
                 raise SetupError(f"无法准备pip；本地日志：{log_path}")
         version = run_process(runtime, [python, "-I", "-c",
                               "from importlib.metadata import version; print(version('pip'))"])

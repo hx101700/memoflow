@@ -15,7 +15,7 @@ MemoFlow 的目标是把录音整理成符合你习惯和指定格式的会议�
 
 ## Skill 安装
 
-从[开发版 Release](https://github.com/hx101700/memoflow/releases/tag/dev-runtime)选择一个安装包：
+从 [v0.1.1 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.1) 选择一个安装包：
 
 - **asr-transcription.zip（推荐）**：包含 Python 和 Node.js 运行时，减少首次安装的下载量。
 - **asr-transcription-lite.zip**：不包含运行时，首次安装时从官方来源下载。
@@ -30,9 +30,7 @@ MemoFlow 的目标是把录音整理成符合你习惯和指定格式的会议�
 请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
 ```
 
-支持 Windows 10/11 x64，安装器会在工作目录准备独立的 Python、Node.js 和依赖，无需提前安装，也不修改系统环境。Skill 安装位置存放工具与说明；工作目录存放运行环境、凭据、任务和结果，默认使用当前任务文件夹，也可以告诉 Codex 使用其他位置。详细操作见[开发版使用指南](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md)。
-
-以上安装改进在 `dev` 预发布中提供。正式版 [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 保持原有安装流程，仍需预装 Python 3.12 和 Node.js 18.17+。
+支持 Windows 10/11 x64，安装器会在工作目录准备独立的 Python、Node.js 和依赖，无需提前安装，也不修改系统环境。Skill 安装位置存放工具与说明；工作目录存放运行环境、凭据、任务和结果，默认使用当前任务文件夹，也可以告诉 Codex 使用其他位置。详细操作见[使用指南](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md)。
 
 ## 快速开始
 

@@ -1,4 +1,5 @@
 import json
+import locale
 import shutil
 import subprocess
 import sys
@@ -84,13 +85,14 @@ class BootstrapTests(RuntimeTestCase):
         self.install.assert_not_called()
 
     def test_ensurepip_and_pip_use_isolated_python(self):
-        """验证ensurepip和pip安装命令都使用隔离模式及UTF-8输出。"""
+        """验证ensurepip使用本地编码解码，pip使用显式UTF-8，均保持隔离。"""
         self.runtime.path(".venv/Lib/site-packages/pip").rmdir()
         with patch("asr_runtime.application.bootstrap.installed_python_versions", side_effect=[None, self.expected]), \
              patch("asr_runtime.application.bootstrap.run_process", return_value=subprocess.CompletedProcess([], 0, PIP_VERSION, "")):
             bootstrap(self.runtime)
         commands = [call.args[1] for call in self.install.call_args_list]
-        self.assertEqual(commands[0][1:6], ["-I", "-X", "utf8", "-m", "ensurepip"])
+        self.assertEqual(commands[0][1:4], ["-I", "-m", "ensurepip"])
+        self.assertEqual(self.install.call_args_list[0].kwargs["encoding"], locale.getencoding())
         self.assertTrue(all(command[1:6] == ["-I", "-X", "utf8", "-m", "pip"] for command in commands[1:]))
 
     def test_conflicting_bl_is_rejected_before_python_mutation(self):

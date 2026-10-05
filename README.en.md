@@ -15,7 +15,7 @@ Stage one is currently available as the `asr-transcription` Skill: transcribe on
 
 ## Install the Skill
 
-Choose one package from the [development Release](https://github.com/hx101700/memoflow/releases/tag/dev-runtime):
+Choose one package from the [v0.1.1 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.1):
 
 - **asr-transcription.zip (recommended)** includes Python and Node.js runtimes to reduce downloads during initial setup.
 - **asr-transcription-lite.zip** downloads the runtimes from official sources during initial setup.
@@ -30,9 +30,7 @@ Send the selected ZIP to Codex with this request:
 Install this ZIP as the asr-transcription Skill. Read its SKILL.md and prepare the required environment in the current task folder.
 ```
 
-Windows 10/11 x64 is supported. The installer prepares private Python and Node.js runtimes and dependencies in your workspace without prior installations or system changes. The Skill location holds tools and instructions; your workspace holds the runtime environment, credentials, tasks, and results. It defaults to the current task folder, and you can ask Codex to use another location. See the [development usage guide](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) for details.
-
-These installation improvements are available in the `dev` prerelease. Stable [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) keeps its original installation process and still requires Python 3.12 and Node.js 18.17+ to be installed first.
+Windows 10/11 x64 is supported. The installer prepares private Python and Node.js runtimes and dependencies in your workspace without prior installations or system changes. The Skill location holds tools and instructions; your workspace holds the runtime environment, credentials, tasks, and results. It defaults to the current task folder, and you can ask Codex to use another location. See the [usage guide](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) for details.
 
 ## Quick start
 
@@ -78,6 +76,6 @@ Audio is selected in the system file dialog and read from its original path. Exc
 | Alibaba Cloud Model Studio | [Console](https://bailian.console.aliyun.com/) · [Documentation](https://help.aliyun.com/zh/model-studio/) |
 | BL CLI | [Official site](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
 | Accuracy enhancement | [Hotwords and context](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
-| MemoFlow | [Usage guide](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) · [Downloads](https://github.com/hx101700/memoflow/releases) |
+| MemoFlow | [Usage guide](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) · [Downloads](https://github.com/hx101700/memoflow/releases) |
 
 Licensed under [Apache-2.0](LICENSE).

@@ -1,34 +1,33 @@
-中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.en.md)
+中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.1/release/NOTES.en.md)
 
-MemoFlow 希望把录音整理成符合你习惯和格式要求的会议纪要。首个正式版本 v0.1.0 完成第一步：在 Codex 中转写录音，拿到带时间戳的 Word、Excel 和 Markdown，供你检查与校对。
+MemoFlow v0.1.1 简化了首次安装：不必提前配置 Python 和 Node.js，Codex 会按 Skill 指引在当前工作目录准备独立环境。电脑上已有的 Python、Node 和其他项目环境保持原样。
 
-### 功能特性
+### 这个版本的变化
 
-- **网页填写与预览**：添加录音，设置语言、发言人区分和保存位置。预览前后可以返回调整，确认后再交给 Codex。
-- **热词与上下文**：直接填写热词，或导入 Excel 后就地修改。点击“确认并预览”后检查热词和上下文，问题在对应位置提示；填写过程不触发内容检查。
-- **百炼识别**：通过官方 BL CLI 调用 Qwen-Audio-3.1-ASR-Flash-Filetrans，支持控制台授权和北京地域 API Key。
-- **三种文档**：一次生成 Word、Excel、Markdown 并保留原始 JSON。已有成功任务可以在本机重新导出。
-- **中英界面与主题**：按习惯选择中文、English、浅色或深色外观。
-- **安装自动选源**：Python 依赖与百炼 CLI 都支持测速选源，下载失败时有限换源，并复用已下载的依赖，减少网络波动带来的安装中断。
+- **独立运行环境**：Python、Node、百炼 CLI 和依赖分别安装在工作目录内，减少版本不兼容和 PATH 冲突。
+- **两种安装包**：完整包附带经过官方摘要校验的 Python、Node 压缩包；轻量包在安装时下载相同运行时。两者使用同一份 Skill 代码和说明。
+- **安装恢复与诊断**：轻量包保留未完成下载供续传；已有环境会先检查基础 Python 绑定，发现旧环境或路径变化时给出处理说明并保留数据。
+- **中文路径**：修复 pip 安装日志中的中文乱码，中文及带空格的工作目录可正常显示。
 
-音频通过系统文件窗口选择，直接读取原文件；热词 Excel 在内存中解析。转写完成前请保留录音及原路径，只有需要合并声道时才生成处理后的音频文件。
+录音转写的使用方式保持一致：在网页添加录音、调整热词与上下文，预览后将确认消息发给 Codex，由它调用百炼并生成 Word、Excel、Markdown 和原始 JSON。
 
-### 从配置到交付
+### 下载安装
 
-在网页点击“确认并预览”，核对无误后用“复制给 Codex”把确认消息发回对话。Codex 会接收这份设置；需要登录时引导你完成一次授权，随后等待转写和文件生成完成。交接后的设置固定，结果在 Codex 中查看。
+| 安装包 | 如何选择 |
+| --- | --- |
+| **[asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.1/asr-transcription.zip)** | 推荐。已包含 Python 和 Node.js，安装时无需再下载这两个运行时。 |
+| **[asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.1/asr-transcription-lite.zip)** | 初始文件较小，首次安装时从官方来源下载运行时。 |
 
-编辑页面从打开起有效两小时，交接或到期会显示结束提示。已经交给 Codex 的任务不受页面期限影响。
+两个包都支持 Windows 10/11 x64，仍需联网安装 Python 依赖和百炼 CLI。完整包不是完全离线安装包。
 
-如果服务意外关闭，再次打开同一工作目录的转写页时，会检查并回收可以确认已结束的临时文件。已交接任务、正式凭据和转写结果保留；归属不明的文件保持原样，清理未完成时会给出提示；识别不会自动重传。
+将选定的 ZIP 与这句话一起交给 Codex：
 
-### 开始使用
+> 请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
 
-先注册阿里云账号，按平台指引完成实名认证和百炼服务准备。下载 [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)，连同下面这句话发给 Codex：
+使用前请准备好阿里云账号并开通百炼服务。安装后说“帮我转写录音”，按打开的页面操作即可。详细步骤见 [README](https://github.com/hx101700/memoflow/blob/v0.1.1/README.md)。
 
-> 请解压 ZIP，阅读其中的 SKILL.md，帮我安装并配置 asr-transcription。
+### 从旧版本升级
 
-安装后说“帮我转写录音”，按打开的页面操作即可。安装包也包含最新的中英文 README。
+先等待正在执行的任务结束，再更换 Skill。若原工作目录的虚拟环境仍绑定系统 Python，按安装器提示只重建其中的 `.asr-transcription/.venv`，保留凭据、任务和转写结果。不要删除整个工作目录。
 
-当前支持 Windows 10/11 x64，需要 Python 3.12 x64、Node.js 18.17+ 与 npm。识别使用百炼北京地域，可能产生调用费用。个性化会议纪要与反馈学习属于后续阶段。
-
-详细用法见 [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.md)，问题和建议欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)。
+遇到问题欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)，附上环境、错误提示和复现步骤，并隐去密钥及私人录音内容。

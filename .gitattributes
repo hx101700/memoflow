@@ -1,0 +1,2 @@
+# Vite使用一致的HTML换行，避免Windows检出产生混合构建结果。
+*.html text eol=lf

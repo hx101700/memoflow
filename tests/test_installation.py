@@ -4,12 +4,14 @@ import ctypes
 from ctypes import wintypes
 import io
 import json
+import locale
 import os
 import subprocess
 import sys
 import threading
 import time
 import unittest
+import venv
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from http.client import HTTPResponse
@@ -21,7 +23,7 @@ from unittest.mock import Mock, patch
 from urllib.request import Request, urlopen
 
 from asr_runtime.utils import installation
-from asr_runtime.utils.environment import SetupError
+from asr_runtime.utils.environment import Runtime, SetupError, run_process
 from asr_runtime.utils.installation import PythonIndex, rank_npm_registries, rank_python_indexes, run_installer
 from tests.support import RuntimeTestCase
 
@@ -142,6 +144,26 @@ class InstallerProcessTests(RuntimeTestCase):
         """准备实际安装子进程使用的隔离目录。"""
         super().setUp()
         self.runtime.prepare()
+
+    def test_ensurepip_preserves_chinese_paths_with_local_encoding(self) -> None:
+        """验证全新中文空格venv的ensurepip日志保真且安装后的pip可加载。"""
+        workspace = self.runtime.workspace / "安装 中文 空格"
+        workspace.mkdir()
+        runtime = Runtime(workspace, self.runtime.skill_root)
+        runtime.prepare()
+        environment = runtime.path(".venv")
+        venv.EnvBuilder(with_pip=False).create(environment)
+        python = environment / "Scripts/python.exe"
+        log = io.StringIO()
+        with redirect_stderr(io.StringIO()):
+            result = run_installer(runtime, [str(python), "-I", "-m", "ensurepip", "--default-pip"],
+                                   log, encoding=locale.getencoding())
+        self.assertEqual(result, 0, log.getvalue())
+        self.assertIn("安装 中文 空格", log.getvalue())
+        self.assertNotIn("\ufffd", log.getvalue())
+        installed = run_process(runtime, [str(python), "-I", "-c", "import pip; print(pip.__version__)"])
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertRegex(installed.stdout.strip(), r"^\d+\.\d+")
 
     def test_progress_is_flushed_before_exit_and_stdout_stays_empty(self) -> None:
         """验证等待中的安装进程持续交付日志并保留退出码。"""
