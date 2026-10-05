@@ -8,6 +8,8 @@
 
 正式版本 `v0.1.0` 对应 `master` 的 b4df5e7，正式标签与原 Skill 附件保留。本轮独立运行环境改进沿用项目版本号 0.1.0，按开发预览交付；不把 dev 的安装能力描述成原正式包已有功能。
 
+实现提交 `8f7704d` 已推送远端 `dev`，对应[开发预览 dev-runtime](https://github.com/hx101700/memoflow/releases/tag/dev-runtime)。完整包和轻量包均已上传，远端附件大小与 SHA-256 和本机一致；正式标签及原 Skill 包保持原样。
+
 ## 本轮实现
 
 - 首次安装由 Skill 的 `scripts/bootstrap.ps1` 准备工作目录独立 Python 3.12.10、Node.js 24.21.0（含 npm 11.19.0），再调用原有 Python bootstrap。无需预装这两个运行时，不修改系统 PATH、注册表或全局包。
