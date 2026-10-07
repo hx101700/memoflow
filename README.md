@@ -6,6 +6,8 @@
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
+> **平台说明：当前版本仅支持 Windows 10/11 x64。**
+
 MemoFlow 是一套面向会议转写、内容生产与通话分析等场景的交互式语音转写与自学习纪要生成 Skill。用户提供录制好的音频，按需开启功能并确认设置后，即可交由 Codex 调用阿里云百炼的 ASR 模型，生成 Word、Excel、Markdown 三种格式的校对稿。后续，MemoFlow 将借助 LLM，从用户的校对稿、反馈和已有的带格式纪要文档中持续学习，生成符合用户习惯、排版规整、可直接交付的新纪要。
 
 ## 具体介绍
