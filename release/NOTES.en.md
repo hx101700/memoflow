@@ -2,31 +2,23 @@
 
 # MemoFlow v0.1.0
 
-MemoFlow v0.1.0 connects “attach a recording and ask Codex to transcribe it” to the same browser configuration flow. When Codex can access the local attachment path, the recording is brought into the page for review before Codex calls Alibaba Cloud Model Studio.
+MemoFlow v0.1.0 is the first public release. It delivers the first stage of the project: turning a recording into a transcription that can be reviewed and continued. It connects Codex task orchestration, Alibaba Cloud Model Studio speech recognition, and a local configuration page so users can review the settings before handing the task back to Codex.
 
-### What changed
+### Included in this release
 
-- **Conversation attachments enter the form**: When a local attachment path is available, Codex preselects the recording in the transcription page. If the path cannot be read, the page explains the problem in the audio section and lets you choose another file.
-- **A clear handoff flow**: The page remains two steps: fill in the settings, then preview them. An immutable task is created only after the user copies the confirmation message containing `session_id` back to Codex.
-- **A cleaner enhancement section**: Removed redundant explanatory text while keeping hotword and context input, the official Alibaba Cloud links, and the existing table validation.
-- **Synchronized login guidance**: The fixed BL login entry point, Windows desktop permission requirement, and browser handoff now match the implementation and the documented upstream behavior.
-- **Updated packages**: The full and lite packages contain this version of the static page, Skill instructions, bilingual README, and runtime code.
+- **Interactive transcription page**: choose a recording, adjust recognition settings, and review the configuration before submission.
+- **Conversation attachment entry**: start with a recording attached to Codex and follow the same configuration and confirmation flow.
+- **Recognition enhancements**: speaker diarization, hotwords, and context enhancement through Qwen-Audio-3.1-ASR-Flash-Filetrans for non-real-time file transcription.
+- **Task handoff**: the confirmation message carries a `session_id`; settings become fixed when handed to Codex, so the full transcript does not have to travel through the conversation repeatedly.
+- **Bilingual materials and two packages**: English and Chinese READMEs, plus a full package with runtimes and a smaller lite package.
 
-### Download and install
+### Downloads
 
-| Package | Which one to choose |
+| Package | Choose it when |
 | --- | --- |
-| **[asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)** | Recommended. Includes Python and Node.js, avoiding separate runtime downloads during setup. |
-| **[asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription-lite.zip)** | A smaller initial download. Setup obtains the runtimes from their official sources. |
+| **Full · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)** | You want Python and Node.js included to reduce the first-run downloads. |
+| **Lite · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription-lite.zip)** | You prefer a smaller initial download and can obtain the runtimes from their official sources during setup. |
 
-Both packages support Windows 10/11 x64. Initial installation of Python dependencies and the BL CLI still requires internet access; the full package is not fully offline.
+Both packages contain the same Skill and runtime code. The only difference is whether the Python and Node.js runtime archives are included.
 
-Send either ZIP to Codex with this request:
-
-> Install this ZIP as the asr-transcription Skill, read its SKILL.md, and prepare the required environment in the current task folder.
-
-Prepare your Alibaba Cloud account and enable Model Studio before use. After installation, ask Codex to transcribe a recording, follow the page, review the preview, and copy the confirmation message back to the conversation. See the [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.en.md) for details.
-
-The current version delivers the original JSON plus Word, Excel, and Markdown transcription documents. Personalized content generation and feedback learning remain planned for a later stage.
-
-Please report problems through [Issues](https://github.com/hx101700/memoflow/issues), including your environment, error messages, and reproduction steps. Remove API keys, login links, and private recordings before posting.
+See the [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.en.md) for the project introduction and usage entry point. Please report problems through [Issues](https://github.com/hx101700/memoflow/issues).
