@@ -1,6 +1,6 @@
 # 验证记录
 
-更新：2026-10-07。本页记录当前 dev 的录音附件入口和文案优化。正式 v0.1.1 的发行记录保存在[对应标签](https://github.com/hx101700/memoflow/blob/v0.1.1/doc/ACCEPTANCE.md)。
+更新：2026-10-07。本页记录当前 dev 的录音附件入口、文案优化和审查清理。正式 v0.1.2 的发行记录保存在[对应标签](https://github.com/hx101700/memoflow/blob/v0.1.2/doc/ACCEPTANCE.md)。
 
 ## 本轮检查
 
@@ -39,7 +39,7 @@ README 采用 Qwen 3.1 官方说明中的中文方言、热词及上下文能力
 | dist/review-20261007/asr-transcription.zip | 52 | 70368040 | `fc65df48426d6317ce57706e3c61507be46a787c90bddf2ca4cc81861b9aa523` |
 | dist/review-20261007/asr-transcription-lite.zip | 50 | 349446 | `1bbffa40d2025d10230b0e0ca444034711d4d94c4047f26bbe57e60958e5513a` |
 
-两包共用运行代码、静态页面、依赖锁、参考资料及最新版双语 README；完整包另附两个既定官方运行时归档。开发 doc、AGENTS、UML、测试、已安装依赖、凭据、录音和结果不入包。版本仍为 0.1.1 的 dev 改动，候选包未替换正式发布附件。
+两包共用运行代码、静态页面、依赖锁、参考资料及最新版双语 README；完整包另附两个既定官方运行时归档。开发 doc、AGENTS、UML、测试、已安装依赖、凭据、录音和结果不入包。版本 0.1.2 的正式包将在 master 标签创建后发布。
 
 包运行复核使用原有已准备的中文工作目录：Python 3.12.10、Node 24.21.0、Tcl/Tk 8.6.15、BL 2.1.0，8 个锁定 Python 包均正常。完整包检查 32.672 秒，轻量包 4.843 秒；doctor 无问题、bootstrap 返回 already_installed，页面与会话接口返回 200，取消后退出 0，分别 52／50 个资源文件不变。
 

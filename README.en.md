@@ -17,7 +17,7 @@ Clear transcription is the starting point for useful meeting minutes. MemoFlow u
 
 ## Install the Skill
 
-Choose one package from the [v0.1.1 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.1):
+Choose one package from the [v0.1.2 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.2):
 
 - **asr-transcription.zip (recommended)** includes Python and Node.js runtimes to reduce downloads during initial setup.
 - **asr-transcription-lite.zip** downloads the runtimes from official sources during initial setup.
@@ -42,7 +42,7 @@ After installation, tell Codex:
 Please transcribe this recording.
 ```
 
-Attach the recording to your conversation, or choose a file after the page opens. Codex uses the Skill to open the local transcription page; the current development build includes an accessible attachment for you to review. Adjust the audio language and speaker diarization settings, and choose where to save the files. Use the controls at the top right to switch between Chinese and English, or select System, Light, or Dark appearance. For Model Studio authentication, choose:
+Attach the recording to your conversation, or choose a file after the page opens. Codex uses the Skill to open the local transcription page; an accessible conversation attachment is brought into the page for you to review. Adjust the audio language and speaker diarization settings, and choose where to save the files. Use the controls at the top right to switch between Chinese and English, or select System, Light, or Dark appearance. For Model Studio authentication, choose:
 
 - **Console login (recommended)**: Authorize access on the official Alibaba Cloud page. BL manages the credentials.
 - **API Key**: Select “Use API key” on the transcription page, then enter or update your Model Studio Key for China (Beijing). The Key is saved in the current workspace and used directly for transcription.
