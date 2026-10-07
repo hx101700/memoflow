@@ -74,7 +74,7 @@ h1 { font-size: clamp(26px, 3vw, 30px); font-weight: 600; }
 .section-heading, .panel-title { display: flex; gap: 10px; align-items: center; }
 .section-heading h2, .panel-title h2 { font-size: 16px; font-weight: 600; }
 .section-aside { margin-left: auto; color: var(--el-text-color-secondary); font-size: 12px; }
-.helper, .subtle, .toggle-row p, .section-caption { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; }
+.helper, .subtle, .toggle-row p { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; }
 .enhancement-heading { flex-wrap: wrap; }
 .helper { margin-top: 8px; }
 .file-choice { width: 100%; height: auto; min-height: 140px; padding: 24px; white-space: normal; }

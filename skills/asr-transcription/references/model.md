@@ -91,7 +91,7 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 本项目仅在Windows控制台登录时使用Node预加载适配：拦下上述已知的`cmd/start`登录开页调用，使BL进入其完整URL输出分支；Python验证URL后通过`os.startfile`打开一次。BL包文件保持原样，授权state、回调、凭据保存和原生15分钟会话计时均由BL负责；Python不再叠加登录总等待上限。开发源为`scripts/console-browser.cts`，发行产物为Skill内`scripts/bailian/console-browser.cjs`。适配仅覆盖该固定版本已核实的浏览器调用，不扩展为通用Node拦截器。
 
-实际用户对话的首次login使用默认受限权限，重试才使用require_escalated。Windows进程令牌对照读取得到受限执行为true、正常桌面为false；程序在启动BL前用[IsTokenRestricted](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-istokenrestricted)阻止已观察到的问题路径。此API检查限制SID列表，不是对所有桌面可用性或Chrome内部状态的检测。
+本项目首次调用login即要求正常Windows桌面执行权限；Windows进程令牌对照读取得到受限执行为true、正常桌面为false，程序在启动BL前用[IsTokenRestricted](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-istokenrestricted)拒绝受限令牌。此API检查限制SID列表，不是对所有桌面可用性或浏览器内部状态的检测。
 
 ### 后续调用与凭据修复
 

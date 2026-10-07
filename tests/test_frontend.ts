@@ -267,22 +267,6 @@ test("返回修改被拒绝保持只读预览，直到明确终态到达", async
   assert.deepEqual(page.model.receipt, receipt);
 });
 
-test("返回编辑已成功但响应丢失时只读取一次状态并恢复本页输入", async () => {
-  const page = harness({ "/api/edit": () => { throw new Error("response lost"); } });
-  await addAudio(page);
-  page.form.contextEnabled = true;
-  page.form.context = "保留原始输入";
-  await page.actions.validate();
-  await page.actions.edit();
-  assert.equal(page.model.phase, "editing");
-  assert.equal(page.model.preview, null);
-  assert.equal(page.form.context, "保留原始输入");
-  assert.equal(page.model.audio?.audio_id, "audio-1");
-  assert.equal(page.calls.filter(call => call.path === "/api/session").length, 2);
-  assert.equal(page.calls.filter(call => call.path === "/api/edit").length, 1);
-  assert.equal(page.error.value, null);
-});
-
 test("整单检查期间禁用输入入口并保留原表单，成功后只登记同一份预览", async () => {
   const pending = deferred<ValidationResult>();
   const page = harness({ "/api/validate": () => pending.promise });

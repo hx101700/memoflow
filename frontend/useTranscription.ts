@@ -343,16 +343,6 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
         await resumeEditing();
       } catch (reason) {
         if (!active()) return;
-        try {
-          // 返回响应丢失时，仅核对一次服务端状态，恢复仍保留在本页的输入。
-          const session = await api.request("/api/session");
-          if (!active()) return;
-          if (session.session_id === model.session?.session_id) {
-            if (session.terminal) { ended(session.terminal); return; }
-            if (session.phase === "editing" && !session.preview) { await resumeEditing(); return; }
-          }
-        } catch { /* 状态仍未知时保留只读预览，显示原操作错误。 */ }
-        if (!active()) return;
         model.phase = "preview";
         fail(reason);
       }

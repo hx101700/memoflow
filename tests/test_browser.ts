@@ -310,7 +310,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await page.locator('label[for="diarization"]').click();
     assert.equal(await summary.locator(".el-descriptions__content").nth(2).innerText(), "On");
     assert.equal(requests.filter(request => request.path === "/api/validate").length, summaryRequests);
-    assert.equal(await page.locator("#enhancement .el-card__header h2 + .section-caption").count(), 1);
+    assert.equal(await page.locator("#enhancement .el-card__header h2 + .section-caption").count(), 0);
     assert.match(await page.locator('.toggle-row').filter({ has: page.locator('label[for="diarization"]') }).locator("p").innerText(), /mono copy/);
     const hotwordRules = page.locator("#enhancement").getByRole("link", { name: "Alibaba Cloud hotword requirements", exact: true });
     const contextRules = page.locator("#enhancement").getByRole("link", { name: "Alibaba Cloud context requirements", exact: true });

@@ -195,7 +195,7 @@ onUnmounted(actions.dispose);
             </ElCard>
 
             <ElCard id="enhancement" shadow="never" header-class="section-heading enhancement-heading" tabindex="-1">
-              <template #header><ElIcon class="section-icon" :size="20" aria-hidden="true"><Aim /></ElIcon><h2>{{ t('enhancement') }}</h2><span class="section-caption">{{ t('enhancementHint') }}</span></template>
+              <template #header><ElIcon class="section-icon" :size="20" aria-hidden="true"><Aim /></ElIcon><h2>{{ t('enhancement') }}</h2></template>
               <div class="enhancement-option">
                 <div class="toggle-row">
                   <div class="enhancement-label"><label for="hotwords-enabled"><ElIcon :size="16" aria-hidden="true"><Reading /></ElIcon>{{ t('hotwords') }}</label><p>{{ t('hotwordsHelp') }}<ElLink type="primary" class="rules-link" :href="enhancementRules.hotwords" target="_blank" rel="noopener noreferrer">{{ t('hotwordRules') }}</ElLink></p></div>

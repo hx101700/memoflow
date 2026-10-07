@@ -44,7 +44,6 @@ _ENGLISH: dict[str, str] = {
     "文件仍在添加，请稍候。": "The file is still being added. Wait for it to finish.",
     "未知的保存位置。": "The output location is invalid.",
     "无法读取 .env 文件。": "The .env file could not be read. Check that it exists and is accessible.",
-    "不支持的文件用途。": "This file type is not supported for this upload.",
     "所选文件名或格式不符合要求。": "The file name or format is not supported. Choose a supported file.",
     "文件为空或超过本机接收上限。": "The file is empty or exceeds the local upload limit.",
     "此类文件正在添加，请稍候。": "A file of this type is already being added. Wait for it to finish.",
