@@ -2,21 +2,39 @@
 
 中文 | [English](README.en.md)
 
-> 把中文录音发给 Codex，生成带时间戳、可区分发言人的 Word、Excel 和 Markdown 转写稿。
+> 把中文会议录音交给 Codex，先听清、识准、整理成可校对的转写稿，再逐步生成符合你习惯的会议纪要。
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
-MemoFlow 是一个面向 Codex 的录音转写 Skill。它使用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，通过本机网页让你核对录音、识别设置、热词、上下文和保存位置，再由 Codex 完成转写和文件交付。
+MemoFlow 的最终目标，是把一次次会议中的语音、上下文、校对和格式偏好，逐步整理成符合用户习惯的会议纪要。它会从用户提供的范例和确认过的修改中学习，形成稳定的个人化输出方式。
 
-当前交付第一阶段：**可靠的转写校对稿**。根据校对稿、范例和反馈生成个性化会议纪要是后续阶段。
+当前交付第一阶段：一个面向 Codex 的 `asr-transcription` Skill。它使用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，通过本机网页让你核对录音、识别设置、热词、上下文和保存位置，再由 Codex 完成一次非实时转写。
 
-<!-- SCREENSHOT: hero
-建议放一张真实网页截图或 20–40 秒 GIF，展示“添加录音 → 预览 → 复制给 Codex”。
-文件建议：doc/images/memoflow-demo.gif
-请隐藏 API Key、用户名、本地路径和真实会议内容。
--->
+## 为什么需要 MemoFlow
 
-## 30 秒开始
+会议录音本身不能直接变成可用的信息。用户通常还需要处理几件事：
+
+- 长录音难以从头回听，重要内容、章节和待办事项不容易定位；
+- 人名、产品名和行业术语容易被识别错；
+- 多人讨论需要知道“谁说了什么”；
+- 一次转写往往还要继续校对、整理，并保存成团队习惯的格式；
+- 录音、认证、配置、转写和文件整理分散在多个工具里，操作过程容易失去上下文。
+
+[通义听悟](https://help.aliyun.com/zh/tingwu/what-is-tingwu)将音视频记录、转写、说话人分离、内容提炼和重点定位组织成“阅读音视频”的工作方式。MemoFlow 借鉴这个产品方向，当前先把最基础也最关键的环节做好：让 Codex 帮用户把录音配置清楚、把内容识别准确，并交付可以检查和继续加工的转写稿。
+
+## 为什么是 Codex + Qwen-Audio 3.1
+
+两者承担不同的工作。
+
+- **Qwen-Audio-3.1-ASR-Flash-Filetrans**负责非实时文件识别。阿里云将它定位为长音频文件转写模型，支持说话人分离、热词和上下文增强；模型文档列出的单次音频上限为 12 小时、2 GB，启用说话人分离时建议控制在 2 小时以内。[模型说明](https://help.aliyun.com/zh/model-studio/asr-model)
+- **Codex**负责本地工作流：准备 Skill 环境、打开配置页面、承接对话附件、引导认证、等待百炼返回，并把结果整理到用户选择的位置。
+- **MemoFlow**把两者连接起来：完整转写内容保存在文件中，聊天只承载操作、确认和结果位置，后续可以在文件基础上继续校对和生成会议纪要。
+
+识别专业词汇时，MemoFlow 使用百炼支持的即时热词和上下文增强。热词适合临时的人名、产品名和术语；上下文适合提供会议背景或领域语料，两者可以同时放进同一次请求。[阿里云精度增强说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy)
+
+## 第一次使用
+
+第一次使用的时间取决于网络、环境准备和录音时长，项目不承诺固定的“30 秒完成”。实际步骤是：
 
 1. 下载 [v0.1.2 安装包](https://github.com/hx101700/memoflow/releases/tag/v0.1.2)。
 2. 把 ZIP 和下面这句话一起发给 Codex：
@@ -31,56 +49,36 @@ MemoFlow 是一个面向 Codex 的录音转写 Skill。它使用阿里云百炼�
    帮我转写这段录音。
    ```
 
-4. 在网页中核对录音和设置，点击“确认并预览”，再点击“复制给 Codex”，把确认消息发回原对话。
+4. 在网页中核对带入的录音，按需调整语言、说话人区分、热词、上下文和保存位置。
+5. 点击“确认并预览”，确认后点击“复制给 Codex”，把确认消息发回原对话。
+6. Codex 根据同一个任务完成认证、转写和文档交付。
 
-完整包适合大多数用户，包含 Python 和 Node.js 运行时；轻量包体积更小，首次安装时从官方来源下载运行时。两种包都支持 Windows 10/11 x64，Python 依赖和百炼 CLI 仍需联网安装。
+完整包包含 Python 和 Node.js 运行时，适合大多数用户；轻量包体积更小，首次安装时从官方来源下载运行时。两种包都支持 Windows 10/11 x64，Python 依赖和百炼 CLI 仍需联网安装。
 
 使用前请准备[阿里云账号](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account)，并按[百炼官方指引](https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen)完成服务准备。
 
-## 你会得到什么
+## 转写完成后
 
-| 文件 | 内容 |
-| --- | --- |
-| `transcription.json` | 百炼返回的原始转写结果 |
-| `transcription.docx` | 便于阅读和校对的 Word 文档 |
-| `transcription.xlsx` | 可筛选、逐段查看的 Excel 文档 |
-| `transcription.md` | 便于笔记和归档的 Markdown 文档 |
+MemoFlow 会保存百炼返回的原始 JSON，并根据同一份转写结果制作三种不同格式的校对文档，方便你按自己的工作方式继续阅读、筛选、修改和归档。
 
-三种文档保留时间戳；开启说话人区分时包含说话人编号。输出目录由网页选择，默认位于当前工作目录的 `transcriptions` 下。
-
-## 功能特性
-
-- **Codex Skill 工作流**：录音附件、本机文件选择和已有录音路径进入同一套网页配置流程。
-- **中文识别增强**：使用 Qwen-Audio 3.1，支持热词和上下文同时发送。
-- **说话人区分**：默认开启；多声道录音需要合并时保留原文件，并生成处理副本。
-- **可视化预览**：填写和预览分为两步，确认后才创建任务并交给 Codex 执行。
-- **两种百炼认证**：控制台登录或工作目录中的北京地域 API Key。
-- **本地文件交付**：原始 JSON、Word、Excel、Markdown 一次生成，支持成功任务本地重导。
-
-## 适合谁
-
-- 使用 Codex、希望把录音交给 AI 处理的 Windows 用户。
-- 需要中文人名、产品名和专业术语增强的用户。
-- 需要保留原文、时间戳和说话人信息，且希望人工校对的团队。
-
-## 当前边界
-
-- 当前只处理单个录音，不提供实时转写。
-- 当前支持 Windows 10/11 x64；macOS/Linux 尚未作为验收平台。
-- 当前交付转写校对稿，自动会议纪要和反馈学习仍在规划中。
-- 识别会把录音和启用的增强内容发送到阿里云百炼北京地域，可能产生调用费用。
-
-## 预览页面
-
-<!-- SCREENSHOT: transcription-page
-展示添加录音、转写设置、热词/上下文和保存位置。
-文件建议：doc/images/01-transcription-overview.png
+<!-- SCREENSHOT: hero
+放一张真实网页截图或 20–40 秒 GIF，展示“添加录音 → 预览 → 复制给 Codex”。
+文件建议：doc/images/memoflow-demo.gif
+请隐藏 API Key、用户名、本地路径和真实会议内容。
 -->
 
 <!-- SCREENSHOT: outputs
-展示 Word、Excel、Markdown 成品的脱敏截图。
+放脱敏的 Word、Excel、Markdown 成品截图，展示同一份转写的不同整理方式。
 文件建议：doc/images/02-transcription-outputs.png
 -->
+
+## 当前能力与边界
+
+- 处理单个录音，不提供实时转写。
+- 支持对话附件、本机文件选择、热词、上下文和说话人区分。
+- 当前验收平台为 Windows 10/11 x64；macOS/Linux 尚未作为验收平台。
+- 当前交付转写校对稿；自动会议纪要、用户风格学习和反馈闭环属于第二阶段。
+- 识别会把录音及启用的增强内容发送到阿里云百炼北京地域，可能产生调用费用。
 
 ## 帮助与参与
 
@@ -99,6 +97,7 @@ MemoFlow 是一个面向 Codex 的录音转写 Skill。它使用阿里云百炼�
 | --- | --- |
 | 阿里云百炼 | [控制台](https://bailian.console.aliyun.com/) · [官方文档](https://help.aliyun.com/zh/model-studio/) |
 | 百炼 CLI | [官方主页](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
+| 通义听悟 | [产品说明](https://help.aliyun.com/zh/tingwu/what-is-tingwu) |
 | 识别精度增强 | [热词与上下文说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
 | MemoFlow | [Release](https://github.com/hx101700/memoflow/releases/latest) · [开发文档](doc/README.md) |
 
