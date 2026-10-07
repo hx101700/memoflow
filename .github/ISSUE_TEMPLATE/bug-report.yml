@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem with MemoFlow
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove API keys, login URLs, recordings, transcript text, usernames, and private paths before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: MemoFlow version
+      placeholder: v0.1.2
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us what you did and what you expected.
+      placeholder: |
+        1. Installed ...
+        2. Asked Codex ...
+        3. Clicked ...
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Redacted error or result
+    validations:
+      required: true
