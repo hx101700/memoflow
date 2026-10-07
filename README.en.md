@@ -70,6 +70,8 @@ Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com
 
 The full package includes Python and Node.js runtimes. The lite package downloads them from official sources during setup. Both packages support Windows 10/11 x64 and require an internet connection for the first dependency installation.
 
+![Codex completes the Skill installation and runtime setup](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-installation.png)
+
 ## Use
 
 After installation, tell Codex:

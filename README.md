@@ -68,6 +68,8 @@ flowchart TD
    请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
    ```
 
+![Codex 完成 Skill 安装和运行环境准备](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-installation.png)
+
 ## 使用
 
 安装完成后，告诉 Codex：
