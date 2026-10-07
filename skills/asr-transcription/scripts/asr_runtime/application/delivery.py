@@ -1,4 +1,4 @@
-"""向任务的固定目录导出三种文档并记录交付结果。"""
+"""向转写任务的固定目录导出三种格式的校对稿并记录交付结果。"""
 
 from ..utils.documents import DocumentError, publish_document, write_docx, write_markdown, write_xlsx
 from ..utils.environment import Runtime, SetupError
@@ -7,10 +7,10 @@ from ..models import DeliveryReport, JobConfig, Transcript
 
 
 def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript) -> DeliveryReport:
-    """生成并替换任务的Excel、Word和Markdown，汇总各格式交付结果。"""
+    """生成并替换转写任务的 Excel、Word 和 Markdown 校对稿，汇总交付结果。"""
     state = prepare_delivery(job_directory(runtime, config["job_id"]))
     report: DeliveryReport = {"job_id": config["job_id"], "status": "EXPORTING",
-              "files": {}, "message": "正在本地生成文档。"}
+              "files": {}, "message": "正在本机生成校对稿。"}
     save_record(state, report)
     try:
         destination = prepare_documents(runtime, config)
@@ -43,6 +43,6 @@ def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript
         save_record(state, report)
     ready = sum(item["status"] == "READY" for item in report["files"].values())
     report.update({"status": "COMPLETE" if ready == 3 else "PARTIAL" if ready else "FAILED",
-                   "message": "Excel、Word和Markdown已保存，Excel和Word已回读核验。" if ready == 3 else "部分或全部文档未完成；JSON及已完成文件已保留，未自动重试。"})
+                   "message": "Excel、Word和Markdown校对稿已保存，Excel和Word已回读核验。" if ready == 3 else "部分或全部校对稿未完成；JSON及已完成文件已保留，未自动重试。"})
     save_record(state, report)
     return report

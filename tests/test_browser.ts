@@ -12,7 +12,7 @@ const python = path.join(repository, ".venv/Scripts/python.exe");
 const entry = path.join(repository, "skills/asr-transcription/scripts/asr.py");
 const screenshots = path.join(repository, ".runtime/ui-previews");
 
-// 调用实际代码入口，将复制的会话编号交接为任务并解析回执。
+// 调用实际代码入口，将复制的编辑会话编号交接为任务并解析回执。
 function confirmSession(workspace: string, sessionId: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const command = spawn(python, ["-B", "-X", "utf8", entry, "--workspace", workspace, "confirm", "--session", sessionId],
@@ -176,7 +176,7 @@ async function startFixture(t: TestContext, audioName?: string) {
 }
 
 // 验证表格修改、语言切换、两步编辑和代码交接的真实浏览器链路。
-test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, async t => {
+test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_000 }, async t => {
   const { root, connection, exited, diagnostics } = await startFixture(t);
   assert.equal(new URL(connection.url).hash, "");
   const origin = new URL(connection.url).origin;
@@ -190,7 +190,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
     page.on("request", request => { const url = new URL(request.url()); requests.push({ origin: url.origin, path: url.pathname }); });
     await page.goto(connection.url);
-    await page.getByText("选择音频文件", { exact: true }).waitFor();
+    await page.getByText("选择录音", { exact: true }).waitFor();
     const summary = page.locator("aside.settings-summary");
     assert.equal(await summary.isVisible(), true);
     const initialSummary = (await summary.boundingBox())!;
@@ -219,7 +219,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await page.locator("#page-title").click();
     await page.screenshot({ path: path.join(screenshots, "en-light.png"), animations: "disabled" });
     await page.getByRole("button", { name: "Confirm and preview", exact: true }).click();
-    await page.locator("#audio_id .field-error").getByText("Choose an audio file.", { exact: true }).waitFor();
+    await page.locator("#audio_id .field-error").getByText("Choose a recording.", { exact: true }).waitFor();
     assert.equal(await page.locator("#audio_id").evaluate(element => element.contains(document.activeElement)), true);
     assert.equal(await page.locator("#error-panel").count(), 0);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -237,16 +237,16 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await page.locator("#api-key-value").fill("fixture-ui-key-not-real");
     await page.route(origin + "/api/save-api-key", route => route.fulfill({ status: 422, contentType: "application/json",
       body: JSON.stringify({ ok: false, field: "auth_mode", error: { zh: "无法保存合成凭据。", en: "Cannot save fixture key." } }) }), { times: 1 });
-    const saveKey = page.getByRole("button", { name: "Save API key", exact: true });
+    const saveKey = page.getByRole("button", { name: "Save API Key", exact: true });
     await saveKey.click();
     await page.locator("#error-panel").getByText("Cannot save fixture key.", { exact: true }).waitFor();
     assert.equal(await page.locator("#api-key-value").inputValue(), "fixture-ui-key-not-real");
     await saveKey.click();
-    await page.getByText("API key saved to this working folder.", { exact: true }).waitFor();
+    await page.getByText("API Key saved to this working folder.", { exact: true }).waitFor();
     let releaseAudio!: () => void;
     const audioGate = new Promise<void>(resolve => { releaseAudio = resolve; });
     await page.route(origin + "/api/select-audio", async route => { await audioGate; await route.continue(); }, { times: 1 });
-    const chooseAudio = page.locator("#audio_id").getByRole("button", { name: "Choose an audio file", exact: true });
+    const chooseAudio = page.locator("#audio_id").getByRole("button", { name: "Choose a recording", exact: true });
     try {
       await chooseAudio.click();
       await page.locator("#audio_id .el-loading-mask").waitFor();
@@ -264,7 +264,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     assert.match(await summary.locator(".el-descriptions__content").nth(0).innerText(), /^sample\.wav · 64.0 KB$/);
     assert.equal(await summary.locator(".el-descriptions__content").nth(5).innerText(), "API Key");
     assert.equal((await summary.innerText()).includes("fixture-ui-key-not-real"), false);
-    const selectedAudio = page.locator("#audio_id").getByRole("button", { name: "Replace audio", exact: true });
+    const selectedAudio = page.locator("#audio_id").getByRole("button", { name: "Replace recording", exact: true });
     assert.equal(await selectedAudio.locator(".audio-name").innerText(), "sample.wav");
     assert.equal(await selectedAudio.evaluate(element => element.classList.contains("el-button--success")), false);
     assert.equal(await selectedAudio.getByText("Selected", { exact: true }).count(), 1);
@@ -285,7 +285,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await page.getByRole("option", { name: "简体中文", exact: true }).click();
     await summary.getByRole("heading", { name: "当前设置", exact: true }).waitFor();
     assert.match(await summary.locator(".el-descriptions__content").nth(0).innerText(), /^sample\.wav · 64.0 KB$/);
-    const selectedChineseAudio = page.locator("#audio_id").getByRole("button", { name: "更换音频", exact: true });
+    const selectedChineseAudio = page.locator("#audio_id").getByRole("button", { name: "更换录音", exact: true });
     assert.equal(await selectedChineseAudio.locator(".audio-name").innerText(), "sample.wav");
     assert.equal(await selectedChineseAudio.getByText("已选择", { exact: true }).count(), 1);
     assert.equal(await selectedChineseAudio.locator(".el-tag--success").innerText(), "已选择");
@@ -312,8 +312,8 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     assert.equal(requests.filter(request => request.path === "/api/validate").length, summaryRequests);
     assert.equal(await page.locator("#enhancement .el-card__header h2 + .section-caption").count(), 0);
     assert.match(await page.locator('.toggle-row').filter({ has: page.locator('label[for="diarization"]') }).locator("p").innerText(), /mono copy/);
-    const hotwordRules = page.locator("#enhancement").getByRole("link", { name: "Alibaba Cloud hotword requirements", exact: true });
-    const contextRules = page.locator("#enhancement").getByRole("link", { name: "Alibaba Cloud context requirements", exact: true });
+    const hotwordRules = page.locator("#enhancement").getByRole("link", { name: "Model Studio hotword requirements", exact: true });
+    const contextRules = page.locator("#enhancement").getByRole("link", { name: "Model Studio context requirements", exact: true });
     for (const rules of [hotwordRules, contextRules]) {
       assert.equal(await rules.isVisible(), true);
       assert.equal(await rules.evaluate(element => element.classList.contains("el-link--primary")), true);
@@ -403,7 +403,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
       for (const id of ["hotword-1-text", "hotword-61-weight", "context-text", "speaker-count", "api-key-value"]) {
         assert.equal(await page.locator(`#${id}`).isDisabled(), true, id);
       }
-      for (const name of ["Add hotword", "Import Excel", "Download template", "Replace audio", "Confirm and preview"]) {
+      for (const name of ["Add hotword", "Import Excel", "Download template", "Replace recording", "Confirm and preview"]) {
         assert.equal(await page.getByRole("button", { name, exact: true }).and(page.locator("button")).isDisabled(), true, name);
       }
       assert.equal(requests.filter(request => request.path === "/api/validate").length, beforePreview + 1);
@@ -587,7 +587,7 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.getByRole("button", { name: "复制给 Codex", exact: true }).click();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copied, `确认转写，会话编号：${connection.session_id}`);
+    assert.equal(copied, `确认转写，编辑会话编号：${connection.session_id}`);
     const copiedId = copied.split("：").at(-1)!;
     const receipt = await confirmSession(root, copiedId);
     await page.locator("#session-ended").waitFor();
@@ -660,7 +660,7 @@ for (const audioName of ["附件 recording.wav", "missing.wav"]) {
       assert.deepEqual(restored.audio_error, initial.audio_error);
       if (initial.audio_error) assert.equal(await page.locator("#audio_id .field-error").innerText(), initial.audio_error.en);
       else assert.equal(await page.locator(".audio-name").innerText(), audioName);
-      const select = page.locator("#audio_id").getByRole("button", { name: initial.audio ? "Replace audio" : "Choose an audio file", exact: true });
+      const select = page.locator("#audio_id").getByRole("button", { name: initial.audio ? "Replace recording" : "Choose a recording", exact: true });
       await select.click();
       await page.locator("#audio_id .el-tag--success").waitFor();
       assert.equal(await page.locator(".audio-name").innerText(), "sample.wav");

@@ -12,7 +12,7 @@ MemoFlow 是一套面向会议转写、内容生产与通话分析等场景的�
 
 ## 具体介绍
 
-很多录音工具只能给出一段未经整理的文字。用户还要反复回听，修正人名和专业术语，区分发言人，再把内容复制到自己的文档模板中。录音越长、参与者越多、格式要求越明确，这个过程越耗时，也越容易丢失上下文。
+很多录音工具只能给出一段未经整理的文字。用户还要反复回听，修正人名和专业术语，区分说话人，再把内容复制到自己的文档模板中。录音越长、参与者越多、格式要求越明确，这个过程越耗时，也越容易丢失上下文。
 
 MemoFlow 先把“听清、识准、交付校对稿”做好，再逐步学习用户的重点、表达方式和文档格式。用户在交互式网页中确认设置，Codex 负责组织环境、认证、调用和文件交付，阿里云百炼负责语音识别。这样不需要手动拼接命令，也不需要把完整转写内容反复放进对话中，可以节省上下文并提高工作效率。
 
@@ -20,28 +20,39 @@ Codex 擅长理解上下文、组织多步任务和继续处理文件，但语�
 
 MemoFlow 选择阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans) 作为语音识别引擎。根据阿里云官方模型说明，它面向会议转写、内容生产和通话分析等场景，支持多语种与多地区中文方言，并提供高精度转写、热词与上下文增强、说话人分离、标点预测和文本规范化能力，适合长音频非实时转写。Qwen 负责识别语音，Codex 负责把网页交互、认证、任务执行和结果交付串起来。两者结合，集中处理语音听不清、术语识别不准、多人内容难整理和结果难继续加工的问题。
 
-### 后续的个性化内容生成
-
-后续的个性化内容生成也会依托 Codex 的上下文理解和任务编排能力：它读取转写稿、格式范例、重点要求和用户反馈，逐步学习用户的表达与排版方式，再生成指定格式的内容。
+后续的个性化纪要生成也会依托 Codex 的上下文理解和任务编排能力：它读取转写稿、格式范例、重点要求和用户反馈，逐步学习用户的表达与排版方式，再生成指定格式的纪要。
 
 当前项目主要由以下两个 Skill 组成：
 
 | Skill | 能力 | 状态 |
 | --- | --- | --- |
-| `asr-transcription` | 用户在交互式网页中选择录音，设置识别语言、说话人区分、热词、上下文和保存位置；Codex 接收用户确认后调用阿里云百炼完成长音频非实时转写，保留原始 JSON，并生成带时间戳、可区分发言人的 Word、Excel、Markdown 校对稿。 | **已完成** |
-| 个性化内容生成 | 以用户校对后的转写稿为基础，结合重点要求和已有的带格式纪要文档，学习内容结构、信息取舍、表达方式与排版习惯，生成符合指定格式的新纪要；将用户确认的修改和反馈用于后续生成，持续完善个性化输出。 | **开发中** |
+| `asr-transcription` | 用户在交互式网页中选择录音，设置识别语言、说话人区分、热词、上下文和保存位置；Codex 接收用户确认后调用阿里云百炼完成长音频非实时转写，保留原始 JSON，并生成带时间戳、可区分说话人的 Word、Excel、Markdown 校对稿。 | **已完成** |
+| 个性化纪要生成 | 以用户校对后的转写稿为基础，结合重点要求和已有的带格式纪要文档，学习内容结构、信息取舍、表达方式与排版习惯，生成符合指定格式的新纪要；将用户确认的修改和反馈用于后续生成，持续完善个性化输出。 | **开发中** |
 
 ```mermaid
+---
+config:
+  flowchart:
+    curve: basis
+    nodeSpacing: 28
+    rankSpacing: 26
+---
 flowchart TD
-    A["用户提供录音"] --> B["Codex 启动 asr-transcription Skill"]
-    B --> C["网页配置与预览"]
-    C --> D["用户确认并反馈给 Codex"]
-    D --> E["获得原始结果与校对稿"]
-    E --> F["用户校对、提出重点和格式要求"]
-    G["已有带格式的参考文档"] --> H["个性化内容生成 Skill<br/>【开发中】"]
+    A("用户提供录音") --> B("Codex 启动<br/>asr-transcription Skill")
+    B --> C("网页配置与预览")
+    C --> D("用户确认并反馈给 Codex")
+    D --> E("获得原始结果与校对稿")
+    E --> F("用户校对、提出重点<br/>和格式要求")
+    G("已有带格式的<br/>参考文档") --> H("个性化纪要生成 Skill<br/>【开发中】")
     F --> H
-    H --> I["获得符合用户习惯的指定格式内容"]
+    H --> I("获得符合用户习惯的<br/>指定格式纪要")
     I -. "继续反馈" .-> H
+
+    classDef default fill:transparent,stroke:#8b949e,stroke-width:1px,filter:none;
+    classDef active fill:#0969da,stroke:#0969da,color:#ffffff;
+    classDef planned stroke:#0969da,stroke-dasharray:5 4;
+    class B active;
+    class H planned;
 ```
 
 ## 安装
@@ -67,12 +78,12 @@ Codex 会打开本机配置网页，请在网页中完成录音和识别设置�
 
 ## 帮助与参与
 
-- [使用指南](skills/asr-transcription/references/usage.md)：安装、认证、网页操作和升级。
-- [错误说明](skills/asr-transcription/references/errors.md)：登录、安装、会话和转写问题。
+- [使用指南](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md)：安装、认证、网页操作和升级。
+- [错误说明](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/errors.md)：登录、安装、会话和转写问题。
 - [提交问题](https://github.com/hx101700/memoflow/issues)：请附操作系统、安装包、复现步骤和脱敏错误。
 - [功能讨论](https://github.com/hx101700/memoflow/discussions)：分享使用场景、输出格式和第二阶段需求。
-- [支持说明](SUPPORT.md)：选择 Issue、Discussion 或文档入口。
-- [贡献指南](CONTRIBUTING.md)：提交代码、文档和示例前请先阅读。
+- [支持说明](https://github.com/hx101700/memoflow/blob/master/SUPPORT.md)：选择 Issue、Discussion 或文档入口。
+- [贡献指南](https://github.com/hx101700/memoflow/blob/master/CONTRIBUTING.md)：提交代码、文档和示例前请先阅读。
 
 请不要在 Issue、Discussion 或截图中提交 API Key、登录链接、录音原文或私人路径。
 
@@ -84,6 +95,6 @@ Codex 会打开本机配置网页，请在网页中完成录音和识别设置�
 | 百炼 CLI | [官方主页](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
 | Qwen-Audio 3.1 | [模型说明](https://help.aliyun.com/zh/model-studio/asr-model) |
 | 识别精度增强 | [热词与上下文说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
-| MemoFlow | [Release](https://github.com/hx101700/memoflow/releases/latest) · [开发文档](doc/README.md) |
+| MemoFlow | [Release](https://github.com/hx101700/memoflow/releases/latest) · [开发文档](https://github.com/hx101700/memoflow/blob/master/doc/README.md) |
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。

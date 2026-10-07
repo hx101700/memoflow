@@ -13,15 +13,15 @@ from asr_runtime.models import HotwordRow
 class LocalizationTests(unittest.TestCase):
     def test_nested_scope_restores_language_after_error(self) -> None:
         """验证嵌套请求结束或异常时恢复外层语言。"""
-        message = "请选择音频文件。"
+        message = "请选择录音。"
         self.assertEqual(translate(message), message)
         with language_scope("en-US,en;q=0.9"):
-            self.assertEqual(translate(message), "Choose an audio file.")
+            self.assertEqual(translate(message), "Choose a recording.")
             with self.assertRaises(ValueError):
                 with language_scope("zh-CN"):
                     self.assertEqual(translate(message), message)
                     raise ValueError("synthetic request error")
-            self.assertEqual(translate(message), "Choose an audio file.")
+            self.assertEqual(translate(message), "Choose a recording.")
         self.assertEqual(translate(message), message)
 
     def test_concurrent_requests_keep_their_own_language(self) -> None:
@@ -32,18 +32,18 @@ class LocalizationTests(unittest.TestCase):
             """在同步到达的请求作用域中读取提示。"""
             with language_scope(language):
                 barrier.wait(timeout=5)
-                return translate("请选择音频文件。")
+                return translate("请选择录音。")
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             english = pool.submit(render, "en")
             chinese = pool.submit(render, "zh-CN")
-            self.assertEqual(english.result(timeout=5), "Choose an audio file.")
-            self.assertEqual(chinese.result(timeout=5), "请选择音频文件。")
+            self.assertEqual(english.result(timeout=5), "Choose a recording.")
+            self.assertEqual(chinese.result(timeout=5), "请选择录音。")
 
     def test_unknown_language_and_user_content_keep_original_text(self) -> None:
         """验证未支持的语言使用中文，未登记的用户文本保持原样。"""
         with language_scope("fr"):
-            self.assertEqual(translate("请选择音频文件。"), "请选择音频文件。")
+            self.assertEqual(translate("请选择录音。"), "请选择录音。")
         private_text = "会议术语 C:\\录音\\recording.wav — {value}"
         with language_scope("en"):
             self.assertEqual(translate(private_text), private_text)

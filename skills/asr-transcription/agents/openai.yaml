@@ -1,4 +1,4 @@
 interface:
   display_name: "录音转写"
-  short_description: "转写录音并生成带时间戳的 Word、Excel 与 Markdown 文档"
-  default_prompt: "使用 $asr-transcription 将这段录音带入本机网页，供我核对设置并确认转写，生成带时间戳的 Word、Excel 和 Markdown 校对稿。"
+  short_description: "转写录音并生成带时间戳的 Word、Excel 与 Markdown 转写校对稿"
+  default_prompt: "使用 $asr-transcription 将这段录音带入本机网页，供我核对设置并确认转写，生成带时间戳的 Word、Excel 和 Markdown 转写校对稿。"

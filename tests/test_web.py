@@ -225,7 +225,7 @@ class WebServerTests(WebFixture):
         invalid = {**self.payload, "audio_id": "missing"}
         status, _, body = self.request("POST", "/api/validate", invalid, headers=english)
         self.assertEqual(status, 422)
-        expected = {"zh": "请选择音频文件。", "en": "Choose an audio file."}
+        expected = {"zh": "请选择录音。", "en": "Choose a recording."}
         self.assertEqual(json.loads(body)["error"], expected)
         for headers in (None, {"Accept-Language": "fr"}):
             with self.subTest(headers=headers):
@@ -245,7 +245,7 @@ class WebServerTests(WebFixture):
         with ThreadPoolExecutor(max_workers=2) as pool:
             english = pool.submit(error_in, "en")
             chinese = pool.submit(error_in, "zh-CN")
-            expected = {"zh": "请选择音频文件。", "en": "Choose an audio file."}
+            expected = {"zh": "请选择录音。", "en": "Choose a recording."}
             self.assertEqual(english.result(timeout=5), expected)
             self.assertEqual(chinese.result(timeout=5), expected)
 
@@ -369,7 +369,7 @@ class WebServerTests(WebFixture):
         self.assertEqual(json.loads(body), {"ok": True, "value": ""})
         status, _, body = self.request("POST", "/api/save-api-key", {"value": ""}, headers=english)
         self.assertEqual(status, 422)
-        self.assertEqual(json.loads(body)["error"], {"zh": "请输入 API Key。", "en": "Enter your API key."})
+        self.assertEqual(json.loads(body)["error"], {"zh": "请输入 API Key。", "en": "Enter your API Key."})
         secret = "synthetic secret-key"
         status, _, body = self.request("POST", "/api/save-api-key", {"value": secret}, headers=english)
         self.assertEqual(status, 422)

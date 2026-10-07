@@ -1,4 +1,4 @@
-"""读取工作区API Key并准备BL凭据环境。"""
+"""读取工作区 API Key 并准备 BL 凭据环境。"""
 
 import shutil
 from pathlib import Path
@@ -7,7 +7,7 @@ from .environment import Runtime, SetupError, child_environment
 
 
 def _validate_api_key(value: object) -> str:
-    """校验用户填写的Key，返回去除首尾空白的凭据。"""
+    """校验用户填写的 API Key，返回去除首尾空白的凭据。"""
     if not isinstance(value, str) or not value.strip():
         raise SetupError("请输入 API Key。")
     key = value.strip()
@@ -17,7 +17,7 @@ def _validate_api_key(value: object) -> str:
 
 
 def read_api_key(runtime: Runtime, *, required: bool = True) -> str:
-    """读取并校验私有.env中的Key；required=False时缺失或空值返回空字符串。"""
+    """读取并校验私有 .env 中的 API Key；required=False 时缺失或空值返回空字符串。"""
     from dotenv import dotenv_values
 
     path = runtime.path(".env")
@@ -35,7 +35,7 @@ def read_api_key(runtime: Runtime, *, required: bool = True) -> str:
 
 
 def write_api_key(runtime: Runtime, value: object, *, staging_directory: Path) -> None:
-    """在会话目录更新Key后替换正式.env，保留其他配置与注释。"""
+    """在编辑会话目录更新 API Key 后替换正式 .env，保留其他配置与注释。"""
     from dotenv import set_key
 
     key = _validate_api_key(value)

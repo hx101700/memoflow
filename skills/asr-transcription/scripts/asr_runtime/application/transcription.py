@@ -1,4 +1,4 @@
-"""编排已确认任务的BL识别和本地文档导出。"""
+"""编排已确认转写任务的 BL 调用和本机校对稿导出。"""
 
 import os
 from datetime import datetime, timezone
@@ -62,26 +62,26 @@ def _attach_delivery(report: ExecutionReport, delivery: DeliveryReport) -> Execu
 
 
 def _deliver(runtime: Runtime, config: JobConfig, transcript: Transcript, report: ExecutionReport) -> ExecutionReport:
-    """生成任务文档，将交付结果合并到执行回执。"""
+    """生成转写任务的校对稿，将交付结果合并到执行回执。"""
     try:
         delivery = export_documents(runtime, config, transcript)
     except (OSError, SetupError, KeyboardInterrupt) as exc:
-        # 即使状态文件也无法写入，仍把已保存的JSON交给调用者，不能误报识别失败。
+        # 即使状态文件也无法写入，仍把已保存的JSON交给调用者，不能误报转写失败。
         delivery = {"status": "OUTCOME_UNKNOWN", "error_type": type(exc).__name__,
-                    "message": "本地导出中断或记录无法保存。JSON及已生成文件已保留，请检查目录权限、空间和文件；未重新识别。"}
+                    "message": "本机导出中断或记录无法保存。JSON及已生成文件已保留，请检查目录权限、空间和文件；未重新转写。"}
     return _attach_delivery(report, delivery)
 
 
 def export_job(runtime: Runtime, job_id: str) -> ExecutionReport:
-    """核对已保存的转写结果并更新任务文档。"""
+    """核对已保存的转写结果并更新转写任务的校对稿。"""
     config = read_config(runtime, job_id)
     report = read_execution(job_directory(runtime, job_id))
     if report is None or report["status"] != "JSON_READY":
-        raise SetupError("任务尚无通过检查的JSON，不能导出；不会自动重新识别。")
+        raise SetupError("转写任务尚无通过检查的JSON，不能导出；不会自动重新转写。")
     try:
         expected = report["result"]["sha256"]
     except (KeyError, TypeError) as exc:
-        raise SetupError("任务记录缺少结果JSON摘要，无法核对导出来源；未导出，也未重新识别。") from exc
+        raise SetupError("转写任务记录缺少结果JSON摘要，无法核对导出来源；未导出，也未重新转写。") from exc
     transcript = load_transcript(result_path(config))
     if transcript.sha256 != expected:
         raise SetupError("转写JSON在验收后发生变化，未导出；请先检查原结果。")
@@ -89,10 +89,10 @@ def export_job(runtime: Runtime, job_id: str) -> ExecutionReport:
 
 
 def _check_input(record: AudioRecord) -> Path:
-    """核对用户原始音频的路径、大小和内容摘要，返回读取路径。"""
+    """核对录音原文件的路径、大小和内容摘要，返回读取路径。"""
     path = Path(record["path"])
     if not path.is_absolute() or path.resolve() != path:
-        raise SetupError("已确认的音频位置发生变化，请重新选择并确认新任务。")
+        raise SetupError("已确认的录音位置发生变化，请重新选择并确认新转写任务。")
     current = file_fingerprint(path)
     expected = record["fingerprint"]
     if (current["size_bytes"], current["sha256"]) != (expected["size_bytes"], expected["sha256"]):
@@ -101,7 +101,7 @@ def _check_input(record: AudioRecord) -> Path:
 
 
 def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple[PreparedCommand, list[str], Path]:
-    """核对音频、准备识别命令与结果目录，并按需转换声道。"""
+    """核对录音、准备 BL 转写命令与结果目录，并按需转换声道。"""
     audio_record = config["audio"]
     source = _check_input(audio_record)
     prepared = execution / "mono.flac" if audio_record["requires_mono"] else source
@@ -125,7 +125,7 @@ def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple
 
 
 def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
-    """按确认快照执行一次BL识别及本地导出，返回已知结果与失败阶段。"""
+    """按确认快照执行一次 BL 转写及本机校对稿导出，返回已知结果与失败阶段。"""
     config = read_config(runtime, job_id)
     if config["model"] != MODEL:
         raise SetupError(
@@ -142,7 +142,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
               "started_at": datetime.now(timezone.utc).isoformat(),
               "executor_pid": os.getpid(), "documents_ready": False}
     if not _save_status(execution, report):
-        report.update({"status": "STOPPED", "message": "执行记录未保存，BL尚未启动，音频未上传；未自动重试。"})
+        report.update({"status": "STOPPED", "message": "执行记录未保存，BL尚未启动，录音未上传；未自动重试。"})
         return report
     phase = "prepare_input"
     try:
@@ -150,10 +150,10 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
         command, private, destination = prepare_input(runtime, config, execution)
         report["json_path"] = str(destination)
         # 先记录保守的RUNNING，防止进程启动后崩溃却留下“尚未上传”的记录。
-        report.update({"status": "RUNNING", "cloud_outcome": "unknown", "message": "BL正在执行上传、识别、等待及结果保存。"})
+        report.update({"status": "RUNNING", "cloud_outcome": "unknown", "message": "BL正在执行录音上传、转写、等待及结果保存。"})
         if not _save_status(execution, report):
             report.update({"status": "STOPPED", "cloud_outcome": "not_started",
-                           "message": "执行记录未保存，BL尚未启动，音频未上传；未自动重试。"})
+                           "message": "执行记录未保存，BL尚未启动，录音未上传；未自动重试。"})
             return report
         phase = "run_bl"
         run_recognition(runtime, command, private)
@@ -165,7 +165,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
     except BailianFailure as exc:
         outcome = "unknown" if report["status"] == "RUNNING" and exc.started else "not_started"
         message = ("BL执行已停止，云端结果未知；未自动重试，也未取消云端任务。" if outcome == "unknown"
-                   else "BL识别尚未启动，音频未上传；未自动重试。")
+                   else "BL转写尚未启动，录音未上传；未自动重试。")
         report.update({"status": "STOPPED", "cloud_outcome": outcome,
                        "error": {**exc.report, "phase": phase}, "message": message})
     except (Exception, KeyboardInterrupt) as exc:
@@ -183,11 +183,11 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
                                  "error_type": type(exc).__name__, "explanation": message}})
     if not _save_status(execution, report):
         if report["status"] == "JSON_READY":
-            report["message"] = "转写JSON已保存并通过检查，但执行记录未保存；本次未生成文档，请保留本回执及JSON，勿重新识别。"
+            report["message"] = "转写JSON已保存并通过检查，但执行记录未保存；本次未生成校对稿，请保留本回执及JSON，勿重新转写。"
         else:
             report["message"] += " 执行记录也未保存，请保留本次回执。"
         return report
     if report["status"] == "JSON_READY":
-        # 云端成功先独立落盘。导出失败不得改写为识别失败或触发第二次BL执行。
+        # 云端成功先独立落盘。导出失败不得改写为转写失败或触发第二次BL执行。
         return _deliver(runtime, config, transcript, report)
     return report

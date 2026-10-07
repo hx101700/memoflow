@@ -43,15 +43,15 @@ def check_audio_limits(info: AudioInfo, diarization: bool) -> None:
         raise ValidationError("实际媒体格式不在固定模型支持范围内。", "audio_id")
     duration = info.duration_seconds
     if duration is None or not math.isfinite(duration) or duration <= 0:
-        raise ValidationError("无法确定有效音频时长，不能完成上传前校验。", "audio_id")
+        raise ValidationError("无法确定有效录音时长，不能完成上传前校验。", "audio_id")
     if duration > MAX_DURATION_SECONDS:
-        raise ValidationError("音频时长超过模型允许的12小时。", "audio_id")
+        raise ValidationError("录音时长超过模型允许的12小时。", "audio_id")
     if not (diarization and info.channels > 1) and info.size_bytes > MAX_UPLOAD_BYTES:
-        raise ValidationError("待上传音频超过临时OSS的1 GB上限。", "audio_id")
+        raise ValidationError("待上传录音超过临时OSS的1 GB上限。", "audio_id")
 
 
 def validate_context(text: object) -> str:
-    """校验参考文本的长度与字符要求，保留用户原文。"""
+    """校验上下文增强所用参考文本的长度与字符要求，保留用户原文。"""
     if not isinstance(text, str):
         raise ValidationError("参考文本必须为文字，请重新输入。", "context")
     if not text.strip():
@@ -89,7 +89,7 @@ def validate_hotword_rows(payload: object) -> HotwordConfig:
 
 
 def build_vocabulary(rows: Iterable[HotwordRow]) -> HotwordConfig:
-    """校验热词行并构建即时词典，汇总行级错误和导入提示。"""
+    """校验热词行并构建即时词典，汇总行级错误和校验提示。"""
     vocabulary: dict[str, int] = {}
     word_rows: dict[str, list[int]] = {}
     details: list[HotwordIssue] = []
@@ -171,7 +171,7 @@ LANGUAGE_CODES = (
 
 
 def validate_options(payload: Mapping[str, object], diarization: object) -> RecognitionOptions:
-    """核对语言和参考人数，形成执行所用的识别选项。"""
+    """核对录音语言和说话人数，形成执行所用的转写选项。"""
     language = payload.get("language_hint")
     if language is not None and (
         not isinstance(language, str) or language not in LANGUAGE_CODES
@@ -181,10 +181,10 @@ def validate_options(payload: Mapping[str, object], diarization: object) -> Reco
     speaker_count = payload.get("speaker_count")
     if speaker_count is not None:
         if not diarization:
-            raise ValidationError("设置发言人数前，请开启区分发言人。", "speaker_count")
+            raise ValidationError("设置说话人数前，请开启说话人区分。", "speaker_count")
         # bool 是 int 的子类，但不能把勾选状态当作人数。
         if type(speaker_count) is not int or not MIN_SPEAKERS <= speaker_count <= MAX_SPEAKERS:
-            raise ValidationError("发言人数需为 {minimum}–{maximum} 的整数，或使用自动识别。",
+            raise ValidationError("说话人数需为 {minimum}–{maximum} 的整数，或使用自动识别。",
                                   "speaker_count", minimum=MIN_SPEAKERS, maximum=MAX_SPEAKERS)
 
     return {

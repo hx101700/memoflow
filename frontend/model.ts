@@ -2,7 +2,7 @@ import { UiError } from "./api";
 import type { Translate } from "./i18n";
 import type { Configuration, FormValues, HotwordRow, Limits, Model, SessionEnd, ValidationResult } from "./types";
 
-// 初始化页面阶段、音频选择、词表导入与凭据状态。
+// 初始化页面阶段、录音选择、热词表导入与凭据状态。
 export function createModel(): Model {
   return {
     phase: "loading", preview: null, receipt: null, session: null,
@@ -40,7 +40,7 @@ export function receiveValidation(model: Model, result: ValidationResult, config
   model.phase = "preview";
 }
 
-// 接收会话结束结果并使未完成的输入请求失效。
+// 接收编辑会话结束结果并使未完成的输入请求失效。
 export function receiveEnd(model: Model, result: SessionEnd): void {
   model.phase = result.state;
   model.preview = null;
@@ -55,7 +55,7 @@ export function hotwordRows(form: FormValues): HotwordRow[] {
     ...(entry.invalid_fields ? { invalid_fields: [...entry.invalid_fields] } : {}) }));
 }
 
-// 根据普通表单与已选择音频构建确认配置。
+// 根据普通表单与已选择录音构建确认配置。
 export function configuration(model: Model, form: FormValues, limits: Limits, t: Translate): Configuration {
   let speakerCount: number | null = null;
   if (form.diarizationEnabled && form.speaker !== "") {
@@ -74,7 +74,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
   };
 }
 
-// 检查音频选择状态并指出选择区域。
+// 检查录音选择状态并指出选择区域。
 export function checkRequiredInputs(config: Configuration, t: Translate): void {
   if (!config.audio_id) throw new UiError(() => t("missingAudio"), "audio_id");
 }

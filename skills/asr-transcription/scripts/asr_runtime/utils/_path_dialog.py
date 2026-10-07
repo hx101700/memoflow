@@ -6,7 +6,7 @@ from typing import Literal, cast
 
 
 def show_path_dialog(initial: str, title: str, *, mode: Literal["audio", "directory"],
-                     audio_suffixes: tuple[str, ...] = (), audio_label: str = "音频文件") -> str | None:
+                     audio_suffixes: tuple[str, ...] = (), audio_label: str = "录音文件") -> str | None:
     """显示原生选择窗口并返回路径，取消返回None并销毁父窗口。"""
     try:
         import tkinter

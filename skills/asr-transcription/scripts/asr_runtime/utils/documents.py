@@ -1,4 +1,4 @@
-"""生成Excel、Word和Markdown转写成品，并回读核验Office文件。"""
+"""生成 Excel、Word 和 Markdown 转写校对稿，并回读核验 Office 文件。"""
 
 import html
 import math
@@ -58,7 +58,7 @@ def timestamp(milliseconds: int) -> str:
 
 def publish_document(writer: DocumentWriter, transcript: Transcript, final_path: Path, *,
                      source_name: str, job_id: str, model: str) -> int:
-    """先生成临时文件，再替换同名成品并返回文件大小。"""
+    """先生成临时文件，再替换同名校对稿并返回文件大小。"""
     with tempfile.NamedTemporaryFile(dir=final_path.parent,
                                       prefix=f"{final_path.stem}.partial-pid-{os.getpid()}-",
                                       suffix=final_path.suffix, delete=False) as stream:
@@ -73,7 +73,7 @@ def publish_document(writer: DocumentWriter, transcript: Transcript, final_path:
 
 
 def _title(source_name: str) -> str:
-    """生成三种成品共用的“源文件名 录音转写”标题。"""
+    """生成三种格式校对稿共用的“源文件名 录音转写”标题。"""
     return f"{Path(source_name).stem} 录音转写"
 
 
@@ -90,7 +90,7 @@ def _track(sentence: Sentence) -> str:
 
 
 def _label(sentence: Sentence, *, separator: str) -> str:
-    """组合段落序号、时间范围、说话人与音轨供文本成品使用。"""
+    """组合段落序号、时间范围、说话人与音轨供文本校对稿使用。"""
     return separator.join((str(sentence.index),
                            f"{timestamp(sentence.begin_ms)} — {timestamp(sentence.end_ms)}",
                            _speaker(sentence), _track(sentence)))
@@ -107,7 +107,7 @@ def _cell_value(cell: Cell, value: str | int | timedelta) -> None:
     if isinstance(value, str):
         _xml_text(value, "Excel")
         if len(value) > 32767:
-            raise DocumentError("Excel单元格最多保存32767个字符，本次未截断内容。请查看JSON或其他成品。")
+            raise DocumentError("Excel单元格最多保存32767个字符，本次未截断内容。请查看JSON或其他格式的校对稿。")
         cell.value = value
         # 转写和文件名都是不可信文本；即使以=开头也不能成为Excel公式。
         cell.data_type = "s"

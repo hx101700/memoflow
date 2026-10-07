@@ -23,7 +23,7 @@ export function uiError(error: unknown, fallback: () => string, field?: string):
   return new UiError(fallback, field);
 }
 
-// 创建使用同源会话 Cookie 的本机接口与一次性结束通知。
+// 创建使用同源编辑会话 Cookie 的本机接口与一次性结束通知。
 export function createApi(fetchRequest: typeof fetch, language: () => Language, t: Translate,
   eventSource: (url: string) => EventSource = url => new EventSource(url)): Api {
   // 构造本机请求头和缓存策略。
@@ -66,7 +66,7 @@ export function createApi(fetchRequest: typeof fetch, language: () => Language, 
         return await response.blob();
       } catch { throw new UiError(() => t("templateFailed")); }
     },
-    // 读取会话结束事件，结束或断开后关闭连接。
+    // 读取编辑会话结束事件，结束或断开后关闭连接。
     listen(ended, disconnected): () => void {
       const source = eventSource("/api/events");
       source.addEventListener("ended", event => {

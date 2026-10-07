@@ -62,8 +62,8 @@ class PathPickerTests(RuntimeTestCase):
         with language_scope("en"):
             self.assertIsNone(choose_path(self.runtime.root, mode="audio", audio_suffixes=(".wav",)))
         command = self.popen.call_args.args[0]
-        self.assertEqual(command[6], "Audio transcription · Choose an audio file")
-        self.assertEqual(command[9], "Audio files")
+        self.assertEqual(command[6], "Recording transcription · Choose a recording")
+        self.assertEqual(command[9], "Recording files")
 
     def test_directory_is_not_accepted_as_audio(self):
         """验证音频选择结果必须是普通文件。"""
@@ -83,7 +83,7 @@ class PathPickerTests(RuntimeTestCase):
         self.process.communicate.return_value = (json.dumps({"error": "当前 Python 缺少 tkinter/Tcl/Tk 组件。"}), "")
         with language_scope("en"), self.assertRaisesRegex(SetupError, "missing tkinter/Tcl/Tk"):
             choose_path(self.runtime.root, mode="directory")
-        self.assertEqual(self.popen.call_args.args[0][6], "Audio transcription · Choose an output folder")
+        self.assertEqual(self.popen.call_args.args[0][6], "Recording transcription · Choose an output folder")
 
     def test_native_cancel_returns_none(self):
         """验证原生窗口取消后返回空结果。"""
@@ -349,7 +349,7 @@ class PathPickerStateTests(RuntimeTestCase):
         picker.close()
         with patch("asr_runtime.utils.path_picker.choose_path") as choose:
             for mode in ("audio", "directory"):
-                with self.subTest(mode=mode), self.assertRaisesRegex(SetupError, "当前会话已关闭"):
+                with self.subTest(mode=mode), self.assertRaisesRegex(SetupError, "当前编辑会话已关闭"):
                     picker.select(self.runtime.root, "request", mode=mode)
             choose.assert_not_called()
 
@@ -387,11 +387,11 @@ class NativePathDialogTests(RuntimeTestCase):
         """验证音频窗口按调用方后缀构造文件过滤器并返回路径。"""
         selected = str(self.runtime.root / "sample.wav")
         self.assertEqual(show_path_dialog(str(self.runtime.root), "Choose audio", mode="audio",
-                                          audio_suffixes=(".wav", ".mp3"), audio_label="Audio files"), selected)
+                                          audio_suffixes=(".wav", ".mp3"), audio_label="Recording files"), selected)
         window = self.tk.Tk.return_value
         self.tk.filedialog.askopenfilename.assert_called_once_with(
             parent=window, initialdir=str(self.runtime.root), title="Choose audio",
-            filetypes=[("Audio files", ("*.wav", "*.mp3"))],
+            filetypes=[("Recording files", ("*.wav", "*.mp3"))],
         )
         self.tk.filedialog.askdirectory.assert_not_called()
         window.destroy.assert_called_once()

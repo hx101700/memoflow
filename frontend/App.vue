@@ -71,12 +71,12 @@ const enhancementRules = computed(() => language.value === "en" ? {
   context: "https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#ctx_enhance_h2",
 });
 
-// 单独保存 Key 成功后显示本机保存回执。
+// 单独保存 API Key 成功后显示本机保存回执。
 async function saveApiKey(): Promise<void> {
   if (await actions.saveApiKey()) ElMessage.success({ message: () => h("span", t("keySaved")) });
 }
 
-// 复制带当前会话编号的确认消息，供用户在 Codex 中发起交接。
+// 复制带当前编辑会话编号的确认消息，供用户在 Codex 中发起交接。
 async function copyConfirmation(): Promise<void> {
   if (!available.value.copy) return;
   try {

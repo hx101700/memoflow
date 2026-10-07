@@ -29,7 +29,7 @@ const generalIssues = computed(() => {
 });
 const issueRows = computed(() => props.rows.filter(row => rowIssues.value.has(row.row)));
 
-// 传递单个Excel文件，解析和规则检查由本机服务完成。
+// 将单个 Excel 文件交给本机服务读取热词。
 function selected(file: UploadFile): void {
   if (file.raw) emit("import", [file.raw]);
 }

@@ -1,14 +1,16 @@
 # 当前状态
 
-更新：2026-10-07。
+更新：2026-10-08。
 
 ## 当前工作
 
 当前目录为 `D:\Project\memoflow`，分支为 `dev`。按当前发布策略，本轮代码作为唯一正式版本 [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 维护。
 
-本次本地审查删除了无业务消费者的编辑响应恢复分支、旧精度增强副标题和旧双语提示，并同步静态前端、测试与当前登录说明；当前仅保留 v0.1.0 作为正式入口。远端 dev、master、标签与 Release 已同步。
+本轮按用户最新 README 统一“个性化纪要生成”，核对 Skill、运行源码、前端、参考资料和 UML 的用词。双语 README 图使用圆角节点与平滑连线，保留九个节点和九条关系；代码只调整文案及职责说明，业务行为、协议和依赖保持原样。
 
-推送前深审已完成。现行源码、Skill、文档及 10 份 UML 的调用边界已核对，修正了图 03 的 HTTP/SSE 分派和并行关系、图 07 的原文件变化分支；当前提交已同步到远端 dev 与 master。
+Release 使用“更新内容”，完整包标为“推荐”，删除重复的两包说明。本轮不移动正式 v0.1.0 标签或替换原附件；当前候选包在 `dist/terminology-review/`，用于复核修改。
+
+本轮验证：181 项针对性 Python、56 项前端、3 项 Edge 回归通过；严格 mypy 31 个源文件、Vue 类型与构建、官方 Skill 格式、文档链接及双包一致性检查通过。GitHub 视觉工具因无法确认浏览器 URL 停止，图表按用户截图改进，并完成本地深浅主题渲染；未声称已完成 GitHub 实际视觉验证。详见 [ACCEPTANCE](ACCEPTANCE.md)。
 
 ## 已完成
 
@@ -18,7 +20,7 @@
 - README 双语增加 Qwen 3.1、网页核对、Codex 协作与文件化处理的项目价值；学习能力明确为后续目标。统一导入、确认消息、API Key 和双语官方链接，删除页面旧预览版标签与重复提示。
 - UML 01A、01B、03 源稿及 PNG 已同步；其余协议与图稿保持适用。
 
-## 验证
+## 上次完整回归
 
 - 推送前 Python 完整回归 **453 项通过，0 跳过，175.461 秒**；严格 mypy **31 个源文件通过**。
 - 本次清理后前端 **56 项测试**、Vue 类型和 Vite 构建通过；**3 项 Edge 回归通过，44.032 秒**，覆盖有效／失效附件、替换、刷新、语言切换、预览与交接。当前静态产物与源码一致。
@@ -27,12 +29,12 @@
 
 ## 交付位置
 
-- `dist/review-20261007/asr-transcription.zip`：附 Python 和 Node 的完整候选包。
-- `dist/review-20261007/asr-transcription-lite.zip`：相同代码与说明的轻量候选包。
+- `dist/terminology-review/asr-transcription.zip`：本轮完整候选包。
+- `dist/terminology-review/asr-transcription-lite.zip`：本轮轻量候选包。
 - 本轮原始验证记录在 `.runtime/attachments-*.json`、`.runtime/attachments-final-python.log`；仅用于本机复核，不进入 Git 或安装包。
 
 ## 产品范围
 
 第一阶段交付单录音的原始 JSON、Word、Excel、Markdown。固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域和 BL 2.1.0。用户在网页填写、预览并复制含 session_id 的确认消息，随后交接唯一任务；必要登录后执行，失败不自动重传。
 
-用户工作目录保存环境、凭据与任务，Skill 资源只读。当前功能与限制见 [HELP](HELP.md)、[ISSUES](ISSUES.md)，实现与调用关系见 [DEVELOPMENT](DEVELOPMENT.md)、[UML](UML.md)。后续个性化纪要与反馈学习尚未实现。
+用户工作目录保存环境、凭据与任务，Skill 资源只读。当前功能与限制见 [HELP](HELP.md)、[ISSUES](ISSUES.md)，实现与调用关系见 [DEVELOPMENT](DEVELOPMENT.md)、[UML](UML.md)。后续个性化纪要生成与反馈学习尚未实现。

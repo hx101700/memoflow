@@ -94,7 +94,7 @@ class Runtime:
         if not workspace.is_dir() or not skill_root.is_dir():
             raise SetupError("工作区与Skill位置必须是已有文件夹。")
         if workspace.is_relative_to(skill_root):
-            raise SetupError("请选择Skill安装目录之外的工作区保存录音与转写结果。")
+            raise SetupError("请选择Skill安装目录之外的工作区保存运行数据与转写结果。")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "skill_root", skill_root)
         # 立即解析一次运行根，先拒绝会写入Skill的目录布局。

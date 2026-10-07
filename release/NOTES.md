@@ -1,10 +1,10 @@
-中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.en.md)
+中文 | [English](https://github.com/hx101700/memoflow/blob/master/release/NOTES.en.md)
 
 # MemoFlow v0.1.0
 
 MemoFlow v0.1.0 是首个公开版本，先完成“录音转写与校对稿交付”这一阶段。它把 Codex 的任务组织能力、阿里云百炼的语音识别能力和本机网页配置连接起来，用户可以在确认设置后获得可继续处理的转写结果。
 
-### 这版包含
+### 更新内容
 
 - **交互式转写页面**：选择录音，调整识别设置，在提交前查看预览。
 - **对话附件入口**：从 Codex 附上的录音开始，沿用同一套配置和确认流程。
@@ -16,9 +16,7 @@ MemoFlow v0.1.0 是首个公开版本，先完成“录音转写与校对稿交�
 
 | 安装包 | 适合情况 |
 | --- | --- |
-| **完整包 · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)** | 包含 Python 和 Node.js 运行时，适合希望减少首次运行下载内容的用户。 |
+| **完整包（推荐） · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)** | 包含 Python 和 Node.js 运行时，适合希望减少首次运行下载内容的用户。 |
 | **轻量包 · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription-lite.zip)** | 初始下载体积更小，首次安装时从官方来源准备运行时。 |
-
-两个包包含相同的 Skill 和运行代码，区别只在于是否附带 Python 与 Node.js 运行时归档。
 
 详细介绍与使用入口见 [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.md)。问题反馈请提交到 [Issues](https://github.com/hx101700/memoflow/issues)。

@@ -152,7 +152,7 @@ class SessionControlTests(WebFixture):
         self.assertTrue(self.audio.exists())
 
     def test_cli_confirm_returns_same_job_after_web_service_exits(self):
-        """验证公开命令按复制的会话编号交接，网页服务结束后也能恢复回执。"""
+        """验证公开命令按复制的编辑会话编号交接，网页服务结束后也能恢复回执。"""
         self.ready()
         outputs = []
         for _ in range(2):
@@ -165,7 +165,7 @@ class SessionControlTests(WebFixture):
         self.assertNotIn(self.session.token, json.dumps(outputs))
 
     def test_invalid_session_id_is_rejected_before_network_access(self):
-        """验证缺失或路径形式的会话编号不能定位其他文件。"""
+        """验证缺失或路径形式的编辑会话编号不能定位其他文件。"""
         with patch("asr_runtime.web.http.client.HTTPConnection") as connect:
             for value in ("", "../escape", "A" * 32):
                 with self.subTest(value=value), self.assertRaises(SetupError):

@@ -1,8 +1,8 @@
 # 运行与使用
 
-此Skill将单个本地录音转写为原始JSON、Word、Excel和Markdown，完成后由用户校对。模型固定为`qwen-audio-3.1-asr-flash-filetrans`，地域为北京。
+此Skill将单个本地录音转写为原始JSON和Word、Excel、Markdown转写校对稿。模型固定为`qwen-audio-3.1-asr-flash-filetrans`，地域为北京。
 
-[v0.1.0 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与 BL 仍需联网。
+[v0.1.0 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与百炼 CLI（BL）仍需联网。
 
 ## 运行准备
 
@@ -25,7 +25,7 @@ $pythonPath = Join-Path $workspaceDir '.asr-transcription/.venv/Scripts/python.e
 
 联网下载的完整 ZIP 保留在 `.asr-transcription/.runtime/runtime-downloads` 中复用；未完成的 `.part` 由 curl 续接，摘要失败的文件会丢弃。连续 120 秒几乎没有数据传输时，curl 结束当前连接并按原生有限重试处理，不设置整个安装的总时限。两个包均不附带已安装的业务依赖。ExecutionPolicy Bypass 仅影响这次 PowerShell 进程，不更改机器的策略配置。
 
-Python `bootstrap` 从 Skill 中的 Python/npm 依赖锁安装到工作目录，完成检查后返回安装状态及 `key_file`。成功后即可使用；已有可用环境直接复用，Key 和任务保留。安装进度输出到 stderr，依赖安装日志保存在本机，stdout 输出最终 JSON。等待同一次进程结束，正常下载没有总耗时上限。
+Python `bootstrap` 从 Skill 中的 Python/npm 依赖锁安装到工作目录，完成检查后返回安装状态及 `key_file`。成功后即可使用；已有可用环境直接复用，API Key 和任务保留。安装进度输出到 stderr，依赖安装日志保存在本机，stdout 输出最终 JSON。等待同一次进程结束，正常下载没有总耗时上限。
 
 需要下载Python依赖时，先比较官方PyPI和阿里云镜像的文件前缀速度，优先使用较快来源，并准备锁定的pip 26.2.1。pip自行恢复中断下载，单个业务依赖最多恢复5次；该来源最终失败后，自动尝试另一个来源一次。已完整下载的wheel保存在`.asr-transcription/.runtime/wheels`供后续安装复用，换源不跨进程续接未完成的文件。两个来源都失败时停止并保留`python-install.log`，不要在Codex中额外循环重跑或改动摘要。
 
@@ -41,7 +41,7 @@ Python `bootstrap` 从 Skill 中的 Python/npm 依赖锁安装到工作目录，
 
 Python 依赖从 HTTPS PyPI 或阿里云镜像下载并校验摘要，然后从本机 wheel 安装。BL 由私有 Node 配套的 npm 按锁安装，更换来源不改变版本或摘要。安装不修改系统 PATH、注册表或全局包。独立运行时减少版本和路径冲突，但仍需可用网络、目录写入权限及正常 Windows 交互桌面；组织策略或安全软件阻止执行时，应按具体错误处理，不能保证所有机器都能运行。
 
-虚拟环境记录创建时的基础 Python 路径，不能把已安装的工作目录视为可随意搬迁的便携包。旧版由系统 Python 创建的环境也不属于当前私有运行时。安装器发现基础路径不一致时保留旧环境并停止；先结束使用该环境的任务，再仅删除工作目录中的 `.asr-transcription/.venv`，重新执行上面的 PowerShell 入口。Key、BL 配置、任务和结果保留，不删除整个 `.asr-transcription`。
+虚拟环境记录创建时的基础 Python 路径，不能把已安装的工作目录视为可随意搬迁的便携包。旧版由系统 Python 创建的环境也不属于当前私有运行时。安装器发现基础路径不一致时保留旧环境并停止；先结束使用该环境的任务，再仅删除工作目录中的 `.asr-transcription/.venv`，重新执行上面的 PowerShell 入口。API Key、BL 配置、任务和结果保留，不删除整个 `.asr-transcription`。
 
 ## 认证与运行
 
@@ -63,15 +63,15 @@ Python 依赖从 HTTPS PyPI 或阿里云镜像下载并校验摘要，然后从�
 
 ### 指定 API Key
 
-在页面选择“使用指定 API Key”，填写或修改北京地域的百炼 Key。已有 Key 加载到密码输入框，默认遮蔽。点击“保存 API Key”可单独保存到工作目录的 `.asr-transcription/.env`；普通转写点击“确认并预览”时也会保存待提交的修改。
+在页面选择“使用指定 API Key”，填写或修改北京地域的百炼 API Key。已有 API Key 加载到密码输入框，默认遮蔽。点击“保存 API Key”可单独保存到工作目录的 `.asr-transcription/.env`；普通转写点击“确认并预览”时也会保存待提交的修改。
 
-此模式不运行 login。正式执行读取该文件当时的 Key，通过 BL 子进程环境传入。Key 不进入任务配置、聊天、命令参数或浏览器持久存储。单独更换 Key 时无需录音或创建任务；保存后告知 Codex 完成，由它取消本次编辑会话。
+此模式不运行 login。正式执行读取该文件当时的 API Key，通过 BL 子进程环境传入。API Key 不进入任务配置、聊天、命令参数或浏览器持久存储。单独更换 API Key 时无需录音或创建任务；保存后告知 Codex 完成，由它取消本次编辑会话。
 
 ### 后续使用与凭据有效性
 
-两种模式都由 BL 使用模型 API Key 调用 ASR：控制台模式读取当前工作目录的 BL 配置，指定 Key 模式读取私有 `.env`。控制台 access_token 服务于控制台能力，不能替代模型 Key。
+两种模式都由 BL 使用模型 API Key 调用 ASR：控制台模式读取当前工作目录的 BL 配置，指定 API Key 模式读取私有 `.env`。控制台 access_token 服务于控制台能力，不能替代模型 API Key。
 
-`console-status` 复用 `bl auth status`，`api-key-status` 检查本机 `.env`；都不发起在线验证。已有凭据直接用于实际转写，由 BL 返回的 HTTP 状态、API code 和说明判断结果。普通 Key 没有固定有效期，删除 Key、账号或权限变化会影响可用性；临时 Key 另有有效期，见[官方说明](https://help.aliyun.com/zh/model-studio/get-api-key)。修复方式与新任务边界见[凭据修复](errors.md#鉴权失败与重新配置)。
+`console-status` 复用 `bl auth status`，`api-key-status` 检查本机 `.env`；都不发起在线验证。已有凭据直接用于实际转写，由 BL 返回的 HTTP 状态、API code 和说明判断结果。普通 API Key 没有固定有效期，删除 API Key、账号或权限变化会影响可用性；临时 API Key 另有有效期，见[官方说明](https://help.aliyun.com/zh/model-studio/get-api-key)。修复方式与新任务边界见[凭据修复](errors.md#鉴权失败与重新配置)。
 
 ## 打开转写页面
 
@@ -81,7 +81,7 @@ Python 依赖从 HTTPS PyPI 或阿里云镜像下载并校验摘要，然后从�
 
 命令持续运行，默认请求系统浏览器打开页面。宿主有打开链接能力时使用 `serve --no-browser`，收到启动回执后打开 URL 一次，随即让用户操作。正常使用无需 computer-use、截图或页面元素检查。原生文件与目录窗口需要正常 Windows 交互桌面，遵循执行工具的权限机制。
 
-当前开发版支持将用户本次提供的录音附件或本机路径带入同一配置页：
+当前版本支持将用户本次提供的录音附件或本机路径带入同一配置页：
 
 ```powershell
 $audioPath = '替换为本次录音的绝对路径'
@@ -92,7 +92,7 @@ $audioPath = '替换为本次录音的绝对路径'
 
 启动回执 `event=listening` 包含 `session_id`、`url`、`expires_at`、`pid`、`browser_request`，以及启动清理的 `cleanup` 数量和警告。`browser_request` 的 `skipped` 表示调用方负责开页，`requested` 表示已请求系统打开，`failed` 表示打开请求失败；不将这些值解释为“用户已看到页面”。只有打开报错或用户反馈异常时，按[页面打开问题](errors.md#页面打开问题)排查。
 
-URL 为本机地址，不携带令牌。页面请求使用本机会话 Cookie；CLI 从私有连接文件读取令牌。会话编号用于明确指定要交接的页面，不是密钥或云端任务编号。
+URL 为本机地址，不携带令牌。页面请求使用本机编辑会话 Cookie；CLI 从私有连接文件读取令牌。编辑会话编号 `session_id` 用于明确指定要交接的页面，不是密钥或云端任务编号；交接后产生的本机转写任务编号为 `job_id`。
 
 ## 网页配置
 
@@ -101,44 +101,44 @@ URL 为本机地址，不携带令牌。页面请求使用本机会话 Cookie；
 页面有“填写”和“预览”两步。右上角可切换中文/English 及系统、浅色、深色外观；界面语言与音频语言分别设置。宽屏右侧的“当前设置”随表单更新并跟随滚动，便于随时核对；正式预览仍通过“确认并预览”进入。
 
 1. 核对带入的录音，或选择一个音频文件。
-2. 选择音频语言、发言人区分和参考人数。发言人区分初始开启，多声道会提示生成单声道 FLAC 副本，原文件保留。
-3. 按需启用热词和上下文。热词可直接填写或导入 Excel，工具栏提供“下载模板”。导入去除表头和完全空白行，保留错误值供修改。表格序号从 1 连续显示，删除后重排；行数较多时在表格内滚动，表头固定。Excel 文件字节仅在内存中读取并填表，不生成磁盘副本。热词和上下文内容仅在点击“确认并预览”时检查，错误在对应单元格或输入框中显示；编辑过程中保留原值。无法读取或表头不符的 Excel 在导入时提示文件问题。
+2. 选择音频语言、说话人区分和参考人数。说话人区分初始开启，多声道会提示生成单声道 FLAC 副本，原文件保留。
+3. 按需启用热词和上下文增强。热词可直接填写或导入 Excel，工具栏提供“下载模板”。导入去除表头和完全空白行，保留错误值供修改。表格序号从 1 连续显示，删除后重排；行数较多时在表格内滚动，表头固定。Excel 文件字节仅在内存中读取并填表，不生成磁盘副本。热词和上下文增强的输入仅在点击“确认并预览”时检查，错误在对应单元格或输入框中显示；编辑过程中保留原值。无法读取或表头不符的 Excel 在导入时提示文件问题。
 4. 通过原生目录窗口选择 JSON 与文档保存位置，默认根目录为工作目录的 `transcriptions`。取消窗口保留原位置。
 5. 点击“确认并预览”。错误留在对应输入位置；通过后进入独立预览视图，完整核对音频、选项、增强内容、认证方式及保存根目录。此时尚未产生任务编号，可点击“返回修改”。
 
-同一热词只保留一行。所有重复行都会标红，权重相同也须由用户选择保留哪一行。上下文问题会指出长度或字符位置，并保留原文。Excel 只用于导入，后续使用网页当前数组，原文件不修改；外部修改 Excel 后需重新导入。
+同一热词只保留一行。所有重复行都会标红，权重相同也须由用户选择保留哪一行。上下文增强的输入问题会指出长度或字符位置，并保留原文。Excel 只用于导入，后续使用网页当前数组，原文件不修改；外部修改 Excel 后需重新导入。
 
-修改一个单元格会清除该格的旧提示，其他错误继续保留。重复组删到一行才移除重复提示；新修改的内容在下次预览时检查。切换语言保留当前表格、滚动及错误位置，提示同步切换。关闭热词或上下文开关会清空对应内容，API Key 不受影响。
+修改一个单元格会清除该格的旧提示，其他错误继续保留。重复组删到一行才移除重复提示；新修改的内容在下次预览时检查。切换语言保留当前表格、滚动及错误位置，提示同步切换。关闭热词或上下文增强开关会清空对应内容，API Key 不受影响。
 
 填写规则参见阿里云的[即时热词格式](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#hw_instant_fmt_h4)与[上下文增强](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#ctx_enhance_h2)，页面两个区域也提供入口。
 
-确认无误后，点击“复制给 Codex”，把包含会话编号的完整确认消息发送到原对话。例如：
+确认无误后，点击“复制给 Codex”，把包含编辑会话编号的完整确认消息发送到原对话。例如：
 
 ```text
-确认转写，会话编号：<页面提供的 session_id>
+确认转写，编辑会话编号：<页面提供的 session_id>
 ```
 
 Codex 使用本次用户消息中的编号调用交接代码，确认页面仍处于有效预览后才创建任务并固定设置。仅回复“继续”时，Codex 会请用户使用复制按钮，避免处理另一份页面。预览同时说明音频及启用的增强内容将发往百炼北京地域，可能产生调用费用；这次确认覆盖该任务，无需后续二次授权。
 
-编辑会话从打开起有效 **2 小时**，操作不会延长。交接、取消或到期后，页面显示对应结束提示，网页服务退出，标签页由用户自行关闭。到期与取消清理会话临时记录，保留原文件和已经保存的 Key；原录音直接供任务读取，转写结束前请保留文件及原路径。期限不影响已经交接的登录或转写。
+编辑会话从打开起有效 **2 小时**，操作不会延长。交接、取消或到期后，页面显示对应结束提示，网页服务退出，标签页由用户自行关闭。到期与取消清理会话临时记录，保留原文件和已经保存的 API Key；原录音直接供任务读取，转写结束前请保留文件及原路径。期限不影响已经交接的登录或转写。
 
-同一运行服务可恢复仍在内存中的预览；填写过程没有逐次自动保存，服务结束后不能恢复未交接编辑。浏览器只持久保存当前页面来源的界面语言与主题，不保存录音、Key、热词或上下文。
+同一运行服务可恢复仍在内存中的预览；填写过程没有逐次自动保存，服务结束后不能恢复未交接编辑。浏览器只持久保存当前页面来源的界面语言与主题，不保存录音、API Key、热词或上下文文本。
 
 | 输入 | 当前要求 |
 | --- | --- |
 | 本机音频 | 对话中带入或通过系统窗口选择原文件，支持 MP3、WAV、M4A、FLAC 等；时长不超过 12 小时 |
 | BL 实际上传文件 | 不超过 1 GB，需要合并声道时按转换后文件检查 |
 | 热词表格 | 最多 2,000 个词；直接填写，或导入不超过 5 MB 的两列 `.xlsx` |
-| 上下文 | 最多 400 个字符，包含期望识别的具体词语 |
+| 上下文增强 | 输入最多 400 个字符，包含期望识别的具体词语 |
 
-GB 和 MB 按十进制计量。开启发言人区分时，官方建议不超过 2 小时。完整规则见[模型依据](model.md)。引号、换行和反斜杠按原文输入，无需手工转义。Windows 整条命令也有长度限制；交接时按实际任务路径检查，超限会保留预览，请返回修改、减少词条或缩短保存路径后重新预览。
+GB 和 MB 按十进制计量。开启说话人区分时，官方建议不超过 2 小时。完整规则见[模型依据](model.md)。引号、换行和反斜杠按原文输入，无需手工转义。Windows 整条命令也有长度限制；交接时按实际任务路径检查，超限会保留预览，请返回修改、减少词条或缩短保存路径后重新预览。
 
 ## 交接与执行
 
-Codex 按用户粘贴的会话编号执行：
+Codex 按用户粘贴的编辑会话编号执行：
 
 ```powershell
-$sessionId = '替换为本次用户确认消息中的会话编号'
+$sessionId = '替换为本次用户确认消息中的编辑会话编号'
 & $pythonPath -X utf8 $scriptPath --workspace $workspaceDir confirm --session $sessionId
 ```
 
@@ -147,7 +147,7 @@ $sessionId = '替换为本次用户确认消息中的会话编号'
 按所选认证方式准备后，执行一次：
 
 ```powershell
-$jobId = '替换为交接回执中的任务编号'
+$jobId = '替换为交接回执中的转写任务编号'
 & $pythonPath -X utf8 $scriptPath --workspace $workspaceDir transcribe --job $jobId
 ```
 
@@ -155,7 +155,7 @@ $jobId = '替换为交接回执中的任务编号'
 
 取消尚未交接的页面使用 `cancel --session SESSION_ID`。它结束编辑会话，不能取消已经交接的云端任务。
 
-文件位于所选根目录的 `JOB_ID/json/transcription.json` 和 `JOB_ID/documents/transcription.{docx,xlsx,md}`。文档保留原文、时间戳和启用时的发言人编号，标题为“源文件名 录音转写”。Word、Excel 使用等线字体。
+文件位于所选根目录的 `JOB_ID/json/transcription.json` 和 `JOB_ID/documents/transcription.{docx,xlsx,md}`。转写校对稿保留原文、时间戳和启用时的说话人编号，标题为“源文件名 录音转写”。Word、Excel 使用等线字体。
 
 ## 查询与重新导出
 
@@ -170,7 +170,7 @@ $jobId = '替换为交接回执中的任务编号'
 
 ## 中断与临时文件
 
-关闭标签页不会终止本机服务。正常交接、取消或到期后，服务等当前请求结束，再清理会话暂存；原录音、正式 Key、BL 凭据及结果保留。
+关闭标签页不会终止本机服务。正常交接、取消或到期后，服务等当前请求结束，再清理会话暂存；原录音、正式 API Key、BL 凭据及结果保留。
 
 服务被强制关闭时，清理可能未运行。下次在**同一工作目录**打开转写页，工具会回收“已经到期且原进程已结束”的旧会话，以及已结束进程留下的自有文档、状态和 Python 临时文件。仍在运行、状态无法确认、归属不完整的文件会保留；有问题时启动回执会给出警告。这不会自动恢复或重传转写。
 
@@ -185,9 +185,9 @@ $jobId = '替换为交接回执中的任务编号'
 | 百炼 CLI | `WORKSPACE/.asr-transcription/.tools/bailian/` |
 | API Key | `WORKSPACE/.asr-transcription/.env` |
 | BL 配置 | `WORKSPACE/.asr-transcription/.state/bailian/` |
-| 活动会话连接信息 | `WORKSPACE/.asr-transcription/.state/sessions/SESSION_ID/connection.json` |
+| 活动编辑会话连接信息 | `WORKSPACE/.asr-transcription/.state/sessions/SESSION_ID/connection.json` |
 | 成功交接回执 | 同一会话目录的 `receipt.json` |
-| 任务配置与记录 | `WORKSPACE/.asr-transcription/.state/jobs/JOB_ID/` |
+| 转写任务配置与记录 | `WORKSPACE/.asr-transcription/.state/jobs/JOB_ID/` |
 | 默认输出 | `WORKSPACE/transcriptions/JOB_ID/` |
 
 连接令牌在会话结束时移除。会话回执与任务编号用于定位这次交接；凭据、录音和结果不写入 Skill 安装目录。工作目录可能属于用户自己的仓库，其敏感文件不能假定受 MemoFlow 的 Git 忽略规则保护。

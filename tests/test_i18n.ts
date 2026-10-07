@@ -53,9 +53,9 @@ test("本机提示随语言切换更新，未知异常内容不泄露给页面",
   let language: Language = "zh-CN";
   const local = new UiError(() => translate(language, "missingAudio"), "audio_id");
   const unknown = uiError(new Error("private technical detail"), () => translate(language, "failed"));
-  assert.equal(local.describe(language), "请选择音频文件。");
+  assert.equal(local.describe(language), "请选择录音。");
   language = "en";
-  assert.equal(local.describe(language), "Choose an audio file.");
+  assert.equal(local.describe(language), "Choose a recording.");
   assert.equal(unknown.describe(language), translate("en", "failed"));
   assert.equal(unknown.describe(language).includes("private technical detail"), false);
 });

@@ -1,4 +1,4 @@
-"""本地配置、明确授权的BL转写，以及仅查看本地执行记录的入口。"""
+"""提供本机配置、已授权转写和本机执行记录查询的命令入口。"""
 
 import argparse
 import json
@@ -20,21 +20,21 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description="asr-transcription录音转写工具；转写须明确授权上传。")
+    parser = argparse.ArgumentParser(description="asr-transcription 录音转写工具；转写须明确授权上传。")
     parser.add_argument("--workspace", type=Path, required=True, help="保存运行环境与结果的现有工作文件夹")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("doctor", "bootstrap", "api-key-status", "console-status", "login"):
         commands.add_parser(name)
-    serve_parser = commands.add_parser("serve", help="打开本地配置网页")
-    serve_parser.add_argument("--port", type=int, default=0, help="本地网页端口，默认自动选择")
+    serve_parser = commands.add_parser("serve", help="打开本机配置网页")
+    serve_parser.add_argument("--port", type=int, default=0, help="本机网页端口，默认自动选择")
     serve_parser.add_argument("--no-browser", action="store_true", help="不自动打开系统浏览器")
     serve_parser.add_argument("--audio", type=Path, help="带入网页的录音绝对路径，可在页面更换")
     for name in ("confirm", "cancel"):
         command = commands.add_parser(name)
-        command.add_argument("--session", required=True, help="用户从预览页复制到对话中的编辑会话编号")
+        command.add_argument("--session", required=True, help="用户从预览页复制到对话中的编辑会话编号（session_id）")
     for name in ("transcribe", "export", "job-status"):
         command = commands.add_parser(name)
-        command.add_argument("--job", required=True, help="会话交接回执中的任务编号")
+        command.add_argument("--job", required=True, help="编辑会话交接回执中的转写任务编号（job_id）")
     args = parser.parse_args(argv)
     report: Mapping[str, object]
     try:

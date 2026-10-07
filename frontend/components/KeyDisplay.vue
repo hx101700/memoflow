@@ -5,11 +5,11 @@ import type { Translate } from "../i18n";
 import type { Model } from "../types";
 
 defineProps<{ status: Model["auth"]["status"]; disabled: boolean; t: Translate }>();
-// 凭据仅驻留在显示组件中，保存转写设置或关闭组件时清空。
+// 凭据仅驻留在显示组件中，进入预览或关闭组件时清空。
 const value = ref("");
 const emit = defineEmits<{ changed: []; save: [] }>();
 
-// 将已有 Key 显示到密码输入框。
+// 将已有 API Key 显示到密码输入框。
 function setValue(key: string): void { value.value = key; }
 
 // 在用户保存或检查时交付当前输入，供接口保存到本机环境文件。

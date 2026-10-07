@@ -14,15 +14,15 @@ from .rules import AUDIO_SUFFIXES, ValidationError, check_audio_limits
 
 
 def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
-    """校验音频，返回媒体属性、内容摘要和处理提示。"""
+    """校验所选录音，返回媒体属性、内容摘要和处理提示。"""
     field = "audio_id"
     try:
         source = resolve_input(path, AUDIO_SUFFIXES)
         if not isinstance(diarization, bool):
-            raise ValidationError("说话人选项必须为开启或关闭。", "diarization")
+            raise ValidationError("说话人区分必须为开启或关闭。", "diarization")
         before = source.stat()
         if before.st_size == 0:
-            raise ValidationError("音频文件为空。", field)
+            raise ValidationError("录音文件为空。", field)
         info = probe_audio(source)
         check_audio_limits(info, diarization)
         # check_audio_limits已确认时长为有效正数。
@@ -31,10 +31,10 @@ def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
         warnings = []
         if requires_mono:
             warnings.append(localize(
-                "此音频包含 {channels} 个声道。为区分发言人，转写前将生成单声道 FLAC 副本，"
+                "此录音包含 {channels} 个声道。启用说话人区分后，转写前将生成单声道 FLAC 副本，"
                 "保留原文件。副本通过大小和时长检查后才会上传。", channels=info.channels))
         if diarization and duration > 2 * 60 * 60:
-            warnings.append(localize("音频超过 2 小时。启用发言人区分可能导致识别失败或超时，建议使用 2 小时以内的音频。"))
+            warnings.append(localize("录音超过 2 小时。启用说话人区分可能导致转写失败或超时，建议使用 2 小时以内的录音。"))
         if info.audio_tracks > 1:
             warnings.append(localize(
                 "此文件包含 {tracks} 个音轨，仅转写第一个音轨（索引0），其余音轨不会转写。", tracks=info.audio_tracks))
@@ -49,7 +49,7 @@ def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
     except FileError as exc:
         raise ValidationError(exc.template, field) from exc
     except (MediaError, OSError) as exc:
-        raise ValidationError("无法读取音频，请检查文件是否损坏及格式是否支持。", field) from exc
+        raise ValidationError("无法读取录音，请检查文件是否损坏及格式是否支持。", field) from exc
 
 
 def import_hotwords(content: bytes) -> HotwordImport:

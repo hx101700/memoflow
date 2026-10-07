@@ -8,7 +8,7 @@
 | [HELP](HELP.md) | 使用资料入口 |
 | [usage.md](../skills/asr-transcription/references/usage.md) | 环境准备、认证、网页操作与重导 |
 | [errors.md](../skills/asr-transcription/references/errors.md) | 常见问题处理及状态含义 |
-| [model.md](../skills/asr-transcription/references/model.md) | 固定 BL/API 版本与官方参数依据 |
+| [model.md](../skills/asr-transcription/references/model.md) | 固定百炼 CLI（BL）与 API 版本、官方参数依据 |
 
 ## 开发与维护
 

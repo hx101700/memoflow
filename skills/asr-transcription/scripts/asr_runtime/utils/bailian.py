@@ -1,4 +1,4 @@
-"""构造和执行BL命令，解析登录状态与脱敏错误。"""
+"""构造和执行百炼 CLI（BL）命令，解析登录状态与脱敏错误。"""
 
 import json
 import os
@@ -68,7 +68,7 @@ def bl_command(runtime: Runtime, arguments: list[str]) -> list[str]:
 
 
 def check_recognition_command(runtime: Runtime, arguments: list[str]) -> None:
-    """按实际Node入口检查待交接识别命令的Windows长度。"""
+    """按实际 Node 入口检查待交接转写命令的 Windows 长度。"""
     check_command_length(_node_command(runtime, arguments))
 
 
@@ -81,7 +81,7 @@ def verify_bl_installation(runtime: Runtime) -> None:
 
 
 def recognition_arguments(config: JobConfig, audio_path: Path, json_path: Path) -> list[str]:
-    """将已确认的识别选项映射为BL命令参数。"""
+    """将已确认的转写选项映射为 BL 命令参数。"""
     arguments = [
         "speech", "recognize", "--config", "default", "--model", config["model"], "--url", str(audio_path),
         "--base-url", BEIJING_BASE_URL, "--out", str(json_path),
@@ -135,7 +135,7 @@ def check_command_length(argv: list[str]) -> None:
     length = len(subprocess.list2cmdline(argv).encode("utf-16-le")) // 2 + 1
     if length > 32767:
         raise SetupError(
-            "识别命令共{length}个UTF-16单元，超过Windows的32767上限。"
+            "转写命令共{length}个UTF-16单元，超过Windows的32767上限。"
             "请减少热词或缩短路径后重新配置；未截断热词、未启动BL。", length=length,
         )
 
@@ -279,7 +279,7 @@ def _run_bl(runtime: Runtime, command: PreparedCommand,
         if not console_login:
             process.kill()
             process.communicate()
-        # 这里只说明进程中断；是否已提交识别，由调用用例解释。
+        # 这里只说明进程中断；是否已提交转写，由调用用例解释。
         raise BailianFailure({"source": "local", "code": "LOCAL_WAIT_INTERRUPTED",
                               "explanation": "BL进程等待已中断，未自动重试。"},
                              started=True) from exc
@@ -290,7 +290,7 @@ def _run_bl(runtime: Runtime, command: PreparedCommand,
 
 def run_recognition(runtime: Runtime, command: PreparedCommand,
                     private_values: list[str]) -> None:
-    """调用BL完成识别流程及JSON保存。"""
+    """调用 BL 完成转写流程及 JSON 保存。"""
     _run_bl(runtime, command, private_values, timeout=PROCESS_SECONDS)
 
 
@@ -305,13 +305,13 @@ def console_status(runtime: Runtime) -> dict[str, str | bool]:
             raise ValueError("invalid status")
     except ValueError as exc:
         raise SetupError("BL未返回可解析的本地登录状态。") from exc
-    # authenticated也可能只代表控制台token/AK，识别必须存在模型API Key。
+    # authenticated也可能只代表控制台token/AK，转写必须存在模型API Key。
     configured = isinstance(status.get("api_key"), dict)
     console_configured = isinstance(status.get("console"), dict)
     if configured:
         message = "已配置当前工作区的模型凭据。"
     elif console_configured:
-        message = "控制台凭据已保存，但未配置模型 API Key，暂时无法执行语音识别。请检查官方授权结果。"
+        message = "控制台凭据已保存，但未配置模型 API Key，暂时无法执行转写。请检查官方授权结果。"
     else:
         message = "当前工作区尚无模型凭据，请先运行login完成百炼控制台登录。"
     return {"mode": "console", "configured": configured, "console_configured": console_configured,

@@ -11,7 +11,7 @@ export interface ViewEffects {
   download(blob: Blob): void;
 }
 
-// 编排本机表单、只读预览和会话结束，浏览器操作由视图提供。
+// 编排本机表单、只读预览和编辑会话结束，浏览器操作由视图提供。
 export function useTranscription(api: Api, view: ViewEffects, t: Translate, makeRequestId: () => string = () => crypto.randomUUID()) {
   const model = reactive(createModel());
   const form = reactive<FormValues>({ useApiKey: false, diarizationEnabled: true, hotwordsEnabled: false,
@@ -20,7 +20,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   let rowKey = 0;
   let stopListening: (() => void) | undefined;
 
-  // 判断会话是否仍允许接收本机操作结果。
+  // 判断编辑会话是否仍允许接收本机操作结果。
   function active(): boolean { return !["handed_off", "expired", "cancelled", "unavailable"].includes(model.phase); }
 
   // 保存可见错误，并按用户当前操作定位输入。
@@ -62,7 +62,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     Object.assign(model.hotwords, { issues: [], warnings: [] });
   }
 
-  // 读取当前凭据方式，在视图中显示 Key 并丢弃迟到结果。
+  // 读取当前凭据方式，在视图中显示 API Key 并丢弃迟到结果。
   async function updateAuth(): Promise<void> {
     const revision = ++model.auth.revision;
     view.setApiKey("");
@@ -80,7 +80,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     }
   }
 
-  // 保存显示组件中的 Key，并按凭据版本更新保存状态。
+  // 保存显示组件中的 API Key，并按凭据版本更新保存状态。
   async function persistApiKey(): Promise<boolean> {
     const revision = model.auth.revision;
     const value = view.getApiKey();
@@ -96,7 +96,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
     return true;
   }
 
-  // 在预览渲染后登记版本，使代码入口可以接管这份输入。
+  // 在预览渲染后登记版本，使 Codex 可以交接这份输入。
   async function registerPreview(): Promise<void> {
     const preview = model.preview;
     if (!preview) return;
@@ -150,7 +150,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       clearError("auth_mode");
     },
 
-    // 将当前 Key 单独保存到工作目录并返回保存结果。
+    // 将当前 API Key 单独保存到工作目录并返回保存结果。
     async saveApiKey(): Promise<boolean> {
       if (!form.useApiKey || !availability(model).changeAuth || !["dirty", "failed"].includes(model.auth.status)) return false;
       clearError("auth_mode");
@@ -158,7 +158,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       catch (reason) { fail(reason); return false; }
     },
 
-    // 加载会话、恢复已有预览并订阅一次性结束结果。
+    // 加载编辑会话、恢复已有预览并订阅一次性结束结果。
     async start(): Promise<void> {
       try {
         model.session = await api.request("/api/session");
@@ -237,7 +237,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       hotwordsChanged(key, field);
     },
 
-    // 在词表末尾添加独立标识的可编辑词条。
+    // 在热词表末尾添加独立标识的可编辑词条。
     addHotword(): void {
       if (!availability(model).editHotwords) return;
       form.hotwordRows.push({ key: ++rowKey, row: form.hotwordRows.length + 1, text: "", weight: 4 });
@@ -275,7 +275,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       } catch (reason) { imported.status = "failed"; fail(reason, "hotword_rows"); }
     },
 
-    // 打开系统文件窗口并记录服务端批准的原音频引用。
+    // 打开系统文件窗口并记录服务端登记的原录音引用。
     async selectAudio(): Promise<void> {
       if (!model.session || !availability(model).selectAudio) return;
       const id = makeRequestId();
@@ -329,7 +329,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       clearError(`${kind}_directory`);
     },
 
-    // 后端撤销当前预览后恢复填写，并按需重新读取已保存 Key。
+    // 后端撤销当前预览后恢复填写，并按需重新读取已保存 API Key。
     async edit(): Promise<void> {
       if (!availability(model).edit || !model.preview) return;
       const validationId = model.preview.id;

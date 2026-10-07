@@ -1,4 +1,4 @@
-"""通过本机窗口取得用户选择的音频文件或保存目录。"""
+"""通过本机窗口取得用户选择的录音文件或保存目录。"""
 
 import json
 import os
@@ -40,7 +40,7 @@ class PathPicker:
         request_id = self._check_id(request_id)
         with self._lock:
             if self._closed:
-                raise SetupError("当前会话已关闭。")
+                raise SetupError("当前编辑会话已关闭。")
             if self._active_id is not None:
                 raise SetupError("请先关闭已打开的选择窗口。")
             if request_id == self._cancelled_id:
@@ -110,8 +110,8 @@ def choose_path(initial: Path, *, mode: Literal["audio", "directory"],
     try:
         process = subprocess.Popen(
             [str(Path(sys.base_prefix) / "python.exe"), "-I", "-X", "utf8", str(Path(__file__).with_name("_path_dialog.py")),
-             str(initial), translate("录音转写 · 选择音频文件" if mode == "audio" else "录音转写 · 选择保存位置"),
-             mode, json.dumps(audio_suffixes), translate("音频文件")],
+             str(initial), translate("录音转写 · 选择录音" if mode == "audio" else "录音转写 · 选择保存位置"),
+             mode, json.dumps(audio_suffixes), translate("录音文件")],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", env=env, shell=False,
             creationflags=subprocess.CREATE_NO_WINDOW,

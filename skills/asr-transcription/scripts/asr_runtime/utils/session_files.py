@@ -25,7 +25,7 @@ class SessionConnection(TypedDict):
 def session_directory(runtime: Runtime, session_id: str) -> Path:
     """定位指定编辑会话的私有记录目录。"""
     if not re.fullmatch(r"[0-9a-f]{32}", session_id):
-        raise SetupError("会话编号无效，请复制预览页中的完整确认文字。")
+        raise SetupError("编辑会话编号（session_id）无效，请复制预览页中的完整确认文字。")
     path = runtime.path(f".state/sessions/{session_id}")
     if path != runtime.root / ".state/sessions" / session_id:
         raise SetupError("会话目录不能重定向。")
@@ -57,7 +57,7 @@ def read_connection(runtime: Runtime, session_id: str) -> SessionConnection:
 
 
 def write_receipt(runtime: Runtime, session_id: str, receipt: ConfirmationReceipt) -> None:
-    """持久保存会话对应的唯一任务回执。"""
+    """持久保存编辑会话对应的唯一转写任务交接回执。"""
     directory = session_directory(runtime, session_id)
     directory.mkdir(parents=True, exist_ok=True)
     write_json_atomic(directory / "receipt.json", receipt)

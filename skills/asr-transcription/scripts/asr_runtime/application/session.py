@@ -1,4 +1,4 @@
-"""管理本机会话的原文件选择、热词导入、配置预览和交接。"""
+"""管理本机编辑会话的录音选择、热词导入、配置预览和交接。"""
 
 import secrets
 import tempfile
@@ -103,11 +103,11 @@ class Session:
         """检查截止时间和会话终态，拒绝继续操作已结束的会话。"""
         self._expire_if_due()
         if self._closed.is_set():
-            raise ValidationError("当前会话已关闭。", "session")
+            raise ValidationError("当前编辑会话已关闭。", "session")
         if self._phase == "expired":
-            raise ValidationError("会话已失效，请回到 Codex 重新打开配置页。", "session")
+            raise ValidationError("编辑会话已失效，请回到 Codex 重新打开配置页。", "session")
         if self._terminal:
-            raise ValidationError("当前编辑会话已结束，请回到 Codex 查看任务。", "session")
+            raise ValidationError("当前编辑会话已结束，请回到 Codex 查看转写任务。", "session")
 
     def _require_editable(self) -> None:
         """检查当前会话的配置编辑权限。"""
@@ -168,7 +168,7 @@ class Session:
             return self.selected_audio
 
     def select_audio(self, picker_id: object) -> dict[str, object]:
-        """打开原生音频窗口并登记用户选中的原始文件。"""
+        """打开原生录音选择窗口并登记用户选中的原始文件。"""
         with self._state_lock:
             self._require_editable()
             initial = Path(self.selected_audio["path"]).parent if self.selected_audio else self.runtime.workspace
@@ -238,7 +238,7 @@ class Session:
                 raise ValidationError(message, "auth_mode", **params) from exc
 
     def save_api_key(self, value: object) -> dict[str, bool]:
-        """保存当前页面填写的Key，返回完成状态。"""
+        """保存当前页面填写的 API Key，返回完成状态。"""
         with self._state_lock:
             self._require_editable()
             try:
@@ -305,9 +305,9 @@ class Session:
                 self._receiving_hotwords = False
 
     def audio_selection(self, identifier: object) -> AudioSelection:
-        """按当前会话选择编号取得原始音频信息。"""
+        """按当前编辑会话的选择编号取得录音原文件信息。"""
         if not self.selected_audio or identifier != self.selected_audio["audio_id"]:
-            raise ValidationError("请选择音频文件。", "audio_id")
+            raise ValidationError("请选择录音。", "audio_id")
         return self.selected_audio
 
     def cleanup(self) -> None:
@@ -320,7 +320,7 @@ class Session:
         self._picker.close()
 
     def validate(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """读取所选原音频并检查当前表单，生成预览快照。"""
+        """读取所选录音原文件并检查当前表单，生成预览快照。"""
         with self._state_lock:
             self._require_editable()
             self._require_import_complete()
@@ -375,7 +375,7 @@ class Session:
             return {"ok": True, "validation_id": self.draft["id"], "summary": summary}
 
     def _restored_form(self) -> dict[str, object]:
-        """整理当前预览的输入快照及网页需要的音频显示信息。"""
+        """整理当前预览的输入快照及网页需要的录音显示信息。"""
         assert self.draft is not None
         form = self.draft["form"]
         audio = self.draft["config"]["audio"]
@@ -404,7 +404,7 @@ class Session:
             return {"ok": True, **restored}
 
     def confirm(self) -> ConfirmationReceipt:
-        """将已展示的预览交接为一个不可变任务，并持久保存会话回执。"""
+        """将已展示的预览交接为一个不可变转写任务，并持久保存交接回执。"""
         with self._state_lock:
             if self.receipt:
                 return deepcopy(self.receipt)

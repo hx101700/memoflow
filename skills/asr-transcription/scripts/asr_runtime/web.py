@@ -29,7 +29,7 @@ MAX_REQUEST_BYTES = 512 * 1024
 
 
 class LocalServer(ThreadingHTTPServer):
-    """提供带配置会话的本机HTTP服务。"""
+    """提供带编辑会话的本机 HTTP 服务。"""
 
     allow_reuse_address = False
     daemon_threads = False
@@ -72,7 +72,7 @@ class LocalServer(ThreadingHTTPServer):
 
 
 def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None) -> LocalServer:
-    """建立绑定127.0.0.1的HTTP服务与独立配置会话。"""
+    """建立绑定127.0.0.1的HTTP服务与独立编辑会话。"""
     recovery = recover_workspace(runtime)
     session = Session(runtime, audio=audio)
 
@@ -180,7 +180,7 @@ def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None)
                 self.json(422, {"ok": False, "error": localize("本地文件操作未完成，请检查路径与访问权限。")})
 
         def do_POST(self) -> None:
-            """解析受保护请求，分派编辑操作与本机代码交接。"""
+            """解析受保护请求，分派编辑操作与转写任务交接。"""
             with language_scope(self.headers.get("Accept-Language", "zh-CN")):
                 path = urlsplit(self.path).path
                 if not self.allowed(control=path in ("/api/confirm", "/api/cancel")):
@@ -269,7 +269,7 @@ def serve(runtime: Runtime, *, port: int = 0, open_browser: bool = True, audio: 
 
 
 def control_session(runtime: Runtime, session_id: str, action: Literal["confirm", "cancel"]) -> Mapping[str, object]:
-    """按明确会话编号请求交接或取消，并恢复已经持久保存的回执。"""
+    """按明确编辑会话编号请求交接或取消，并恢复已经持久保存的回执。"""
     receipt = read_receipt(runtime, session_id)
     if receipt is not None:
         if action == "confirm":

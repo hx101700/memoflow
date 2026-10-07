@@ -398,7 +398,7 @@ test("预览中的语言切换保持同一只读快照和已登记版本", async
   assert.equal(page.model.preview?.id, "preview-with-warning");
   assert.equal(localize(page.model.preview!.summary.warnings[0], "en"), "Channels will be merged before transcription.");
   assert.equal(page.calls.length, count);
-  assert.equal(page.t("confirmationMessage", { id: "session-one" }), "Confirm transcription. Session ID: session-one");
+  assert.equal(page.t("confirmationMessage", { id: "session-one" }), "Confirm transcription. Editing session ID: session-one");
 });
 
 test("修改热词与上下文和切换语言只更新本地输入，最终点击一次检查", async () => {
@@ -474,7 +474,7 @@ test("未选择音频定位文件选择区，空增强输入由整单接口检�
   assert.equal(page.calls.filter(call => call.path === "/api/validate").length, 2);
 });
 
-test("超长上下文原样发送后显示服务器错误，关闭发言人区分忽略旧人数", async () => {
+test("超长上下文原样发送后显示服务器错误，关闭说话人区分忽略旧人数", async () => {
   const page = harness({ "/api/session": () => ({ ...description, limits: { ...limits, speaker_max: 4, context_chars: 3 } }) });
   await addAudio(page);
   page.form.speaker = "1e";

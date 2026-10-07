@@ -16,8 +16,8 @@
   },
   "api_codes": {
     "InvalidParameter": {"meaning": "参数不符合要求，请按具体错误信息检查本模型参数。"},
-    "InvalidApiKey": {"meaning": "Key或鉴权配置有误，请检查Key、地域及端点。"},
-    "invalid_api_key": {"meaning": "Key或鉴权配置有误，请检查Key、地域及端点。"},
+    "InvalidApiKey": {"meaning": "API Key或鉴权配置有误，请检查API Key、地域及端点。"},
+    "invalid_api_key": {"meaning": "API Key或鉴权配置有误，请检查API Key、地域及端点。"},
     "NOT AUTHORIZED": {"meaning": "账号或业务空间未授权，请检查权限和空间归属。"},
     "AccessDenied": {"meaning": "访问被拒，请结合具体错误信息确认原因。"},
     "Model.AccessDenied": {"meaning": "没有模型访问权限，请检查模型开通与授权。"},

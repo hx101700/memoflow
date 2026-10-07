@@ -1,4 +1,4 @@
-"""管理任务配置、执行占用、状态记录和输出目录。"""
+"""管理转写任务配置、执行占用、状态记录和输出目录。"""
 
 import hashlib
 import json
@@ -14,9 +14,9 @@ from .files import write_json_atomic
 
 
 def job_directory(runtime: Runtime, job_id: str) -> Path:
-    """核对回执编号与路径归属，返回任务目录。"""
+    """核对转写任务编号与路径归属，返回任务目录。"""
     if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{32}", job_id):
-        raise SetupError("任务编号应为Codex交接回执中的32位小写十六进制编号。")
+        raise SetupError("转写任务编号（job_id）应为Codex交接回执中的32位小写十六进制编号。")
     path = runtime.path(f".state/jobs/{job_id}")
     if path != runtime.root.resolve() / ".state/jobs" / job_id:
         raise SetupError("任务目录不能重定向。")
@@ -123,7 +123,7 @@ def read_delivery(root: Path) -> DeliveryReport | None:
                 raise ValueError("incomplete delivery")
         return cast(DeliveryReport, report)
     except (OSError, ValueError, TypeError):
-        return {"status": "OUTCOME_UNKNOWN", "message": "本地导出记录不可读，请检查已有文件；不会重新识别或自动导出。"}
+        return {"status": "OUTCOME_UNKNOWN", "message": "本机导出记录不可读，请检查已有文件；不会重新转写或自动导出。"}
 
 
 def prepare_delivery(root: Path) -> Path:

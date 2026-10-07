@@ -37,6 +37,6 @@ def load_transcript(path: Path) -> Transcript:
         if not any(sentence.text.strip() for sentence in sentences):
             raise ValueError("no usable transcript")
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise SetupError("BL未生成可用的转写JSON，或结果结构不符合已核实契约。已保留现有文件；未推断失败原因，未重新识别。") from exc
+        raise SetupError("BL未生成可用的转写JSON，或结果结构不符合已核实契约。已保留现有文件；未推断失败原因，未重新转写。") from exc
     return Transcript(tuple(sentences), len(result["transcripts"]), len(content),
                       hashlib.sha256(content).hexdigest())

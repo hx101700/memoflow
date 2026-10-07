@@ -39,7 +39,7 @@ def _install_bailian(runtime: Runtime, node: Path, npm: Path) -> None:
     log_path = runtime.path(".runtime/bootstrap.log")
     with log_path.open("w", encoding="utf-8") as log:
         for registry in registries:
-            message = f"正在从{registry}安装百炼CLI。"
+            message = f"正在从{registry}安装百炼 CLI（BL）。"
             print(message, file=sys.stderr, flush=True)
             log.write(f"\n{message}\n")
             arguments = [str(node), str(npm), "ci", "--prefix", str(runtime.bl_directory),
@@ -60,7 +60,7 @@ def _install_bailian(runtime: Runtime, node: Path, npm: Path) -> None:
             message = f"当前npm来源下载失败（{code}）。"
             print(message, file=sys.stderr, flush=True)
             log.write(message + "\n")
-    raise SetupError(f"百炼CLI安装失败，已尝试两个来源；本地日志：{log_path}")
+    raise SetupError(f"百炼 CLI（BL）安装失败，已尝试两个来源；本机日志：{log_path}")
 
 
 def _download_python_packages(
@@ -122,7 +122,7 @@ def _install_python_dependencies(runtime: Runtime) -> None:
 
 
 def bootstrap(runtime: Runtime) -> dict[str, str]:
-    """检查工作区运行时，按Skill依赖锁准备环境与Key模板。"""
+    """检查工作区运行时，按 Skill 依赖锁准备环境与 API Key 模板。"""
     check_python()
     node, _ = check_node(runtime)
 

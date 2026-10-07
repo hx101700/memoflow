@@ -1,6 +1,6 @@
 stateDiagram-v2
 direction TB
-state "editing<br/>填写与校验，尚无任务编号" as Editing
+state "editing<br/>填写与校验，尚无转写任务编号" as Editing
 state "preview<br/>当前版本已在页面展示" as Preview
 state "handed_off<br/>交接回执持久保存" as HandedOff
 state "expired<br/>打开满两小时" as Expired
@@ -32,7 +32,7 @@ state "PREPARING<br/>取得一次执行占用" as Preparing
 state "RUNNING<br/>准备进入BL调用" as Running
 state "STOPPED<br/>本次执行停止" as Stopped
 state "JSON_READY<br/>原始JSON通过结构检查" as JsonReady
-HandedOff --> Configured : 任务生命周期独立继续
+HandedOff --> Configured : 转写任务生命周期独立继续
 Configured --> Preparing : transcribe核对配置、授权与模型 / 独占execution目录
 Preparing --> Running : 本机准备完成并保存保守执行记录
 Preparing --> Stopped : 准备或记录保存失败 / not_started

@@ -1,4 +1,4 @@
-"""开发阶段核对固定BL版本的公开帮助与合成识别请求。"""
+"""开发阶段核对固定百炼 CLI（BL）版本的公开帮助与合成转写请求。"""
 
 import argparse
 import json
@@ -65,8 +65,8 @@ def probe(runtime: Runtime) -> dict[str, str]:
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         raise SetupError("BL dry-run输出结构与核实契约不一致。") from exc
     if not valid:
-        raise SetupError("BL未按预期构造固定模型、语言、说话人或增强参数。")
-    scope = "CLI公开帮助与虚构URL请求构造；非真实识别验收"
+        raise SetupError("BL未按预期构造固定模型、语言、说话人区分或增强参数。")
+    scope = "CLI公开帮助与虚构URL请求构造；非真实云端转写验收"
     report = {
         "version": BAILIAN_VERSION,
         "model": MODEL,

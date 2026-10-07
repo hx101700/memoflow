@@ -6,7 +6,7 @@ import type { Language, Model } from "../types";
 
 const props = defineProps<{ model: Model; language: Language; t: Translate }>();
 
-// 从已校验快照生成只读的音频、转写设置和保存位置。
+// 从已校验快照生成只读的录音、转写设置和保存位置。
 const rows = computed<[string, string][]>(() => {
   const { model, t, language } = props;
   const preview = model.preview;

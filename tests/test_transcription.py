@@ -383,7 +383,7 @@ class TranscriptionTests(RuntimeTestCase):
         self.cli.assert_not_called()
 
     def test_dual_enhancement_and_recognition_options_reach_the_same_request(self):
-        """验证热词、上下文、语言和人数共同进入识别命令。"""
+        """验证热词、上下文、语言和人数共同进入转写命令。"""
         job_id, config = self.make_job(enhancement="both", language_hint="zh", speaker_count=3)
         report = transcribe(self.runtime, job_id)
         self.assertEqual(report["status"], "JSON_READY")

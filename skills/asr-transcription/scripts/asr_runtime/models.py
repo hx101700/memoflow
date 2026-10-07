@@ -41,7 +41,7 @@ class AudioMetadata(TypedDict):
 
 
 class AudioRecord(TypedDict):
-    """保存已预览音频的本机身份与媒体信息。"""
+    """保存已预览录音的本机身份与媒体信息。"""
 
     path: str
     metadata: AudioMetadata
@@ -52,7 +52,7 @@ class AudioRecord(TypedDict):
 
 
 class AudioSelection(TypedDict):
-    """关联已登记的录音原文件与当前会话选择编号。"""
+    """关联已登记的录音原文件与当前编辑会话的选择编号。"""
 
     audio_id: str
     path: str
@@ -61,7 +61,7 @@ class AudioSelection(TypedDict):
 
 
 class HotwordIssue(TypedDict):
-    """定位热词工作表中需要用户修正的单元格。"""
+    """定位热词表中需要用户修正的单元格。"""
 
     row: int
     field: str
@@ -89,7 +89,7 @@ class HotwordImport(TypedDict):
 
 
 class HotwordConfig(TypedDict):
-    """保存随识别请求发送的即时热词及导入提示。"""
+    """保存随转写请求发送的即时热词及校验提示。"""
 
     vocabulary: dict[str, int]
     count: int
@@ -97,14 +97,14 @@ class HotwordConfig(TypedDict):
 
 
 class RecognitionOptions(TypedDict):
-    """保存已经校验的BL识别选项。"""
+    """保存已经校验的 BL 转写选项。"""
 
     language_hints: list[str]
     speaker_count: int | None
 
 
 class EnhancementConfig(TypedDict):
-    """保存可独立启用的热词与参考文本。"""
+    """保存可独立启用的热词增强与上下文增强配置。"""
 
     mode: EnhancementMode
     hotwords: HotwordConfig | None
@@ -124,7 +124,7 @@ class TranscriptionSettings(TypedDict):
 
 
 class JobConfig(TranscriptionSettings):
-    """保存交接时冻结的输入、执行授权和输出位置。"""
+    """保存转写任务交接时冻结的输入、执行授权和输出位置。"""
 
     schema_version: int
     job_id: str
@@ -136,7 +136,7 @@ class JobConfig(TranscriptionSettings):
 
 
 class ConfirmationReceipt(TypedDict):
-    """描述编辑会话一次性交给Codex的任务回执。"""
+    """描述编辑会话交接给 Codex 后生成的唯一转写任务回执。"""
 
     ok: bool
     session_id: str
@@ -195,7 +195,7 @@ class DocumentReport(TypedDict):
 
 
 class DeliveryReport(TypedDict):
-    """记录本地三格式导出的当前已知结果。"""
+    """记录本机三种格式校对稿的当前已知导出结果。"""
 
     status: Literal["EXPORTING", "COMPLETE", "PARTIAL", "FAILED", "OUTCOME_UNKNOWN"]
     message: str

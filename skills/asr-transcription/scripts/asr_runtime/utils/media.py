@@ -31,7 +31,7 @@ def probe_audio(path: Path) -> AudioInfo:
             return AudioInfo(channels, rate, duration, path.stat().st_size,
                              container.format.name, len(container.streams.audio))
     except av.FFmpegError as exc:
-        raise MediaError("无法读取音频，请检查文件是否损坏或格式是否支持。") from exc
+        raise MediaError("无法读取录音，请检查文件是否损坏或格式是否支持。") from exc
 
 
 def convert_to_mono(source: Path, destination: Path, source_info: AudioInfo) -> AudioInfo:
@@ -79,5 +79,5 @@ def convert_to_mono(source: Path, destination: Path, source_info: AudioInfo) -> 
         if created:
             destination.unlink(missing_ok=True)
         if isinstance(exc, av.FFmpegError):
-            raise MediaError("声道转换失败，请检查音频是否损坏。") from exc
+            raise MediaError("声道转换失败，请检查录音是否损坏。") from exc
         raise
