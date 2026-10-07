@@ -31,13 +31,6 @@ The project is organized around two Skills:
 | `asr-transcription` | Choose a recording in the interactive page, configure the language, speaker diarization, hotwords, context, and save locations, then let Codex call Model Studio for non-real-time file transcription. The workflow keeps the original JSON and creates timestamped Word, Excel, and Markdown transcript drafts with speaker labels when enabled. | **Available** |
 | Personalized minutes generation | Learn structure, information priorities, wording, and layout from reviewed transcripts, focus requirements, formatted reference minutes, and user feedback, then generate minutes in the requested format. Confirmed edits and feedback will improve future output. | **In development** |
 
-<details>
-<summary>View the full transcription configuration page (demo data)</summary>
-
-![The full MemoFlow configuration page: recording, transcription settings, hotwords, context, save locations, and authentication](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
-
-</details>
-
 ```mermaid
 ---
 config:
@@ -87,15 +80,28 @@ Please transcribe this recording.
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
-**Review and confirm**
+<details>
+<summary>Transcription configuration (illustration)</summary>
+
+![The full MemoFlow configuration page: recording, transcription settings, hotwords, context, save locations, and authentication](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
+
+</details>
+
+<details>
+<summary>Review and confirm (illustration)</summary>
 
 ![Reviewing the recording and settings before copying the confirmation message to Codex](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-preview.png)
 
-**After handing the task to Codex**
+</details>
+
+<details>
+<summary>After handing the task to Codex (illustration)</summary>
 
 ![The handoff page shows the transcription task ID and save locations](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
 
-The web page screenshots above use demo data. They show the Chinese interface; the page also supports English.
+</details>
+
+The illustrations use demo data and show the Chinese interface. The page also supports English.
 
 ## Help and contribute
 

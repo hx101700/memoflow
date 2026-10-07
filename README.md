@@ -31,13 +31,6 @@ MemoFlow 选择阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://h
 | `asr-transcription` | 用户在交互式网页中选择录音，设置识别语言、说话人区分、热词、上下文和保存位置；Codex 接收用户确认后调用阿里云百炼完成长音频非实时转写，保留原始 JSON，并生成带时间戳、可区分说话人的 Word、Excel、Markdown 校对稿。 | **已完成** |
 | 个性化纪要生成 | 以用户校对后的转写稿为基础，结合重点要求和已有的带格式纪要文档，学习内容结构、信息取舍、表达方式与排版习惯，生成符合指定格式的新纪要；将用户确认的修改和反馈用于后续生成，持续完善个性化输出。 | **开发中** |
 
-<details>
-<summary>查看完整转写配置页（演示数据）</summary>
-
-![MemoFlow 完整配置页：录音、转写设置、热词、上下文、保存位置和认证方式](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
-
-</details>
-
 ```mermaid
 ---
 config:
@@ -85,15 +78,28 @@ flowchart TD
 
 Codex 会打开本机配置网页，请在网页中完成录音和识别设置，进入预览页后点击“复制给 Codex”，再将确认消息发回原对话。
 
-**预览确认**
+<details>
+<summary>转写配置页（示意图）</summary>
+
+![MemoFlow 完整配置页：录音、转写设置、热词、上下文、保存位置和认证方式](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
+
+</details>
+
+<details>
+<summary>预览确认页（示意图）</summary>
 
 ![核对录音和设置，复制确认消息给 Codex](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-preview.png)
 
-**交给 Codex 后**
+</details>
+
+<details>
+<summary>交接结束页（示意图）</summary>
 
 ![交接结束页面显示转写任务编号和保存位置](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
 
-以上网页效果图使用演示数据。
+</details>
+
+示意图使用演示数据。
 
 ## 帮助与参与
 
