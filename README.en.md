@@ -2,13 +2,13 @@
 
 [中文](README.md) | English
 
-> Give Codex a Chinese meeting recording: first make it clear and accurate, then turn it into a transcript that can become your own meeting minutes.
+> Give Codex a recording in a supported language: first make it clear and accurate, then turn it into a transcript that can become your own meeting minutes.
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
 MemoFlow's long-term goal is to turn meeting audio, context, corrections, and formatting preferences into meeting minutes that follow each user's working style. It will learn from examples and confirmed edits so repeated work becomes more consistent.
 
-Stage one is available now as the `asr-transcription` Skill. It uses Alibaba Cloud Model Studio's [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/en/model-studio/qwen-audio-3-1-asr-flash-filetrans) and a local web page where you review the recording, recognition settings, hotwords, context, and output locations before Codex runs one non-real-time transcription.
+Stage one is available now as the `asr-transcription` Skill. It uses Alibaba Cloud Model Studio's [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/en/model-studio/qwen-audio-3-1-asr-flash-filetrans), which supports the model's multilingual and dialect coverage. Chinese meetings, names, and specialized terms are the current primary use case. A local web page lets you review the recording, recognition settings, hotwords, context, and output locations before Codex runs one non-real-time transcription.
 
 ## Why MemoFlow
 
@@ -26,7 +26,7 @@ A recording does not become useful information by itself. People still need to:
 
 The two parts have different responsibilities.
 
-- **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time file recognition. Alibaba Cloud documents it for long audio files with speaker diarization, hotword enhancement, and context enhancement; its model overview lists up to 12 hours and 2 GB per file, with shorter recordings recommended when diarization is enabled. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
+- **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time file recognition across the model's supported languages and dialects. Alibaba Cloud documents it for long audio files with speaker diarization, hotword enhancement, and context enhancement; its model overview lists up to 12 hours and 2 GB per file, with shorter recordings recommended when diarization is enabled. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
 - **Codex** handles the local workflow: preparing the Skill, opening the configuration page, carrying a conversation attachment into the page, guiding authentication, waiting for Model Studio, and delivering files.
 - **MemoFlow** connects the two: the full transcript stays in files, while the conversation carries actions, confirmation, and result locations. That leaves a clean foundation for the personalized meeting-minutes stage.
 
@@ -75,7 +75,7 @@ Suggested file: doc/images/02-transcription-outputs.png
 ## Current scope
 
 - One recording at a time; real-time transcription is not included.
-- Conversation attachments, local file selection, hotwords, context, and speaker diarization are supported.
+- Supported model languages and dialects, conversation attachments, local file selection, hotwords, context, and speaker diarization are supported.
 - Windows 10/11 x64 is the validated platform; macOS and Linux are not current acceptance platforms.
 - The current Skill delivers a reviewable transcript. Automatic meeting minutes, user-style learning, and a feedback loop belong to stage two.
 - Recognition sends the recording and enabled enhancement content to Alibaba Cloud Model Studio in China (Beijing) and may incur charges.

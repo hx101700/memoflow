@@ -2,13 +2,13 @@
 
 中文 | [English](README.en.md)
 
-> 把中文会议录音交给 Codex，先听清、识准、整理成可校对的转写稿，再逐步生成符合你习惯的会议纪要。
+> 把支持语种的会议录音交给 Codex，先听清、识准、整理成可校对的转写稿，再逐步生成符合你习惯的会议纪要。
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
 MemoFlow 的最终目标，是把一次次会议中的语音、上下文、校对和格式偏好，逐步整理成符合用户习惯的会议纪要。它会从用户提供的范例和确认过的修改中学习，形成稳定的个人化输出方式。
 
-当前交付第一阶段：一个面向 Codex 的 `asr-transcription` Skill。它使用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，通过本机网页让你核对录音、识别设置、热词、上下文和保存位置，再由 Codex 完成一次非实时转写。
+当前交付第一阶段：一个面向 Codex 的 `asr-transcription` Skill。它使用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，支持模型覆盖的多语种与方言；当前产品重点以中文会议、人名和专业术语为主要使用场景。通过本机网页让你核对录音、识别设置、热词、上下文和保存位置，再由 Codex 完成一次非实时转写。
 
 ## 为什么需要 MemoFlow
 
@@ -26,7 +26,7 @@ MemoFlow 的最终目标，是把一次次会议中的语音、上下文、校�
 
 两者承担不同的工作。
 
-- **Qwen-Audio-3.1-ASR-Flash-Filetrans**负责非实时文件识别。阿里云将它定位为长音频文件转写模型，支持说话人分离、热词和上下文增强；模型文档列出的单次音频上限为 12 小时、2 GB，启用说话人分离时建议控制在 2 小时以内。[模型说明](https://help.aliyun.com/zh/model-studio/asr-model)
+- **Qwen-Audio-3.1-ASR-Flash-Filetrans**负责非实时文件识别。阿里云将它定位为多语种及方言的长音频文件转写模型，支持说话人分离、热词和上下文增强；模型文档列出的单次音频上限为 12 小时、2 GB，启用说话人分离时建议控制在 2 小时以内。[模型说明](https://help.aliyun.com/zh/model-studio/asr-model)
 - **Codex**负责本地工作流：准备 Skill 环境、打开配置页面、承接对话附件、引导认证、等待百炼返回，并把结果整理到用户选择的位置。
 - **MemoFlow**把两者连接起来：完整转写内容保存在文件中，聊天只承载操作、确认和结果位置，后续可以在文件基础上继续校对和生成会议纪要。
 
@@ -75,7 +75,7 @@ MemoFlow 会保存百炼返回的原始 JSON，并根据同一份转写结果制
 ## 当前能力与边界
 
 - 处理单个录音，不提供实时转写。
-- 支持对话附件、本机文件选择、热词、上下文和说话人区分。
+- 支持模型覆盖的多语种与方言、对话附件、本机文件选择、热词、上下文和说话人区分。
 - 当前验收平台为 Windows 10/11 x64；macOS/Linux 尚未作为验收平台。
 - 当前交付转写校对稿；自动会议纪要、用户风格学习和反馈闭环属于第二阶段。
 - 识别会把录音及启用的增强内容发送到阿里云百炼北京地域，可能产生调用费用。
