@@ -21,6 +21,12 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 
 首次安装先核对宿主提供的系统与架构：当前完整包和轻量包适用于 Windows 10/11 x64。匹配后，按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
 
+## 更新 Skill
+
+用户提供新版本 ZIP 时，先确认同一工作目录没有正在执行的任务，再替换已安装的 Skill 文件，并在原工作目录重新运行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`。安装器会复用有效的私有 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果；不会删除或迁移这些数据。
+
+如果诊断提示虚拟环境绑定了其他 Python，结束使用该环境的任务后，只删除 `WORKSPACE/.asr-transcription/.venv`，再运行 bootstrap。保留 `.env`、`.state`、`.tools` 和输出目录，不删除整个 `.asr-transcription`。更新完成后继续使用原 Skill 入口和同一工作目录。
+
 ## 新录音
 
 1. **打开页面。** 从本次用户提供的路径或宿主明确标注的附件位置取得录音的本机绝对路径，启动 `serve --audio AUDIO_PATH`。多个录音未指定目标时，请用户选择本次处理的一个；附件没有可访问的本机路径时，用 `serve` 打开页面，由用户选择文件。用持久进程工具保留进程句柄及 `event=listening` 中的 `session_id`。宿主能打开链接时传 `--no-browser`，收到回执后打开 `url` 一次；否则由系统浏览器打开。原生音频和目录选择窗口需要正常 Windows 交互桌面；Codex 工具支持时，从首次 serve 就使用 `sandbox_permissions=require_escalated`。按实际启动或打开请求结果告知用户，请其在网页核对录音。

@@ -29,4 +29,10 @@ Prepare your Alibaba Cloud account and enable Model Studio before use. After ins
 
 The current version delivers the original JSON plus Word, Excel, and Markdown transcription documents. Personalized meeting minutes and feedback learning remain planned for a later stage.
 
+### Upgrading from an earlier version
+
+Wait for running tasks to finish, replace the installed `asr-transcription` Skill with this ZIP, and run the Skill's `scripts/bootstrap.ps1 -Workspace` in the original workspace. The installer reuses valid private Python and Node runtimes, the virtual environment, the BL CLI, credentials, tasks, and results.
+
+If setup reports that the virtual environment is bound to another Python installation, finish tasks using that environment, delete only `WORKSPACE/.asr-transcription/.venv`, and run bootstrap again. Keep `.env`, `.state`, `.tools`, and output folders. Do not delete the entire `.asr-transcription` directory.
+
 Please report problems through [Issues](https://github.com/hx101700/memoflow/issues), including your environment, error messages, and reproduction steps. Remove API keys, login links, and private recordings before posting.

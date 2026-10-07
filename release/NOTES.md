@@ -29,4 +29,10 @@ MemoFlow v0.1.2 延续 v0.1.1 的独立运行环境，同时把“附上录音�
 
 当前版本仍交付原始 JSON、Word、Excel 和 Markdown 转写稿；个性化会议纪要与反馈学习属于后续阶段。
 
+### 从旧版本升级
+
+先等待正在执行的任务结束，再用本 ZIP 替换已安装的 `asr-transcription` Skill，并在原工作目录重新运行 Skill 的 `scripts/bootstrap.ps1 -Workspace`。安装器会复用有效的 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果。
+
+如果提示虚拟环境绑定了其他 Python，结束使用该环境的任务后，只删除 `WORKSPACE/.asr-transcription/.venv`，再运行 bootstrap。请保留 `.env`、`.state`、`.tools` 和输出目录，不要删除整个 `.asr-transcription`。
+
 遇到问题欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)，附上环境、错误提示和复现步骤，并隐去 API Key、登录链接和私人录音内容。
