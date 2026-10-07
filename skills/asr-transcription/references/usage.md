@@ -2,7 +2,7 @@
 
 此Skill将单个本地录音转写为原始JSON、Word、Excel和Markdown，完成后由用户校对。模型固定为`qwen-audio-3.1-asr-flash-filetrans`，地域为北京。
 
-[v0.1.2 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.2) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与 BL 仍需联网。
+[v0.1.0 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与 BL 仍需联网。
 
 ## 运行准备
 

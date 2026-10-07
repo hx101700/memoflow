@@ -36,7 +36,7 @@ flowchart TD
 
 Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [Model Studio setup guide](https://help.aliyun.com/en/model-studio/first-api-call-to-qwen).
 
-1. Download the [v0.1.2 package](https://github.com/hx101700/memoflow/releases/tag/v0.1.2).
+1. Download the [v0.1.0 package](https://github.com/hx101700/memoflow/releases/tag/v0.1.0).
 2. Send the ZIP to Codex with:
 
    ```text

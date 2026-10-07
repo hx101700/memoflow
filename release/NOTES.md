@@ -1,8 +1,8 @@
-中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.2/release/NOTES.en.md)
+中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.0/release/NOTES.en.md)
 
-# MemoFlow v0.1.2
+# MemoFlow v0.1.0
 
-MemoFlow v0.1.2 延续 v0.1.1 的独立运行环境，同时把“附上录音后开始转写”的入口接入同一套网页配置流程。你可以把录音发给 Codex，核对网页中带入的文件和设置，再交给 Codex 调用阿里云百炼完成转写。
+MemoFlow v0.1.0 将“附上录音后开始转写”的入口接入同一套网页配置流程。你可以把录音发给 Codex，核对网页中带入的文件和设置，再交给 Codex 调用阿里云百炼完成转写。
 
 ### 这个版本的变化
 
@@ -16,8 +16,8 @@ MemoFlow v0.1.2 延续 v0.1.1 的独立运行环境，同时把“附上录音�
 
 | 安装包 | 如何选择 |
 | --- | --- |
-| **[asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.2/asr-transcription.zip)** | 推荐。包含 Python 和 Node.js 运行时，安装时无需再下载这两个运行时。 |
-| **[asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.2/asr-transcription-lite.zip)** | 初始文件较小，首次安装时从官方来源下载运行时。 |
+| **[asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription.zip)** | 推荐。包含 Python 和 Node.js 运行时，安装时无需再下载这两个运行时。 |
+| **[asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.0/asr-transcription-lite.zip)** | 初始文件较小，首次安装时从官方来源下载运行时。 |
 
 两个包都支持 Windows 10/11 x64。Python 依赖和百炼 CLI 的首次安装仍需联网；完整包不是完全离线安装包。
 
@@ -25,14 +25,8 @@ MemoFlow v0.1.2 延续 v0.1.1 的独立运行环境，同时把“附上录音�
 
 > 请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
 
-使用前请准备好阿里云账号并开通百炼服务。安装后告诉 Codex“帮我转写录音”，按网页提示添加录音、调整设置、预览并复制确认消息。详细步骤见 [README](https://github.com/hx101700/memoflow/blob/v0.1.2/README.md)。
+使用前请准备好阿里云账号并开通百炼服务。安装后告诉 Codex“帮我转写录音”，按网页提示添加录音、调整设置、预览并复制确认消息。详细步骤见 [README](https://github.com/hx101700/memoflow/blob/v0.1.0/README.md)。
 
 当前版本仍交付原始 JSON、Word、Excel 和 Markdown 转写稿；按用户偏好生成目标内容与反馈学习属于后续阶段。
-
-### 从旧版本升级
-
-先等待正在执行的任务结束，再用本 ZIP 替换已安装的 `asr-transcription` Skill，并在原工作目录重新运行 Skill 的 `scripts/bootstrap.ps1 -Workspace`。安装器会复用有效的 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果。
-
-如果提示虚拟环境绑定了其他 Python，结束使用该环境的任务后，只删除 `WORKSPACE/.asr-transcription/.venv`，再运行 bootstrap。请保留 `.env`、`.state`、`.tools` 和输出目录，不要删除整个 `.asr-transcription`。
 
 遇到问题欢迎提交 [Issue](https://github.com/hx101700/memoflow/issues)，附上环境、错误提示和复现步骤，并隐去 API Key、登录链接和私人录音内容。
