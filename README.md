@@ -20,11 +20,15 @@ MemoFlow 的最终目标，是把一次次会议中的语音、上下文、校�
 - 一次转写往往还要继续校对、整理，并保存成团队习惯的格式；
 - 录音、认证、配置、转写和文件整理分散在多个工具里，操作过程容易失去上下文。
 
-[通义听悟](https://help.aliyun.com/zh/tingwu/what-is-tingwu)将音视频记录、转写、说话人分离、内容提炼和重点定位组织成“阅读音视频”的工作方式。MemoFlow 借鉴这个产品方向，当前先把最基础也最关键的环节做好：让 Codex 帮用户把录音配置清楚、把内容识别准确，并交付可以检查和继续加工的转写稿。
+MemoFlow 面向会议、访谈、培训和客户交流等场景。它先把录音整理成可回溯、可校对的文字，保留时间、说话人和重要术语，再让用户在确认后的内容上继续整理成自己的会议纪要。当前阶段先把录音配置、识别和校对交付做好。
 
 ## 为什么是 Codex + Qwen-Audio 3.1
 
 两者承担不同的工作。
+
+Codex 很擅长理解上下文、组织多步任务、读取文件和按用户要求继续处理，但语音识别本身不是它的核心能力。很多通用工作流会从 [Whisper](https://github.com/openai/whisper) 开始；Whisper 是优秀的通用多语种模型，但官方也明确说明它在不同语言上的表现差异很大。对于中文会议中的方言、人名、产品术语、说话人和上下文，单靠通用识别结果往往还需要大量人工校对。
+
+MemoFlow 把识别交给 Qwen-Audio 3.1，把任务组织和结果交付交给 Codex。在本项目的目标范围内，这个组合把“听不清、术语错、多人内容难整理、识别结果难继续加工”集中处理：Qwen 提供适合非实时文件转写的识别能力，Codex 把认证、网页核对、文件保存和后续处理串成一次可追踪的工作。
 
 - **Qwen-Audio-3.1-ASR-Flash-Filetrans**负责非实时文件识别。阿里云将它定位为多语种及方言的长音频文件转写模型，支持说话人分离、热词和上下文增强；模型文档列出的单次音频上限为 12 小时、2 GB，启用说话人分离时建议控制在 2 小时以内。[模型说明](https://help.aliyun.com/zh/model-studio/asr-model)
 - **Codex**负责本地工作流：准备 Skill 环境、打开配置页面、承接对话附件、引导认证、等待百炼返回，并把结果整理到用户选择的位置。
@@ -97,7 +101,6 @@ MemoFlow 会保存百炼返回的原始 JSON，并根据同一份转写结果制
 | --- | --- |
 | 阿里云百炼 | [控制台](https://bailian.console.aliyun.com/) · [官方文档](https://help.aliyun.com/zh/model-studio/) |
 | 百炼 CLI | [官方主页](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
-| 通义听悟 | [产品说明](https://help.aliyun.com/zh/tingwu/what-is-tingwu) |
 | 识别精度增强 | [热词与上下文说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
 | MemoFlow | [Release](https://github.com/hx101700/memoflow/releases/latest) · [开发文档](doc/README.md) |
 

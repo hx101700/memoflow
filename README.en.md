@@ -20,11 +20,15 @@ A recording does not become useful information by itself. People still need to:
 - review the text and continue working in a familiar document format;
 - keep authentication, configuration, transcription, and file delivery in one understandable workflow.
 
-[Tongyi Tingwu](https://help.aliyun.com/zh/tingwu/what-is-tingwu) describes a similar direction: record and “read” audio and video through transcription, speaker separation, summaries, and focused navigation. MemoFlow starts with the foundation of that experience: Codex helps configure the recording and deliver a reviewable transcript, while Qwen-Audio 3.1 performs the file recognition.
+MemoFlow is designed for meetings, interviews, training, and customer conversations. It first turns a recording into text that can be revisited and reviewed, keeping timestamps, speaker labels, and important terminology. Users can then continue shaping that reviewed content into their own meeting minutes. The current stage focuses on getting recording setup, recognition, and review delivery right.
 
 ## Why Codex + Qwen-Audio 3.1
 
 The two parts have different responsibilities.
+
+Codex is strong at understanding context, organizing multi-step work, reading files, and continuing a user-defined workflow. Speech recognition itself is not its core capability. Many general-purpose workflows start with [Whisper](https://github.com/openai/whisper). Whisper is a strong general multilingual model, and its official documentation also notes that performance varies widely by language. For Chinese meetings with dialects, names, product terms, speaker labels, and context, a general transcript can still leave substantial review work.
+
+MemoFlow gives recognition to Qwen-Audio 3.1 and gives workflow coordination and delivery to Codex. Within this project's scope, that combination addresses the practical problems of unclear speech, missed terminology, hard-to-follow multi-speaker content, and transcripts that are difficult to continue processing: Qwen handles file recognition, while Codex connects authentication, web review, file saving, and follow-up work into one traceable workflow.
 
 - **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time file recognition across the model's supported languages and dialects. Alibaba Cloud documents it for long audio files with speaker diarization, hotword enhancement, and context enhancement; its model overview lists up to 12 hours and 2 GB per file, with shorter recordings recommended when diarization is enabled. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
 - **Codex** handles the local workflow: preparing the Skill, opening the configuration page, carrying a conversation attachment into the page, guiding authentication, waiting for Model Studio, and delivering files.
@@ -97,7 +101,6 @@ Never post API keys, login URLs, transcript content, or private local paths in a
 | --- | --- |
 | Alibaba Cloud Model Studio | [Console](https://bailian.console.aliyun.com/) · [Documentation](https://help.aliyun.com/en/model-studio/) |
 | BL CLI | [Official site](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
-| Tongyi Tingwu | [Product overview](https://help.aliyun.com/zh/tingwu/what-is-tingwu) |
 | Recognition accuracy | [Hotwords and context](https://help.aliyun.com/en/model-studio/improve-asr-accuracy) |
 | MemoFlow | [Releases](https://github.com/hx101700/memoflow/releases/latest) · [Development docs](doc/README.md) |
 
