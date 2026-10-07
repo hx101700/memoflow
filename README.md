@@ -2,13 +2,13 @@
 
 中文 | [English](README.en.md)
 
-> 把支持语种的会议录音交给 Codex，先听清、识准、整理成可校对的转写稿，再逐步生成符合你习惯的会议纪要。
+> MemoFlow 是一套面向 Codex 的交互式语音转写与会议纪要 Skill。
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
-MemoFlow 的最终目标，是把一次次会议中的语音、上下文、校对和格式偏好，逐步整理成符合用户习惯的会议纪要。它会从用户提供的范例和确认过的修改中学习，形成稳定的个人化输出方式。
+MemoFlow 面向会议、访谈、培训和通话等场景。用户在网页中选择录音、设置识别语言、说话人区分、热词、上下文和保存位置，确认后交给 Codex 执行；Skill 调用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，生成可校对的转写稿，并制作适合继续阅读和整理的多种文档格式。
 
-当前交付第一阶段：一个面向 Codex 的 `asr-transcription` Skill。它使用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，支持模型覆盖的多语种与方言；当前产品重点以中文会议、人名和专业术语为主要使用场景。通过本机网页让你核对录音、识别设置、热词、上下文和保存位置，再由 Codex 完成一次非实时转写。
+当前已完成的是录音配置、非实时转写、精度增强、说话人区分和文档交付。后续 MemoFlow 会结合用户校对后的内容、格式范例和确认反馈，持续学习用户的表达与排版习惯，生成可以直接使用的个性化会议纪要。
 
 ## 为什么需要 MemoFlow
 
@@ -36,9 +36,8 @@ MemoFlow 把识别交给 Qwen-Audio 3.1，把任务组织和结果交付交给 C
 
 识别专业词汇时，MemoFlow 使用百炼支持的即时热词和上下文增强。热词适合临时的人名、产品名和术语；上下文适合提供会议背景或领域语料，两者可以同时放进同一次请求。[阿里云精度增强说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy)
 
-## 第一次使用
 
-第一次使用的时间取决于网络、环境准备和录音时长，项目不承诺固定的“30 秒完成”。实际步骤是：
+## 第一次使用
 
 1. 下载 [v0.1.2 安装包](https://github.com/hx101700/memoflow/releases/tag/v0.1.2)。
 2. 把 ZIP 和下面这句话一起发给 Codex：
@@ -63,26 +62,7 @@ MemoFlow 把识别交给 Qwen-Audio 3.1，把任务组织和结果交付交给 C
 
 ## 转写完成后
 
-MemoFlow 会保存百炼返回的原始 JSON，并根据同一份转写结果制作三种不同格式的校对文档，方便你按自己的工作方式继续阅读、筛选、修改和归档。
-
-<!-- SCREENSHOT: hero
-放一张真实网页截图或 20–40 秒 GIF，展示“添加录音 → 预览 → 复制给 Codex”。
-文件建议：doc/images/memoflow-demo.gif
-请隐藏 API Key、用户名、本地路径和真实会议内容。
--->
-
-<!-- SCREENSHOT: outputs
-放脱敏的 Word、Excel、Markdown 成品截图，展示同一份转写的不同整理方式。
-文件建议：doc/images/02-transcription-outputs.png
--->
-
-## 当前能力与边界
-
-- 处理单个录音，不提供实时转写。
-- 支持模型覆盖的多语种与方言、对话附件、本机文件选择、热词、上下文和说话人区分。
-- 当前验收平台为 Windows 10/11 x64；macOS/Linux 尚未作为验收平台。
-- 当前交付转写校对稿；自动会议纪要、用户风格学习和反馈闭环属于第二阶段。
-- 识别会把录音及启用的增强内容发送到阿里云百炼北京地域，可能产生调用费用。
+MemoFlow 会保存百炼返回的原始结果，并根据同一份转写内容制作三种不同格式的校对文档，方便你继续阅读、筛选、修改和归档。
 
 ## 帮助与参与
 

@@ -2,13 +2,13 @@
 
 [中文](README.md) | English
 
-> Give Codex a recording in a supported language: first make it clear and accurate, then turn it into a transcript that can become your own meeting minutes.
+> MemoFlow is an interactive Codex Skill for audio transcription and personalized meeting minutes.
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
-MemoFlow's long-term goal is to turn meeting audio, context, corrections, and formatting preferences into meeting minutes that follow each user's working style. It will learn from examples and confirmed edits so repeated work becomes more consistent.
+MemoFlow is designed for meetings, interviews, training, and customer conversations. On the local web page, you choose a recording, recognition language, speaker diarization, hotwords, context, and output location. After you confirm the settings, Codex runs Alibaba Cloud Model Studio's [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/en/model-studio/qwen-audio-3-1-asr-flash-filetrans) and prepares reviewable documents in the formats you need.
 
-Stage one is available now as the `asr-transcription` Skill. It uses Alibaba Cloud Model Studio's [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/en/model-studio/qwen-audio-3-1-asr-flash-filetrans), which supports the model's multilingual and dialect coverage. Chinese meetings, names, and specialized terms are the current primary use case. A local web page lets you review the recording, recognition settings, hotwords, context, and output locations before Codex runs one non-real-time transcription.
+Stage one is available now: recording setup, non-real-time transcription, accuracy enhancement, speaker diarization, and document delivery. In the next stage, MemoFlow will learn from reviewed transcripts, formatting examples, and confirmed feedback to produce meeting minutes that match each user's working style.
 
 ## Why MemoFlow
 
@@ -17,28 +17,26 @@ A recording does not become useful information by itself. People still need to:
 - find important sections in a long recording without replaying everything;
 - recognize names, product names, and domain vocabulary correctly;
 - understand who said what in a multi-speaker discussion;
-- review the text and continue working in a familiar document format;
-- keep authentication, configuration, transcription, and file delivery in one understandable workflow.
+- review the text and continue working in a familiar format;
+- keep authentication, configuration, transcription, and file delivery in one workflow.
 
-MemoFlow is designed for meetings, interviews, training, and customer conversations. It first turns a recording into text that can be revisited and reviewed, keeping timestamps, speaker labels, and important terminology. Users can then continue shaping that reviewed content into their own meeting minutes. The current stage focuses on getting recording setup, recognition, and review delivery right.
+MemoFlow turns recordings from meetings, interviews, training sessions, and customer conversations into text that can be revisited and reviewed. It keeps timestamps, speaker information, and important terminology so users can continue shaping the reviewed content into their own meeting minutes.
 
 ## Why Codex + Qwen-Audio 3.1
 
-The two parts have different responsibilities.
+Codex is strong at understanding context, organizing multi-step work, reading files, and continuing a user-defined workflow. Speech recognition itself is not its core capability. Many general-purpose workflows start with [Whisper](https://github.com/openai/whisper). Whisper is a strong general multilingual model, and its official documentation notes that performance varies by language. For meetings with dialects, names, product terms, speaker labels, and context, a general transcript can still leave substantial review work.
 
-Codex is strong at understanding context, organizing multi-step work, reading files, and continuing a user-defined workflow. Speech recognition itself is not its core capability. Many general-purpose workflows start with [Whisper](https://github.com/openai/whisper). Whisper is a strong general multilingual model, and its official documentation also notes that performance varies widely by language. For Chinese meetings with dialects, names, product terms, speaker labels, and context, a general transcript can still leave substantial review work.
+MemoFlow gives recognition to Qwen-Audio 3.1 and workflow coordination and delivery to Codex. Within this project's scope, that combination addresses unclear speech, missed terminology, hard-to-follow multi-speaker content, and transcripts that are difficult to continue processing: Qwen handles file recognition, while Codex connects authentication, web review, file saving, and follow-up work.
 
-MemoFlow gives recognition to Qwen-Audio 3.1 and gives workflow coordination and delivery to Codex. Within this project's scope, that combination addresses the practical problems of unclear speech, missed terminology, hard-to-follow multi-speaker content, and transcripts that are difficult to continue processing: Qwen handles file recognition, while Codex connects authentication, web review, file saving, and follow-up work into one traceable workflow.
-
-- **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time file recognition across the model's supported languages and dialects. Alibaba Cloud documents it for long audio files with speaker diarization, hotword enhancement, and context enhancement; its model overview lists up to 12 hours and 2 GB per file, with shorter recordings recommended when diarization is enabled. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
-- **Codex** handles the local workflow: preparing the Skill, opening the configuration page, carrying a conversation attachment into the page, guiding authentication, waiting for Model Studio, and delivering files.
-- **MemoFlow** connects the two: the full transcript stays in files, while the conversation carries actions, confirmation, and result locations. That leaves a clean foundation for the personalized meeting-minutes stage.
+- **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time recognition across the model's supported languages and dialects. Alibaba Cloud documents speaker diarization, hotword enhancement, and context enhancement for this model. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
+- **Codex** prepares the Skill environment, opens the configuration page, carries conversation attachments into the page, guides authentication, waits for Model Studio, and delivers the result.
+- **MemoFlow** keeps the full transcript in files while the conversation carries actions, confirmation, and result locations, creating a foundation for personalized meeting minutes.
 
 For specialized vocabulary, MemoFlow uses Alibaba Cloud's request-level hotwords and context enhancement. Hotwords fit temporary names, products, and terms; context supplies meeting background or domain text. Both can be sent in the same request. See the [official accuracy guide](https://help.aliyun.com/en/model-studio/improve-asr-accuracy).
 
 ## First use
 
-The first run depends on network access, environment setup, and recording length, so MemoFlow does not promise a fixed “30-second” completion time:
+The first run depends on network access, environment setup, and recording length. MemoFlow does not promise a fixed completion time:
 
 1. Download the [v0.1.2 package](https://github.com/hx101700/memoflow/releases/tag/v0.1.2).
 2. Send the ZIP to Codex with:
@@ -55,7 +53,7 @@ The first run depends on network access, environment setup, and recording length
 
 4. Review the recording, language, diarization, hotwords, context, and output locations in the page.
 5. Choose “Confirm and preview”, then “Copy for Codex” and send the confirmation message back to the conversation.
-6. Codex handles the selected authentication path, waits for transcription, and delivers the result.
+6. Codex handles authentication, transcription, and document delivery for the same task.
 
 The full package includes Python and Node.js runtimes. The lite package is smaller and downloads those runtimes from official sources during setup. Both packages support Windows 10/11 x64; Python dependencies and the BL CLI still require internet access.
 
@@ -63,18 +61,7 @@ Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com
 
 ## After transcription
 
-MemoFlow keeps the original JSON returned by Model Studio and creates three review documents from that same transcription, so you can read, filter, edit, and archive the result in the format that fits your work.
-
-<!-- SCREENSHOT: hero
-Add a real screenshot or 20–40 second GIF showing “add recording → preview → copy for Codex”.
-Suggested file: doc/images/memoflow-demo.gif
-Hide API keys, usernames, local paths, and real meeting content.
--->
-
-<!-- SCREENSHOT: outputs
-Add redacted Word, Excel, and Markdown screenshots showing different ways to review the same transcription.
-Suggested file: doc/images/02-transcription-outputs.png
--->
+MemoFlow keeps the original result returned by Model Studio and creates three review documents from the same transcription, so you can read, filter, edit, and archive the result in the format that fits your work.
 
 ## Current scope
 
