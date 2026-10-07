@@ -6,6 +6,8 @@ MemoFlow 的目标是把录音整理成符合你习惯和指定格式的会议�
 
 当前可用的是第一阶段的 `asr-transcription` Skill：在 Codex 中转写单个录音，生成可供校对的 Word、Excel 和 Markdown。它通过官方 [BL CLI](https://github.com/modelstudioai/cli) 调用[阿里云百炼](https://help.aliyun.com/zh/model-studio/what-is-model-studio)，并提供本机网页帮助你配置转写。
 
+听清内容，是整理会议纪要的起点。MemoFlow 使用 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans) 识别多地区中文方言，并通过热词和上下文增强辅助识别专业术语。你在网页中核对录音与设置，Codex 负责执行和交付；识别结果保存在文件中，工具完成文档处理，对话围绕操作、确认和结果展开，减少把处理细节和完整转写反复放进上下文的需要。
+
 ## 功能特性
 
 - **录音转写**：处理单个音频，保留时间戳，支持区分发言人。
@@ -37,13 +39,13 @@ MemoFlow 的目标是把录音整理成符合你习惯和指定格式的会议�
 安装完成后，直接告诉 Codex：
 
 ```text
-帮我使用工具转写录音。
+帮我转写这段录音。
 ```
 
-Codex 会使用这个 Skill 打开本机转写网页。按页面提示添加录音，调整音频语言、说话人区分等设置，并选择保存位置。页面右上角可切换中文/English，以及跟随系统、浅色或深色外观。百炼认证可选择：
+你可以把录音发到对话中，或打开网页后选择文件。Codex 会使用这个 Skill 打开本机转写网页；当前开发版会将可读取的附件带入页面，供你核对。按页面提示调整音频语言、说话人区分等设置，并选择保存位置。页面右上角可切换中文/English，以及跟随系统、浅色或深色外观。百炼认证可选择：
 
 - **控制台登录（推荐）**：在阿里云官方网页完成授权，由 BL 管理登录凭据。
-- **API Key**：在转写页面选择“使用指定 API Key”，填入或修改自己的北京地域百炼 Key，您的API Key 将会保存到当前工作目录中。
+- **API Key**：在转写页面选择“使用指定 API Key”，填入或修改自己的北京地域百炼 Key。Key 保存在当前工作目录，转写时直接使用。
 
 <!-- SCREENSHOT: overview
 在此放实际转写页面截图，展示添加录音、转写设置和保存位置。
@@ -61,9 +63,9 @@ Codex 会使用这个 Skill 打开本机转写网页。按页面提示添加录�
 
 点击“确认并预览”核对本次设置，需要调整时可返回修改。确认无误后，点击“复制给 Codex”，将复制的确认消息发回对话。Codex 会接收这份设置并开始处理；需要控制台授权时，在系统默认浏览器完成操作后回复“已完成”即可。它会等待识别和文档生成完成，给出文件及保存位置，供你检查和校对。转写会将录音及启用的增强内容发送到百炼北京地域，可能产生调用费用。
 
-音频通过系统文件窗口选择，直接读取原文件；热词 Excel 在内存中解析。转写完成前请保留录音及原路径，只有需要合并声道时才生成处理后的音频文件。
+音频直接读取附件或系统文件窗口选中的原文件，热词 Excel 在内存中解析。转写完成前请保留录音及原路径，只有需要合并声道时才生成处理后的音频文件。
 
-**第二阶段（规划中）** 将根据校对稿、文档范例和格式要求生成会议纪要，并利用你确认的修改反馈改善后续结果。偏好如何保存、反馈如何采纳将在该阶段确定，当前 Skill 交付到转写校对稿。
+**第二阶段（规划中）** 将根据校对稿、文档范例和格式要求生成会议纪要，并利用你确认的修改反馈改善后续结果。当前 Skill 交付转写校对稿，为这一步提供可检查的内容。
 
 ## 参与贡献
 
@@ -76,6 +78,6 @@ Codex 会使用这个 Skill 打开本机转写网页。按页面提示添加录�
 | 阿里云百炼 | [控制台](https://bailian.console.aliyun.com/) · [官方文档](https://help.aliyun.com/zh/model-studio/) |
 | 百炼 CLI | [官方主页](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
 | 识别精度增强 | [热词与上下文说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) |
-| MemoFlow | [使用指南](https://github.com/hx101700/memoflow/blob/dev/skills/asr-transcription/references/usage.md) · [版本下载](https://github.com/hx101700/memoflow/releases) |
+| MemoFlow | [使用指南](https://github.com/hx101700/memoflow/blob/master/skills/asr-transcription/references/usage.md) · [版本下载](https://github.com/hx101700/memoflow/releases) |
 
 本项目采用 [Apache-2.0](LICENSE) 许可证。

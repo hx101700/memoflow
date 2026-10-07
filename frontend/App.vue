@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch, ElTag } from "element-plus";
+import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch } from "element-plus";
 import { Aim, ChatLineSquare, DocumentCopy, Edit, FolderOpened, Headset, Key, Monitor, Moon, Reading, Setting, Sunny, View } from "@element-plus/icons-vue";
 import en from "element-plus/es/locale/lang/en";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
@@ -62,13 +62,21 @@ const confirmationText = computed(() => t("confirmationMessage", { id: model.ses
 const contextLength = computed(() => Array.from(form.context).length);
 const errorText = computed(() => error.value?.describe(language.value) ?? "");
 const outputKinds: DirectoryKind[] = ["json", "document"];
+// 中文和英文官方页面使用各自的章节锚点。
+const enhancementRules = computed(() => language.value === "en" ? {
+  hotwords: "https://www.alibabacloud.com/help/en/model-studio/improve-asr-accuracy#hotword-format-2",
+  context: "https://www.alibabacloud.com/help/en/model-studio/improve-asr-accuracy#context-enhancement",
+} : {
+  hotwords: "https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#hw_instant_fmt_h4",
+  context: "https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#ctx_enhance_h2",
+});
 
 // 单独保存 Key 成功后显示本机保存回执。
 async function saveApiKey(): Promise<void> {
   if (await actions.saveApiKey()) ElMessage.success({ message: () => h("span", t("keySaved")) });
 }
 
-// 复制带当前会话编号的确认文字，供用户在 Codex 中发起交接。
+// 复制带当前会话编号的确认消息，供用户在 Codex 中发起交接。
 async function copyConfirmation(): Promise<void> {
   if (!available.value.copy) return;
   try {
@@ -116,9 +124,8 @@ onUnmounted(actions.dispose);
       <div class="workspace" :class="{ 'with-summary': model.session && configuring }">
         <div class="main-column">
           <div class="intro">
-            <div><div class="page-title-row">
+            <div>
               <h1 id="page-title" tabindex="-1">{{ t('title') }}</h1>
-              <ElTag size="small" type="info" effect="plain">{{ t('preview') }}</ElTag></div>
               <p>{{ model.phase === 'handed_off' ? t('endedLocal') : t('intro') }}</p>
             </div>
           </div>
@@ -127,7 +134,7 @@ onUnmounted(actions.dispose);
             <ElStep :title="t('stepConfigure')" /><ElStep :title="t('stepReview')" />
           </ElSteps>
           <ElAlert v-if="configuring" :title="t('beforeStart')" type="info" :closable="false" show-icon class="intro-note" />
-          <ElAlert v-if="error && model.phase !== 'unavailable' && !['hotword_rows', 'context'].includes(error.field ?? '')" id="error-panel" tabindex="-1" class="page-notice" :title="errorText" type="error" :closable="false" show-icon />
+          <ElAlert v-if="error && model.phase !== 'unavailable' && !['audio_id', 'hotword_rows', 'context'].includes(error.field ?? '')" id="error-panel" tabindex="-1" class="page-notice" :title="errorText" type="error" :closable="false" show-icon />
           <p v-if="model.phase === 'loading'" class="loading-note" role="status">{{ t('loading') }}</p>
           <ElCard v-if="model.phase === 'unavailable'" id="session-unavailable" class="receipt" shadow="never" tabindex="-1">
             <ElResult icon="error" :title="t('unavailable')" :sub-title="errorText || t('unavailableHelp')" />
@@ -191,7 +198,7 @@ onUnmounted(actions.dispose);
               <template #header><ElIcon class="section-icon" :size="20" aria-hidden="true"><Aim /></ElIcon><h2>{{ t('enhancement') }}</h2><span class="section-caption">{{ t('enhancementHint') }}</span></template>
               <div class="enhancement-option">
                 <div class="toggle-row">
-                  <div class="enhancement-label"><label for="hotwords-enabled"><ElIcon :size="16" aria-hidden="true"><Reading /></ElIcon>{{ t('hotwords') }}</label><p>{{ t('hotwordsHelp') }}<ElLink type="primary" class="rules-link" href="https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#hw_instant_fmt_h4" target="_blank" rel="noopener noreferrer">{{ t('hotwordRules') }}</ElLink></p></div>
+                  <div class="enhancement-label"><label for="hotwords-enabled"><ElIcon :size="16" aria-hidden="true"><Reading /></ElIcon>{{ t('hotwords') }}</label><p>{{ t('hotwordsHelp') }}<ElLink type="primary" class="rules-link" :href="enhancementRules.hotwords" target="_blank" rel="noopener noreferrer">{{ t('hotwordRules') }}</ElLink></p></div>
                   <ElSwitch id="hotwords-enabled" :model-value="form.hotwordsEnabled" :disabled="!available.editHotwords" :aria-label="t('hotwords')" @update:model-value="actions.setHotwordsEnabled($event === true)" />
                 </div>
                 <div v-if="form.hotwordsEnabled" id="hotword_rows" class="expanded-option" :class="{ 'needs-attention': invalid('hotword_rows') }" tabindex="-1">
@@ -206,7 +213,7 @@ onUnmounted(actions.dispose);
               <ElDivider />
               <div class="enhancement-option">
                 <div class="toggle-row">
-                  <div class="enhancement-label"><label for="context-enabled"><ElIcon :size="16" aria-hidden="true"><ChatLineSquare /></ElIcon>{{ t('context') }}</label><p>{{ t('contextHelp') }}<ElLink type="primary" class="rules-link" href="https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#ctx_enhance_h2" target="_blank" rel="noopener noreferrer">{{ t('contextRules') }}</ElLink></p></div>
+                  <div class="enhancement-label"><label for="context-enabled"><ElIcon :size="16" aria-hidden="true"><ChatLineSquare /></ElIcon>{{ t('context') }}</label><p>{{ t('contextHelp') }}<ElLink type="primary" class="rules-link" :href="enhancementRules.context" target="_blank" rel="noopener noreferrer">{{ t('contextRules') }}</ElLink></p></div>
                   <ElSwitch id="context-enabled" :model-value="form.contextEnabled" :aria-label="t('context')" @update:model-value="actions.setContextEnabled($event === true)" />
                 </div>
                 <div v-if="form.contextEnabled" id="context" class="expanded-option" :class="{ 'needs-attention': invalid('context') }" tabindex="-1">
@@ -251,7 +258,7 @@ onUnmounted(actions.dispose);
 
     <div v-if="model.session && !terminal && model.phase !== 'unavailable'" class="action-bar">
       <div class="action-inner">
-        <div class="action-copy"><strong>{{ model.preview ? t('reviewTitle') : t('next') }}</strong><p>{{ model.preview ? t('reviewHelp') : t('nextHelp') }}</p></div>
+        <div class="action-copy"><strong>{{ model.preview ? t('reviewTitle') : t('next') }}</strong><p v-if="!model.preview">{{ t('nextHelp') }}</p></div>
         <div class="action-buttons">
           <ElButton v-if="model.preview" :icon="Edit" :loading="model.phase === 'returning'" :disabled="!available.edit" @click="actions.edit">{{ t('edit') }}</ElButton>
           <ElButton v-if="model.preview" type="primary" :icon="DocumentCopy" :disabled="!available.copy" @click="copyConfirmation">{{ t('copyToCodex') }}</ElButton>

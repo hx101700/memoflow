@@ -52,7 +52,7 @@ class AudioRecord(TypedDict):
 
 
 class AudioSelection(TypedDict):
-    """关联原生窗口选中的音频与当前会话选择编号。"""
+    """关联已登记的录音原文件与当前会话选择编号。"""
 
     audio_id: str
     path: str

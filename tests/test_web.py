@@ -295,8 +295,8 @@ class WebServerTests(WebFixture):
         error = json.loads(body)
         self.assertEqual(error["field"], "hotword_rows")
         self.assertEqual(error["error"], {
-            "zh": "当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。",
-            "en": "This Excel file does not match the template. Download the template, fill it in, and upload it again.",
+            "zh": "当前 Excel 未按模板导入，请下载模板，按模板填写后重新导入。",
+            "en": "This Excel file does not match the template. Download the template, fill it in, and import it again.",
         })
         self.assertEqual(error["details"], [])
 

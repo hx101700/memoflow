@@ -175,7 +175,11 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
           model.preview = { id: preview.validation_id, configuration: preview.configuration, summary: preview.summary, ready: false };
           model.phase = "preview";
           await registerPreview();
-        } else model.phase = "editing";
+        } else {
+          model.phase = "editing";
+          model.audio = model.session.audio ? { ...model.session.audio } : null;
+          if (model.session.audio_error) fail(new UiError(model.session.audio_error, "audio_id"));
+        }
       } catch (reason) {
         error.value = uiError(reason, () => t("unavailableHelp"));
         model.phase = "unavailable";

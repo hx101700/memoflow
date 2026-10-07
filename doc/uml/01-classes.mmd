@@ -22,6 +22,8 @@ class Session {
   -Lock _state_lock
   +Event terminal_event
   +AudioSelection_or_None selected_audio
+  +LocalizedText_or_None audio_error
+  -_register_audio(value) AudioSelection
   +select_audio(picker_id)
   +receive_hotwords(name, source, size)
   +validate(payload)
@@ -52,7 +54,7 @@ Session --> Runtime : 工作目录与资源边界
 Session "1" *-- "1" PathPicker : 创建并关闭窗口
 ThreadingHTTPServer <|-- LocalServer
 LocalServer "1" *-- "1" Session : 单次编辑生命周期
-note for Session "application/session.py<br/>状态锁保护预览、交接、取消与到期<br/>预览只存转写设置，成功交接才创建job_id<br/>有效期从创建起两小时，操作不续期<br/>cleanup只结束状态并取消原生选择窗口<br/>磁盘回收由recovery在请求线程结束后执行"
+note for Session "application/session.py<br/>附件路径和原生窗口共用_register_audio登记原文件<br/>description返回当前audio及双语audio_error<br/>状态锁保护预览、交接、取消与到期<br/>预览只存转写设置，成功交接才创建job_id<br/>有效期从创建起两小时，操作不续期<br/>cleanup只结束状态并取消原生选择窗口<br/>磁盘回收由recovery在请求线程结束后执行"
 note for LocalServer "web.py<br/>create_server先recover_workspace，再创建Session和监听<br/>一次Timer触发expire；SSE发送终态<br/>server_close关闭Session与目录窗口，等待请求线程<br/>最后recovery.finish_session清理磁盘暂存"
 note for Runtime "utils/environment.py<br/>resource读取Skill；path定位workspace/.asr-transcription<br/>私有运行目录与Skill互不包含；保护Skill写入边界<br/>base_python、node_entry定位.tools内的固定运行时"
 note for PathPicker "utils/path_picker.py<br/>文件／目录共用一个原生窗口；按请求编号取消<br/>音频返回原文件路径，输出目录按用途登记"

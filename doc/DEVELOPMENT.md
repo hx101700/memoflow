@@ -10,7 +10,7 @@ MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定�
 
 | 参与者 | 职责 |
 | --- | --- |
-| Codex 与 Skill | 选择工作目录、打开页面、根据用户明确指定的会话交接、处理认证、执行工具并交付结果 |
+| Codex 与 Skill | 选择工作目录、将本次录音带入页面、根据用户确认消息提交设置、处理认证、执行工具并交付结果 |
 | Vue 页面 | 文件选择、表格编辑、配置与预览、复制确认消息、显示结束状态 |
 | PowerShell 安装入口 | 校验包内或下载的 Python/Node 归档，在工作目录解压并调用 Python 安装入口 |
 | Python | 管理本机会话、保存确认快照、媒体准备、调用 BL、解析结果和生成文档 |
@@ -66,7 +66,7 @@ Python 模块路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，�
 | --- | --- |
 | `__main__.py` / `web.py` | CLI 与 HTTP 分派、受保护的本机控制、事件连接和服务生命周期 |
 | `application/bootstrap.py` / `diagnostics.py` | 安装工作目录依赖、诊断本机条件 |
-| `application/session.py` | 编辑会话、原音频选择、内存热词导入、预览与交接 |
+| `application/session.py` | 编辑会话、附件与原生窗口共用音频登记、内存热词导入、预览与交接 |
 | `application/recovery.py` | 正常关闭及下次开页时回收可确认归属的临时文件 |
 | `application/inputs.py` / `rules.py` | 读取输入事实、统一应用模型规则；rules 无 I/O |
 | `application/transcription.py` | 一次执行、状态查询和重新导出 |
@@ -101,7 +101,7 @@ Session、PathPicker 持有实际生命周期；无状态操作使用模块函�
 
 会话有效期为从创建起固定两小时，使用一次计时器及操作时截止时间检查。到期与交接共用状态保护，只有一个终态。没有活动上报、心跳、逐次草稿保存或云端进度轮询。页面通过单向事件连接收到交接、到期或取消结果，呈现结束提示，由用户关闭标签页。
 
-音频从系统文件窗口登记的原路径读取，Excel 仅在内存解析；交接保存参数与来源引用。取消、到期只清理会话临时记录，原文件和已保存 Key 保留。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
+音频从本次附件或系统文件窗口登记的原路径读取，Excel 仅在内存解析；交接保存参数与来源引用。取消、到期只清理会话临时记录，原文件和已保存 Key 保留。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
 
 ### 临时文件回收
 
@@ -125,11 +125,15 @@ Session、PathPicker 持有实际生命周期；无状态操作使用模块函�
 
 ## 输入检查
 
-音频使用系统文件窗口取得真实路径。浏览器普通文件输入不提供原始完整路径，参见 [MDN 文件输入说明](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file)。因此页面发送选择请求，由 PathPicker 登记原文件，随后仅提交 audio_id。音频与目录共用一个选择器及取消入口。原录音在转写完成前需要保持可访问；只有声道合并创建 mono.flac。
+`serve --audio <绝对路径>` 可将用户本次提供的录音路径或宿主明确标注的附件路径带入配置页；CLI 将 Path 传给 `web.serve()`、`create_server()` 和 `Session`。没有路径时打开空表单，多个附件未指定时由用户选择本次处理的一个。
+
+`Session._register_audio()` 供初始路径与 `select_audio()` 共用：规范原路径、核对文件和扩展名、读取大小并建立 `AudioSelection`，替换选择时清除旧预览和初始错误。初始路径读取失败转换为 `LocalizedText`，会话继续处于填写状态。`/api/session` 的 `audio: AudioSelection | null` 与 `audio_error: LocalizedText | null` 让页面加载或刷新后显示当前录音及原因；前端用现有选中反馈与更换入口，语言切换只重新选择错误文本。
+
+浏览器普通文件输入不提供原始完整路径，参见 [MDN 文件输入说明](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file)。手动更换文件由 PathPicker 取得真实路径，再调用同一登记方法，页面只提交 audio_id。音频与目录共用一个选择器及取消入口。媒体探测与 SHA 基线在预览时建立，原录音在转写完成前保持可访问；只有声道合并创建 mono.flac。
 
 | 时机 | 行为 | 消费者 |
 | --- | --- | --- |
-| 选择音频 | 系统窗口确认普通文件并返回规范路径，登记 audio_id | 原文件引用与页面展示 |
+| 登记录音 | 本次附件路径或系统窗口返回路径，统一检查文件位置与格式、读取大小并登记 audio_id | 原文件引用与页面展示 |
 | 导入热词 | 有界接收 Excel 字节，在内存读取工作表 | 热词数据数组 |
 | 预览 | 选项与增强规则、音频探测和 SHA、输出根目录 | 内存预览快照与版本 |
 | 交接 | 预览就绪、截止时间、音频 size/mtime、实际 Windows 命令长度 | 不可变授权配置 |
@@ -188,7 +192,7 @@ results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把
 | API Key / BL 配置 | 私有运行目录 `.env` / `.state/bailian/` |
 | 活动连接信息 | `.state/sessions/<session_id>/connection.json` |
 | 交接回执 | 同一 session 目录的 `receipt.json` |
-| 音频来源 | 用户通过系统窗口选择的原始绝对路径，任务只保存引用 |
+| 音频来源 | 本次对话附件或用户通过系统窗口选择的原始绝对路径，任务只保存引用 |
 | 热词来源 | 浏览器发送的 Excel 字节在内存读取，任务保存词典 |
 | 配置与摘要 | `.state/jobs/<job_id>/config.json`、`config.sha256` |
 | 执行 / 导出记录 | 同一 job 目录的 `execution/status.json` / `delivery/status.json` |

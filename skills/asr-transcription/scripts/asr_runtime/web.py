@@ -71,10 +71,10 @@ class LocalServer(ThreadingHTTPServer):
                     print(json.dumps({"event": "cleanup_warning", **report}, ensure_ascii=False), file=sys.stderr, flush=True)
 
 
-def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
+def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None) -> LocalServer:
     """建立绑定127.0.0.1的HTTP服务与独立配置会话。"""
     recovery = recover_workspace(runtime)
-    session = Session(runtime)
+    session = Session(runtime, audio=audio)
 
     class Handler(BaseHTTPRequestHandler):
         server: LocalServer
@@ -247,9 +247,9 @@ def create_server(runtime: Runtime, port: int = 0) -> LocalServer:
     return server
 
 
-def serve(runtime: Runtime, *, port: int = 0, open_browser: bool = True) -> None:
+def serve(runtime: Runtime, *, port: int = 0, open_browser: bool = True, audio: Path | None = None) -> None:
     """持续提供配置网页与进程回执，退出时释放本次服务资源。"""
-    server = create_server(runtime, port)
+    server = create_server(runtime, port, audio=audio)
     url = f"http://127.0.0.1:{server.server_port}/"
     try:
         browser_request: Literal["skipped", "requested", "failed"] = "skipped"

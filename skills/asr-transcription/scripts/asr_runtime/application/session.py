@@ -14,7 +14,7 @@ from typing import BinaryIO, TypedDict, cast
 
 from .. import MODEL
 from ..models import (
-    AudioSelection, AuthMode, ConfirmationReceipt, EnhancementMode, JobConfig, SessionEndState,
+    AudioSelection, AuthMode, ConfirmationReceipt, EnhancementMode, JobConfig, LocalizedText, SessionEndState,
     SessionPhase, SessionTerminal, TranscriptionSettings,
 )
 from ..utils.auth import read_api_key, write_api_key
@@ -23,6 +23,7 @@ from ..utils.path_picker import PathPicker
 from ..utils.environment import Runtime, SetupError
 from ..utils.files import FileError, check_file_unchanged, resolve_input
 from ..utils.hotwords import MAX_XLSX_BYTES
+from ..utils.i18n import localize
 from ..utils.job_files import job_directory, publish_config, result_path
 from ..utils.session_files import session_directory, write_receipt
 from .inputs import import_hotwords, validate_audio
@@ -70,7 +71,8 @@ class Draft(TypedDict):
 
 
 class Session:
-    def __init__(self, runtime: Runtime, *, clock: Callable[[], float] = time.time) -> None:
+    def __init__(self, runtime: Runtime, *, audio: Path | None = None,
+                 clock: Callable[[], float] = time.time) -> None:
         """创建两小时编辑会话及其输入、预览和结束状态。"""
         self.runtime = runtime
         self.session_id = uuid.uuid4().hex
@@ -85,10 +87,17 @@ class Session:
         self.draft: Draft | None = None
         self.receipt: ConfirmationReceipt | None = None
         self.selected_audio: AudioSelection | None = None
+        self.audio_error: LocalizedText | None = None
         self.output_directories: dict[str, Path] = {}
         self._picker = PathPicker()
         self._closed = threading.Event()
         self._receiving_hotwords = False
+        if audio is not None:
+            try:
+                self._register_audio(audio)
+            except (FileError, OSError) as exc:
+                message = exc.template if isinstance(exc, FileError) else "无法读取指定文件，请检查路径和访问权限。"
+                self.audio_error = localize(message)
 
     def _require_open(self) -> None:
         """检查截止时间和会话终态，拒绝继续操作已结束的会话。"""
@@ -146,6 +155,18 @@ class Session:
         if self._receiving_hotwords:
             raise ValidationError("文件仍在添加，请稍候。", "hotword_rows")
 
+    def _register_audio(self, value: Path) -> AudioSelection:
+        """登记录音原路径与大小，更新当前选择并清除旧预览。"""
+        path = resolve_input(value, AUDIO_SUFFIXES)
+        size = path.stat().st_size
+        with self._state_lock:
+            self._require_editable()
+            self.selected_audio = {"audio_id": uuid.uuid4().hex, "path": str(path), "name": path.name,
+                                   "size_bytes": size}
+            self.audio_error = None
+            self.draft = None
+            return self.selected_audio
+
     def select_audio(self, picker_id: object) -> dict[str, object]:
         """打开原生音频窗口并登记用户选中的原始文件。"""
         with self._state_lock:
@@ -157,18 +178,12 @@ class Session:
             selected = self._picker.select(initial, picker_id, mode="audio", audio_suffixes=tuple(sorted(AUDIO_SUFFIXES)))
             if selected is None:
                 return {"ok": True, "cancelled": True}
-            path = selected
-            size = path.stat().st_size
-        except (SetupError, OSError) as exc:
-            message = exc.template if isinstance(exc, SetupError) else "无法读取指定文件，请检查路径和访问权限。"
+            audio = self._register_audio(selected)
+        except (FileError, SetupError, OSError) as exc:
+            message = exc.template if isinstance(exc, (FileError, SetupError)) else "无法读取指定文件，请检查路径和访问权限。"
             params = exc.params if isinstance(exc, SetupError) else {}
             raise ValidationError(message, "audio_id", **params) from exc
-        with self._state_lock:
-            self._require_editable()
-            self.selected_audio = {"audio_id": uuid.uuid4().hex, "path": str(path), "name": path.name,
-                                   "size_bytes": size}
-            self.draft = None
-            return {"ok": True, "cancelled": False, **self.selected_audio}
+        return {"ok": True, "cancelled": False, **audio}
 
     def select_directory(self, kind: object, picker_id: object) -> dict[str, object]:
         """打开原生目录窗口，校验并登记所选保存位置。"""
@@ -253,6 +268,7 @@ class Session:
                                "hotwords_count": MAX_HOTWORDS,
                                "context_chars": MAX_CONTEXT_CHARS, "speaker_min": MIN_SPEAKERS,
                                "speaker_max": MAX_SPEAKERS},
+                    "audio": deepcopy(self.selected_audio), "audio_error": deepcopy(self.audio_error),
                     "preview": deepcopy(preview), "terminal": deepcopy(self._terminal)}
 
     def receive_hotwords(self, name: str, source: BinaryIO | BufferedIOBase, size: int) -> dict[str, object]:

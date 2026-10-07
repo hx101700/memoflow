@@ -9,13 +9,21 @@ participant P as PathPicker
 participant Q as inputs／rules模块
 participant F as session_files／job_files
 Note over C,F: Python路径：skills/asr-transcription/scripts/asr_runtime/<br/>前端路径：frontend/App.vue、useTranscription.ts、api.ts、components/HotwordEditor.vue
-C->>H: serve --no-browser（具备宿主开页能力时）
+C->>H: serve --no-browser，可带 --audio 本次录音绝对路径
 H->>G: recover_workspace(runtime)
 G->>F: 读取有效任务配置，定位文档临时文件
 G->>G: 回收到期且原PID已结束的会话<br/>以及已结束PID的自有状态／文档／Python临时文件
 Note over G,F: 进程存活或状态未知、记录异常、归属不明时保留<br/>原文件、正式凭据、任务、处理文件与结果保留
 G-->>H: removed_items与warnings
-H->>S: 创建session_id、两小时截止时间
+H->>S: Session(runtime, audio=本次路径或None)<br/>创建session_id、两小时截止时间
+opt 提供本次附件或录音路径
+  S->>S: _register_audio(path)<br/>位置与格式检查、读取大小、登记audio_id
+  alt 原路径可读取
+    S->>S: selected_audio保存原路径、名称与大小
+  else 原路径不可读取
+    S->>S: audio_error保存双语原因，继续填写
+  end
+end
 H->>F: write_connection（端口、令牌、PID、deadline）
 H-->>C: listening：session_id、url、expires_at、cleanup
 C->>W: 打开URL一次
@@ -23,23 +31,31 @@ Note over C,W: Codex保留进程并交给用户填写<br/>正常路径不检查�
 W->>H: GET / 首页建立HttpOnly Cookie
 W->>H: GET /api/session；GET /api/events
 H->>S: description()
-H-->>W: 选项、会话阶段、可恢复预览
+S-->>H: 当前会话描述
+H-->>W: 选项、会话阶段、当前audio、audio_error、可恢复预览
+W->>W: 展示带入文件或原位错误<br/>刷新恢复当前选择，语言切换保留其他输入
 loop 会话处于填写状态（校验失败或返回修改后继续）
   opt 首次选择或更换音频
     U->>W: 点击音频选择区域
-    W->>S: POST /api/select-audio(picker_id)
+    W->>H: POST /api/select-audio(picker_id)
+    H->>S: select_audio(picker_id)
     S->>P: select(mode=audio)
     P->>U: 系统文件选择窗口
     U-->>P: 选择原录音
     P-->>S: 原始绝对路径
-    S-->>W: audio_id、path、name、size_bytes
+    S->>S: _register_audio(path)<br/>统一登记并清除初始错误与旧预览
+    S-->>H: audio_id、path、name、size_bytes
+    H-->>W: 当前录音选择
   end
-  Note over W,P: 网页登记原文件引用，音频不复制到工作目录
+  Note over W,P: 网页登记原文件引用，音频不复制到工作目录<br/>媒体探测与SHA在确认并预览时完成
   U->>W: 填写设置
   opt 导入热词Excel
-    W->>S: POST /api/import-hotwords（文件字节）
-    S->>Q: receive_hotwords的BytesIO → import_hotwords → read_hotwords
-    Q-->>W: 去表头及全空行的数组、保留错误原值
+    W->>H: POST /api/import-hotwords（文件字节）
+    H->>S: receive_hotwords(name, source, size)
+    S->>Q: BytesIO → import_hotwords → read_hotwords
+    Q-->>S: 去表头及全空行的数组、保留错误原值
+    S-->>H: 热词导入回执
+    H-->>W: 可编辑数组及读取说明
     Note over S,Q: Excel仅在内存解析，返回后释放字节缓冲
   end
   U->>W: 编辑热词、删除或新增行
@@ -52,25 +68,35 @@ loop 会话处于填写状态（校验失败或返回修改后继续）
   U->>W: 确认并预览
   W->>W: 暂停表单编辑；保留输入值与稳定行键
   opt API Key待保存
-    W->>S: 专用save-api-key请求保存本机.env
+    W->>H: POST /api/save-api-key
+    H->>S: save_api_key(value)
+    S-->>H: 本机.env保存完成
+    H-->>W: Key保存回执
   end
-  W->>S: POST /api/validate
+  W->>H: POST /api/validate
+  H->>S: validate(payload)
   S->>Q: validate_hotword_rows、validate_context<br/>音频探测与SHA、输出位置
   alt 输入存在问题
     Q-->>S: ValidationError及双语格级说明
-    S-->>W: error／details.message为LocalizedText<br/>重复项附duplicate_group
+    S-->>H: ValidationError
+    H-->>W: error／details.message为LocalizedText<br/>重复项附duplicate_group
     W->>W: 恢复编辑；按错误row绑定稳定key并在原位显示
     Note over U,W: 保留原输入；修改后再次点击预览，继续本循环
   else 输入检查通过
     Q-->>S: 已校验输入
-    S-->>W: validation_id＋summary（尚无job_id）<br/>warnings每项包含zh与en
+    S-->>H: validation_id＋summary（尚无job_id）
+    H-->>W: 预览回执；warnings每项包含zh与en
     W->>W: 展示独立预览
-    W->>S: POST /api/preview-ready(validation_id)
-    S-->>W: 预览就绪
+    W->>H: POST /api/preview-ready(validation_id)
+    H->>S: preview_ready(validation_id)
+    S-->>H: 预览就绪
+    H-->>W: 展示版本登记完成
     alt 用户返回修改
       U->>W: 返回修改
-      W->>S: POST /api/edit(validation_id)
-      S-->>W: 旧预览失效，恢复表单
+      W->>H: POST /api/edit(validation_id)
+      H->>S: edit(validation_id)
+      S-->>H: 旧预览失效及可恢复输入
+      H-->>W: 恢复表单
       Note over U,S: 后端允许后恢复填写；继续本循环重新校验并登记预览
     else 用户保留当前预览
       Note over U,S: 退出填写循环，等待用户将当前预览交给Codex
@@ -82,11 +108,14 @@ alt 交接前用户取消或会话到期
   alt 用户取消
     U->>C: 取消本次编辑
     C->>H: cancel --session ID
-    H->>S: 受保护POST /api/cancel
+    H->>H: control_session发送受保护POST /api/cancel
+    H->>S: cancel()
   else 到达两小时截止时间
     H->>S: 单次Timer调用expire()
   end
-  S-->>W: SSE ended：cancelled／expired
+  H->>S: terminal_result()
+  S-->>H: cancelled／expired终态
+  H-->>W: SSE ended：cancelled／expired
   W-->>U: 编辑已结束，可关闭页面
 else 用户明确确认有效预览
   U->>W: 核对并点击“复制给Codex”
@@ -95,12 +124,14 @@ else 用户明确确认有效预览
   Note over U,C: 预览说明上传范围、北京地域及费用<br/>裸“继续”时要求复制消息，不代选会话
   C->>H: confirm --session 用户提供的ID
   H->>F: read_receipt；未交接则read_connection
-  H->>S: 受保护POST /api/confirm
+  H->>H: control_session发送受保护POST /api/confirm
+  H->>S: confirm()
   critical Session状态锁
     S->>S: 截止时间、预览版本、原音频size/mtime
     S->>S: 组装实际job_id与输出路径<br/>复用正式BL参数映射检查完整Node命令长度
     break 交接检查未通过
-      S-->>C: 返回错误，不创建任务
+      S-->>H: 交接检查错误；释放状态锁
+      H-->>C: 返回错误，不创建任务
       Note over C,W: 命令超长时保留预览，用户可返回修改同一会话<br/>尚未写配置或回执、读取凭据、启动BL或占用执行
     end
     S->>F: write_receipt（候选session_id对应job_id）
@@ -108,9 +139,15 @@ else 用户明确确认有效预览
     Note over S,F: config.json最后原子发布，是交接完成标记<br/>未发布配置的候选回执不视为成功
     S->>S: _finish(handed_off)
   end
-  S-->>C: 同一任务回执及认证方式
-  S-->>W: SSE ended：handed_off
-  W-->>U: 已交给Codex，可关闭页面
+  par confirm回执由原请求返回
+    S-->>H: 同一任务回执及认证方式
+    H-->>C: 交接回执
+  and SSE由独立请求线程发送
+    H->>S: terminal_result()
+    S-->>H: handed_off终态及回执
+    H-->>W: SSE ended：handed_off
+    W-->>U: 已交给Codex，可关闭页面
+  end
 end
 H->>S: cleanup关闭状态并取消原生选择窗口
 H->>H: 基类server_close等待请求线程收尾
@@ -120,3 +157,4 @@ G-->>H: 未完成项以cleanup_warning报告
 Note over C,F: 成功交接后进入图04、05的认证与转写<br/>相同confirm先读持久回执，服务结束也返回原任务
 Note over C,G: CLI的serve使用python_temporary_directory<br/>第三方Python库临时文件位于私有进程目录；正常退出清理
 Note over H,G: 强制结束可能不执行finally；下次serve按PID与截止时间回收
+Note over C,S: web生命线包含CLI控制与服务端分派函数<br/>HTTP请求先经web再调用Session；终态由web的事件请求发送<br/>控制响应与SSE互不等待，不承诺发送先后

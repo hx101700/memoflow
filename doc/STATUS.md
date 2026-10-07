@@ -1,32 +1,36 @@
 # 当前状态
 
-更新：2026-10-05。
+更新：2026-10-07。
 
-## 版本与工作区
+## 当前工作
 
-当前维护目录为 `D:\Project\memoflow`。本次发布版本为 **0.1.1**，包含工作目录独立 Python/Node 和完整／轻量两种安装包；`dev` 用于后续开发，`master` 保存正式发布里程碑。发布入口：[v0.1.1 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.1)。
+当前目录为 `D:\Project\memoflow`，分支为 `dev`。正式版本仍为 [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1)，对应 master 的 c639b51。本轮完成项目介绍、文案与对话录音入口优化，版本保持 0.1.1；改动与两个待评审包在本机供审核。
 
-项目版本与根依赖锁已同步为 0.1.1。旧正式版本 v0.1.0、开发预览 dev-runtime 的标签和附件保留；用户已安装 Skill、旧项目目录和私人数据未被修改。
+推送前深审已完成。现行源码、Skill、文档及 10 份 UML 的调用边界已核对，修正了图 03 的 HTTP/SSE 分派和并行关系、图 07 的原文件变化分支；本次提交同步到 dev，正式版仍按原标签管理。
 
-## 当前实现
+## 已完成
 
-- 首次安装由 Skill 的 `scripts/bootstrap.ps1` 准备工作目录独立 Python 3.12.10、Node.js 24.21.0（含 npm 11.19.0），再调用既有 Python bootstrap。无需预装运行时，不修改系统 PATH、注册表或全局包。
-- 完整包 `asr-transcription.zip` 附带两个官方运行时归档，轻量包 `asr-transcription-lite.zip` 按需下载；两包使用相同代码和说明。业务依赖与 BL 仍需联网安装。
-- 现有 venv 会核对基础 Python 绑定；旧绑定或搬迁问题明确报错并保留，按说明只重建 venv，不删除凭据和任务。
-- pip 输出显式使用 UTF-8；ensurepip 的内部进程采用系统编码，按其实际编码解码后统一保存日志。HTML 使用 Git 的 LF 换行规则，避免 Windows 构建产生混合换行。
-- Skill、双语 README/AGENTS、使用说明、发行说明与 UML 已核对。正式说明不再指引用户下载开发预览；历史发布资料通过 Git 标签追溯。
+- 新增 `serve --audio <绝对路径>`。对话附件与原生文件选择共用 `Session._register_audio()`，登记原文件；媒体检测与完整 SHA 在确认并预览时执行。
+- `/api/session` 返回 `audio` 和双语 `audio_error`。页面恢复当前选择编号；初始路径无效仍可编辑，重新选择后清错；刷新和语言切换保留录音状态。
+- Skill 描述、展示信息与正文覆盖附件、录音路径和转写请求，统一先网页配置与预览，再由用户交接任务。首次安装按宿主信息核对 Windows 10/11 x64。
+- README 双语增加 Qwen 3.1、网页核对、Codex 协作与文件化处理的项目价值；学习能力明确为后续目标。统一导入、确认消息、API Key 和双语官方链接，删除页面旧预览版标签与重复提示。
+- UML 01A、01B、03 源稿及 PNG 已同步；其余协议与图稿保持适用。
 
-## 最终验证
+## 验证
 
-- **446 项 Python 测试通过，0 跳过，140.569 秒**，包括真实本机 BL/npm/pip 合约及实际 ensurepip 中文路径检查。
-- 严格 mypy **31 个源文件通过**；前端 **55 项测试**、Vue 类型、登录适配和页面构建通过；Edge 完整回归 **40.255 秒**通过。
-- 候选完整包在无系统 Python/Node PATH 的全新中文目录完成联网安装。修正 ensurepip 后，最终两包分别通过环境复用、doctor、Tk、HTTP 启动/取消与资源只读检查。
-- 两包 CRC、固定清单、源码逐字比较及 **19 份 Markdown 的 120 个本地链接**通过。完整包 52 文件，轻量包 50 文件；大小与摘要见 [ACCEPTANCE](ACCEPTANCE.md)。
+- 推送前 Python 完整回归 **453 项通过，0 跳过，175.461 秒**；严格 mypy **31 个源文件通过**。
+- 前端 **57 项测试**、Vue 类型通过；**3 项 Edge 回归通过，52.570 秒**，覆盖有效／失效附件、替换、刷新、语言切换、预览与交接。当前静态产物与已通过的 Vite 构建一致。
+- 官方 Skill 格式校验和展示元数据解析通过。独立行为检查实际读取 Skill 并以附件启动服务，发起一次宿主开页请求，正确停在用户填写阶段；取消后服务退出 0。
+- 两包固定清单、CRC、源码逐字比较与本机环境复用检查通过；完整包 52 文件、轻量包 50 文件，全部资源保持只读。摘要与范围见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-## 产品边界
+## 交付位置
 
-第一阶段仍交付单录音的原始 JSON、Word、Excel、Markdown。固定 `qwen-audio-3.1-asr-flash-filetrans`、北京地域和 BL 2.1.0。个性化纪要与反馈学习尚未实现。
+- `dist/review-20261007/asr-transcription.zip`：附 Python 和 Node 的完整候选包。
+- `dist/review-20261007/asr-transcription-lite.zip`：相同代码与说明的轻量候选包。
+- 本轮原始验证记录在 `.runtime/attachments-*.json`、`.runtime/attachments-final-python.log`；仅用于本机复核，不进入 Git 或安装包。
 
-编辑会话两小时，用户从预览复制含 session_id 的确认消息后交接唯一任务；必要登录后继续同一任务，失败不自动重传。音频引用原路径，Excel 在内存解析，热词与上下文在确认并预览时校验。
+## 产品范围
 
-本机验收不替代多台全新 Windows、新 Codex 对话、人工原生窗口、真实授权/识别及 Office 逐页验收。运行环境仍受网络、权限与组织策略影响，具体边界见 [ISSUES](ISSUES.md)。
+第一阶段交付单录音的原始 JSON、Word、Excel、Markdown。固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域和 BL 2.1.0。用户在网页填写、预览并复制含 session_id 的确认消息，随后交接唯一任务；必要登录后执行，失败不自动重传。
+
+用户工作目录保存环境、凭据与任务，Skill 资源只读。当前功能与限制见 [HELP](HELP.md)、[ISSUES](ISSUES.md)，实现与调用关系见 [DEVELOPMENT](DEVELOPMENT.md)、[UML](UML.md)。后续个性化纪要与反馈学习尚未实现。

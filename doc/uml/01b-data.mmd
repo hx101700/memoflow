@@ -32,6 +32,14 @@ class LocalizedText {
   +str zh
   +str en
 }
+class SessionDescription {
+  <<TypeScript interface>>
+  +str session_id
+  +SessionPhase phase
+  +str expires_at
+  +AudioSelection_or_null audio
+  +LocalizedText_or_null audio_error
+}
 class HotwordIssue {
   <<TypedDict>>
   +int row
@@ -87,6 +95,8 @@ class BailianFailure {
 }
 class Exception
 AudioSelection ..> AudioInfo : validate_audio读取原文件
+SessionDescription ..> AudioSelection : 当前登记的原录音
+SessionDescription ..> LocalizedText : 初始路径读取错误
 Transcript --> "0..*" Sentence : 保存原顺序及毫秒时间戳
 HotwordImport --> "0..*" HotwordRow : Excel读取后可继续编辑
 HotwordRow <|-- EditorRow : 前端表格状态
@@ -95,7 +105,8 @@ HotwordIssue ..> LocalizedText : 一次返回双语
 HotwordIssue ..> EditorIssue : 前端关联稳定行键
 HotwordImport ..> LocalizedText : 读取提示
 Exception <|-- BailianFailure
-note for AudioSelection "Session.select_audio通过PathPicker登记原路径<br/>浏览器只提交audio_id；选择不复制录音<br/>执行前核对原文件，声道合并才创建处理文件"
+note for AudioSelection "Session._register_audio共用附件和原生窗口返回路径<br/>登记原路径、文件名、大小与选择编号<br/>预览建立媒体事实及SHA；浏览器只提交audio_id<br/>执行前核对原文件，声道合并才创建处理文件"
+note for SessionDescription "frontend/types.ts；GET /api/session<br/>图中摘录录音带入及会话字段；其余选项、预览和终态见Session.description<br/>Python对应Session.description返回的dict<br/>刷新读取当前audio；初始路径无效时返回双语audio_error<br/>用户重新选择成功后清除初始错误"
 note for AudioInfo "scripts/asr_runtime/models.py<br/>utils/media.py::probe_audio创建媒体事实<br/>供规则判断与声道转换使用"
 note for HotwordRow "scripts/asr_runtime/models.py；运行时为普通dict<br/>HotwordValue为str、int、float、bool或None<br/>invalid_fields为可选的text／weight列表<br/>Excel保留原值与无效单元格标记；数据数组不携带行号<br/>前端独立保存稳定行键，显示与错误编号按数组位置"
 note for EditorRow "frontend/types.ts；model.ts<br/>key为组件稳定标识；row按当前数组位置1…N重排<br/>提交后端的数据只有HotwordRow，不传key或row"

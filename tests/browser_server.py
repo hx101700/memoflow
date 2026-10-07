@@ -17,14 +17,16 @@ def main() -> None:
     """创建合成音频与词表，输出本机连接信息并启动服务。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--audio", type=Path)
     options = parser.parse_args()
     fixtures = options.workspace / "fixtures"
     fixtures.mkdir()
-    with wave.open(str(fixtures / "sample.wav"), "wb") as stream:
-        stream.setnchannels(2)
-        stream.setsampwidth(2)
-        stream.setframerate(16000)
-        stream.writeframes(b"\0" * 64000)
+    for name in ("sample.wav", "附件 recording.wav"):
+        with wave.open(str(fixtures / name), "wb") as stream:
+            stream.setnchannels(2)
+            stream.setsampwidth(2)
+            stream.setframerate(16000)
+            stream.writeframes(b"\0" * 64000)
     sheets = {
         "invalid.xlsx": [("wrong", "weight"), ("Kubernetes", 4)],
         "invalid-rows.xlsx": [("text", "weight"), ("Kubernetes", 4), ("MemoFlow", 9), ("Kubernetes", 5)],
@@ -40,7 +42,7 @@ def main() -> None:
             sheet.append(row)
         workbook.save(fixtures / name)
         workbook.close()
-    server = create_server(Runtime(options.workspace, SKILL_ROOT))
+    server = create_server(Runtime(options.workspace, SKILL_ROOT), audio=options.audio)
     url = f"http://127.0.0.1:{server.server_port}/"
     print(json.dumps({"url": url, "session_id": server.session.session_id}), flush=True)
     try:

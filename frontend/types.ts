@@ -15,6 +15,7 @@ export interface Receipt {
 }
 export interface SessionDescription {
   session_id: string; phase: SessionPhase; expires_at: string;
+  audio: AudioSelection | null; audio_error: LocalizedText | null;
   model: string; region: string; limits: Limits; audio_suffixes: string[];
   languages: string[]; output_defaults: Record<DirectoryKind, string>;
   preview: (ValidationResult & EditableSnapshot) | null;

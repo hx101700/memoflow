@@ -95,7 +95,7 @@ _ENGLISH: dict[str, str] = {
     "多个工作表时请将待使用的工作表命名为“热词”。": "If the workbook has multiple sheets, name the sheet to use 热词.",
     "请使用普通工作表填写热词，不支持图表工作表。": "Enter hotwords in a regular worksheet. Chart sheets are not supported.",
     "热词工作表仅支持两列、最多10001行（含表头和空行）。": "The hotword sheet must have two columns and no more than 10,001 rows, including the header and empty rows.",
-    "当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。": "This Excel file does not match the template. Download the template, fill it in, and upload it again.",
+    "当前 Excel 未按模板导入，请下载模板，按模板填写后重新导入。": "This Excel file does not match the template. Download the template, fill it in, and import it again.",
     "仅读取名为“热词”的工作表，其他工作表不参与此次转写。": "Only the sheet named 热词 is used for this transcription.",
     "请输入 API Key。": "Enter your API key.",
     "API Key 中含有空格或换行，请检查后重新填写。": "The API key contains spaces or line breaks. Check the value and enter it again.",

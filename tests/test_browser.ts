@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import type { Receipt, SessionDescription, SessionEnd } from "../frontend/types";
 
 const repository = path.resolve(".");
@@ -125,8 +125,8 @@ async function assertSessionViews(browser: Browser, url: string, description: Se
   }
 }
 
-// 验证表格修改、语言切换、两步编辑和代码交接的真实浏览器链路。
-test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, async t => {
+// 在隔离目录启动真实本机服务，测试结束后回收自身进程和合成文件。
+async function startFixture(t: TestContext, audioName?: string) {
   const testRoot = path.join(repository, ".runtime/browser-tests");
   await fs.mkdir(testRoot, { recursive: true });
   await fs.mkdir(screenshots, { recursive: true });
@@ -134,11 +134,13 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
   const previousTemp = { TEMP: process.env.TEMP, TMP: process.env.TMP };
   process.env.TEMP = root;
   process.env.TMP = root;
-  const server = spawn(python, ["-B", "-X", "utf8", "-m", "tests.browser_server", "--workspace", root],
+  const serverArguments = ["-B", "-X", "utf8", "-m", "tests.browser_server", "--workspace", root];
+  if (audioName) serverArguments.push("--audio", path.join(root, "fixtures", audioName));
+  const server = spawn(python, serverArguments,
     { cwd: repository, windowsHide: true, stdio: "pipe" });
   const exited = new Promise<number | null>(resolve => server.once("exit", resolve));
-  let serverErrors = "";
-  server.stderr.on("data", value => { serverErrors += String(value); });
+  const diagnostics = { errors: "" };
+  server.stderr.on("data", value => { diagnostics.errors += String(value); });
   t.after(async () => {
     try {
       if (server.exitCode === null && server.signalCode === null) {
@@ -170,6 +172,12 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     server.once("error", reject);
     server.once("exit", () => reject(new Error("本机测试服务在就绪前退出。")));
   });
+  return { root, connection, exited, diagnostics };
+}
+
+// 验证表格修改、语言切换、两步编辑和代码交接的真实浏览器链路。
+test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, async t => {
+  const { root, connection, exited, diagnostics } = await startFixture(t);
   assert.equal(new URL(connection.url).hash, "");
   const origin = new URL(connection.url).origin;
   const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -211,11 +219,10 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await page.locator("#page-title").click();
     await page.screenshot({ path: path.join(screenshots, "en-light.png"), animations: "disabled" });
     await page.getByRole("button", { name: "Confirm and preview", exact: true }).click();
-    await page.locator("#error-panel").getByText("Choose an audio file.", { exact: true }).waitFor();
+    await page.locator("#audio_id .field-error").getByText("Choose an audio file.", { exact: true }).waitFor();
     assert.equal(await page.locator("#audio_id").evaluate(element => element.contains(document.activeElement)), true);
-    await assertMatchingHorizontalBounds(page.locator("#error-panel"), page.locator("#audio_id"));
+    assert.equal(await page.locator("#error-panel").count(), 0);
     await page.setViewportSize({ width: 390, height: 844 });
-    await assertMatchingHorizontalBounds(page.locator("#error-panel"), page.locator("#audio_id"));
     await assertMatchingHorizontalBounds(page.locator(".intro-note"), page.locator("#audio_id"));
     assert.equal(await summary.isVisible(), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -312,8 +319,8 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
       assert.equal(await rules.evaluate(element => element.classList.contains("el-link--primary")), true);
       assert.equal(await rules.evaluate(element => getComputedStyle(element).fontSize === getComputedStyle(element.parentElement!).fontSize), true);
     }
-    assert.equal(await hotwordRules.getAttribute("href"), "https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#hw_instant_fmt_h4");
-    assert.equal(await contextRules.getAttribute("href"), "https://help.aliyun.com/zh/model-studio/improve-asr-accuracy#ctx_enhance_h2");
+    assert.equal(await hotwordRules.getAttribute("href"), "https://www.alibabacloud.com/help/en/model-studio/improve-asr-accuracy#hotword-format-2");
+    assert.equal(await contextRules.getAttribute("href"), "https://www.alibabacloud.com/help/en/model-studio/improve-asr-accuracy#context-enhancement");
     await page.locator('label[for="hotwords-enabled"]').click();
     await page.locator('label[for="context-enabled"]').click();
     assert.equal(await page.getByRole("textbox", { name: "Reference text", exact: true }).count(), 1);
@@ -588,8 +595,8 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     assert.equal(await page.locator("#config-fields").count(), 0);
     assert.equal(await page.locator("#review").count(), 0);
     assert.ok((await page.locator("#session-ended").innerText()).includes(String(receipt.job_id)));
-    assert.equal(await exited, 0, serverErrors);
-    assert.equal(serverErrors, "");
+    assert.equal(await exited, 0, diagnostics.errors);
+    assert.equal(diagnostics.errors, "");
     assert.deepEqual(await confirmSession(root, copiedId), receipt);
     const files = await fs.readdir(path.join(root, ".asr-transcription/.state/jobs"));
     assert.equal(files.length, 1);
@@ -612,3 +619,74 @@ test("Edge页面以显式会话编号交接一个任务", { timeout: 120_000 }, 
     await context.close();
   } finally { await browser.close(); }
 });
+
+for (const audioName of ["附件 recording.wav", "missing.wav"]) {
+  test(`${audioName}附件仍通过网页预览，刷新和语言切换保留音频状态`, { timeout: 60_000 }, async t => {
+    const { root, connection, exited, diagnostics } = await startFixture(t, audioName);
+    const browser = await chromium.launch({ channel: "msedge", headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "zh-CN" });
+      const page = await context.newPage();
+      const errors: string[] = [], paths: string[] = [];
+      page.on("pageerror", error => errors.push(error.message));
+      page.on("request", request => { paths.push(new URL(request.url()).pathname); });
+      await page.goto(connection.url);
+      await page.locator("#config-fields").waitFor();
+      const initial = await (await context.request.get(new URL("/api/session", connection.url).href)).json() as SessionDescription;
+      if (audioName === "missing.wav") {
+        assert.equal(initial.audio, null);
+        assert.ok(initial.audio_error);
+        await page.locator("#audio_id .field-error").waitFor();
+        assert.equal(await page.locator("#audio_id .field-error").innerText(), initial.audio_error.zh);
+      } else {
+        assert.ok(initial.audio);
+        assert.equal(initial.audio_error, null);
+        await page.locator("#audio_id .el-tag--success").waitFor();
+        assert.equal(await page.locator(".audio-name").innerText(), audioName);
+        assert.equal(await page.locator(".audio-path").innerText(), initial.audio.path);
+      }
+      assert.equal(await page.locator("#error-panel").count(), 0);
+      assert.equal(await page.locator("#review").count(), 0);
+      assert.equal(paths.filter(route => route === "/api/select-audio").length, 0);
+      await assert.rejects(fs.access(path.join(root, ".asr-transcription/.state/jobs")), { code: "ENOENT" });
+      await page.locator(".language-select").click();
+      await page.getByRole("option", { name: "English", exact: true }).click();
+      if (initial.audio_error) assert.equal(await page.locator("#audio_id .field-error").innerText(), initial.audio_error.en);
+      else assert.equal(await page.locator("#audio_id .el-tag--success").innerText(), "Selected");
+      await page.reload();
+      await page.locator("#config-fields").waitFor();
+      const restored = await (await context.request.get(new URL("/api/session", connection.url).href)).json() as SessionDescription;
+      assert.deepEqual(restored.audio, initial.audio);
+      assert.deepEqual(restored.audio_error, initial.audio_error);
+      if (initial.audio_error) assert.equal(await page.locator("#audio_id .field-error").innerText(), initial.audio_error.en);
+      else assert.equal(await page.locator(".audio-name").innerText(), audioName);
+      const select = page.locator("#audio_id").getByRole("button", { name: initial.audio ? "Replace audio" : "Choose an audio file", exact: true });
+      await select.click();
+      await page.locator("#audio_id .el-tag--success").waitFor();
+      assert.equal(await page.locator(".audio-name").innerText(), "sample.wav");
+      assert.equal(await page.locator("#audio_id .field-error").count(), 0);
+      assert.equal(paths.filter(route => route === "/api/select-audio").length, 1);
+      const replacement = await (await context.request.get(new URL("/api/session", connection.url).href)).json() as SessionDescription;
+      assert.ok(replacement.audio);
+      assert.equal(replacement.audio_error, null);
+      assert.notEqual(replacement.audio.audio_id, initial.audio?.audio_id);
+      await page.reload();
+      await page.locator("#audio_id .el-tag--success").waitFor();
+      assert.equal(await page.locator(".audio-name").innerText(), "sample.wav");
+      assert.equal(await page.locator("#audio_id .field-error").count(), 0);
+      const afterRefresh = await (await context.request.get(new URL("/api/session", connection.url).href)).json() as SessionDescription;
+      assert.deepEqual(afterRefresh.audio, replacement.audio);
+      await page.getByRole("button", { name: "Confirm and preview", exact: true }).click();
+      await page.getByRole("button", { name: "Copy for Codex", exact: true }).waitFor();
+      assert.equal(await page.locator("#config-fields").count(), 0);
+      await assert.rejects(fs.access(path.join(root, ".asr-transcription/.state/jobs")), { code: "ENOENT" });
+      const receipt = await confirmSession(root, connection.session_id);
+      await page.locator("#session-ended").waitFor();
+      assert.equal(await exited, 0, diagnostics.errors);
+      const config = JSON.parse(await fs.readFile(path.join(root, ".asr-transcription/.state/jobs", String(receipt.job_id), "config.json"), "utf8"));
+      assert.equal(config.audio.path, path.join(root, "fixtures/sample.wav"));
+      assert.deepEqual(errors, []);
+      assert.equal(diagnostics.errors, "");
+    } finally { await browser.close(); }
+  });
+}

@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser = commands.add_parser("serve", help="打开本地配置网页")
     serve_parser.add_argument("--port", type=int, default=0, help="本地网页端口，默认自动选择")
     serve_parser.add_argument("--no-browser", action="store_true", help="不自动打开系统浏览器")
+    serve_parser.add_argument("--audio", type=Path, help="带入网页的录音绝对路径，可在页面更换")
     for name in ("confirm", "cancel"):
         command = commands.add_parser(name)
         command.add_argument("--session", required=True, help="用户从预览页复制到对话中的编辑会话编号")
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         with python_temporary_directory(runtime) if args.command in ("serve", "transcribe", "export") else nullcontext():
             if args.command == "serve":
                 from .web import serve
-                serve(runtime, port=args.port, open_browser=not args.no_browser)
+                serve(runtime, port=args.port, open_browser=not args.no_browser, audio=args.audio)
                 return 0
             if args.command in ("confirm", "cancel"):
                 from .web import control_session

@@ -65,7 +65,7 @@ def read_hotwords(content: bytes) -> tuple[list[HotwordRow], list[LocalizedText]
             raise HotwordFileError("热词工作表仅支持两列、最多10001行（含表头和空行）。")
         header = [sheet.cell(1, number).value for number in (1, 2)]
         if header[0] not in ("text", "热词") or header[1] not in ("weight", "权重"):
-            raise HotwordFileError("当前 Excel 未按模板导入，您可以点击下载模板，按照模板填写后上传。")
+            raise HotwordFileError("当前 Excel 未按模板导入，请下载模板，按模板填写后重新导入。")
         warnings = []
         if len(workbook.sheetnames) > 1:
             warnings.append(localize("仅读取名为“热词”的工作表，其他工作表不参与此次转写。"))

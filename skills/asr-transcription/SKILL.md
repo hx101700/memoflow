@@ -1,15 +1,15 @@
 ---
 name: asr-transcription
-description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。用于录音转文字、百炼凭据配置和已有转写任务重导；不用于改写现有文字纪要。
+description: 在 Codex 中通过本机网页将单个录音转为带时间戳的 Word、Excel 和 Markdown。用户附上录音、提供本机录音路径或请求转写时使用，也支持百炼凭据配置和已有转写任务重导。
 ---
 
 # 录音转写
 
-使用附带工具与阿里云百炼 CLI，交付原始 JSON 和三种转写校对稿。固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域。用户在本机网页选择录音与设置。
+使用附带工具与阿里云百炼 CLI，交付原始 JSON 和三种转写校对稿。固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域。用户在本机网页核对录音与设置。
 
 ## 选择入口
 
-- **新录音**：先准备环境并打开网页，按下方流程操作。
+- **新录音**：先准备环境并打开网页；本次提供的录音附件或路径带入同一网页，由用户核对后确认转写。
 - **已有任务**：使用原工作目录与确切 `job_id`，进入“已有任务”。只询问当前上下文缺少的目录或编号。
 - **只调整凭据**：按[凭据修复](references/errors.md#鉴权失败与重新配置)处理。指定 Key 可在网页单独保存；用户告知完成后，用 `cancel --session SESSION_ID` 结束这次编辑会话，无需录音或转写。
 
@@ -19,12 +19,12 @@ description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。�
 
 环境与凭据位于 `WORKSPACE/.asr-transcription`，默认输出为 `WORKSPACE/transcriptions`。准备完成后的命令使用 `WORKSPACE/.asr-transcription/.venv/Scripts/python.exe` 执行 `ENTRY`。
 
-首次在 Windows 10/11 x64 按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
+首次安装先核对宿主提供的系统与架构：当前完整包和轻量包适用于 Windows 10/11 x64。匹配后，按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
 
 ## 新录音
 
-1. **打开页面。** 用持久进程工具启动 `serve`，保留进程句柄及 `event=listening` 中的 `session_id`。宿主能打开链接时传 `--no-browser`，收到回执后打开 `url` 一次；否则用普通 `serve`。原生音频和目录选择窗口需要正常 Windows 交互桌面；Codex 工具支持时，从首次 serve 就使用 sandbox_permissions=require_escalated。按实际启动或打开请求结果告知用户，正常路径无需 computer-use 或页面自动检查。
-2. **交给用户填写。** 用户通过系统窗口选择原录音、编辑热词和上下文、选择认证与保存位置，点击“确认并预览”。预览可返回修改；它说明本次上传范围、北京地域及可能产生的费用。请用户核对后点击“复制给 Codex”，将带会话编号的确认消息发回对话。结束当前回复并保留服务。
+1. **打开页面。** 从本次用户提供的路径或宿主明确标注的附件位置取得录音的本机绝对路径，启动 `serve --audio AUDIO_PATH`。多个录音未指定目标时，请用户选择本次处理的一个；附件没有可访问的本机路径时，用 `serve` 打开页面，由用户选择文件。用持久进程工具保留进程句柄及 `event=listening` 中的 `session_id`。宿主能打开链接时传 `--no-browser`，收到回执后打开 `url` 一次；否则由系统浏览器打开。原生音频和目录选择窗口需要正常 Windows 交互桌面；Codex 工具支持时，从首次 serve 就使用 `sandbox_permissions=require_escalated`。按实际启动或打开请求结果告知用户，请其在网页核对录音。
+2. **交给用户填写。** 用户核对带入的录音或通过系统窗口选择文件，编辑热词和上下文、选择认证与保存位置，点击“确认并预览”。预览可返回修改；它说明本次上传范围、北京地域及可能产生的费用。请用户核对后点击“复制给 Codex”，将带会话编号的确认消息发回对话。结束当前回复并保留服务。
 3. **按用户提供的编号交接。** 用户要求开始，并在本次交接中亲自提供预览页的 `session_id` 后，运行 `confirm --session SESSION_ID`。只说“继续”或“确认”而未提供编号时，提示用户粘贴“复制给 Codex”的消息，不能从启动回执、历史或目录推断编号。用户随后单独补发编号，即可承接刚才的开始意图，不再要求重说一遍确认。代码检查预览已显示、版本有效且未到期；成功才返回 `job_id`、认证方式和保存位置。失败按提示返回网页处理；不创建替代任务。相同会话重复确认读取原回执。
 4. **认证并执行。** 按下表处理认证。交接成功已授权本次上传，无需再询问费用或开始确认。运行一次 `transcribe --job JOB_ID`，启动后告知“已开始转写，请耐心等待”，等待同一进程返回文档或明确失败，再结束回复。
 
@@ -55,6 +55,6 @@ description: 将单个录音转为带时间戳的 Word、Excel 和 Markdown。�
 
 `serve` 会在开页前回收可确认归属的残留。回执含 `cleanup.warnings` 或关闭时出现 `cleanup_warning` 时，如实说明未完成项并按[错误说明](references/errors.md)处理；无需额外清理命令，不删除任务占用或整个运行目录。
 
-音频直接读取原文件，提醒用户在转写完成前保留文件及原路径。Excel 导入仅在内存解析。只有按预览提示合并声道时才生成处理文件。
+音频直接读取附件或系统窗口选中的原文件，提醒用户在转写完成前保留文件及原路径。初始路径无法读取时，页面在音频区域提示原因，用户可重新选择文件。媒体检测与完整摘要在“确认并预览”时完成；Excel 导入仅在内存解析。只有按预览提示合并声道时才生成处理文件。
 
 需要核对模型能力或参数时，再读[模型与 CLI 依据](references/model.md)。

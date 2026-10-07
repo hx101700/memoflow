@@ -7,7 +7,7 @@ state "expired<br/>打开满两小时" as Expired
 state "cancelled<br/>用户取消或正常收尾" as Cancelled
 [*] --> Editing : serve创建session_id
 Editing --> Preview : validate成功＋preview_ready登记
-Preview --> Editing : edit获准 / 旧预览失效
+Preview --> Editing : edit获准或confirm发现原文件变化 / 旧预览失效
 Editing --> Expired : 到期且尚未交接
 Preview --> Expired : 到期与确认共用状态锁
 Editing --> Cancelled : cancel

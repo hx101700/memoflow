@@ -9,6 +9,7 @@ import type { Api, Configuration, EditorIssue, Endpoints, ErrorDetail, Language,
 const limits: Limits = { hotwords_bytes: 5_000_000, upload_bytes: 1_000_000_000,
   audio_seconds: 43200, hotwords_count: 2000, context_chars: 400, speaker_min: 2, speaker_max: 100 };
 const description: SessionDescription = { session_id: "session-one", phase: "editing", expires_at: "2026-10-04T12:00:00Z",
+  audio: null, audio_error: null,
   model: "fixed-model", region: "cn-beijing", limits, audio_suffixes: [".wav"], languages: ["zh"],
   output_defaults: { json: "D:/example", document: "D:/example" }, preview: null, terminal: null };
 const audio = { name: "sample.wav", size: 15, path: "D:/recordings/sample.wav" };
@@ -128,6 +129,45 @@ test("会话加载完成前不选文件或校验，完成后只订阅一次结�
   assert.equal(availability(page.model).editable, true);
   page.actions.dispose();
   assert.equal(page.view.closed, 1);
+});
+
+test("已登记附件在填写页恢复，预览前无需再次选择文件", async () => {
+  const selected = { audio_id: "attached-audio", name: "附件 录音.wav", path: "D:/attachments/附件 录音.wav", size_bytes: 64000 };
+  const page = harness({ "/api/session": () => ({ ...description, audio: selected }) });
+  await page.actions.start();
+  assert.equal(page.model.phase, "editing");
+  assert.deepEqual(page.model.audio, selected);
+  assert.equal(page.model.preview, null);
+  assert.equal(page.model.receipt, null);
+  assert.equal(availability(page.model).copy, false);
+  assert.deepEqual(page.calls.map(call => call.path), ["/api/session"]);
+  await page.actions.validate();
+  assert.equal(lastConfig(page).audio_id, selected.audio_id);
+  assert.equal(page.model.phase, "preview");
+  assert.deepEqual(page.calls.map(call => call.path), ["/api/session", "/api/validate", "/api/preview-ready"]);
+});
+
+test("附件错误定位音频区域，语言切换保留提示，替换成功后恢复预览", async () => {
+  const diagnostic = { zh: "无法读取指定录音，请重新选择。", en: "The recording could not be read. Choose it again." };
+  const page = harness({ "/api/session": () => ({ ...description, audio_error: diagnostic }) });
+  await page.actions.start();
+  assert.equal(page.model.phase, "editing");
+  assert.deepEqual(page.model.audio, null);
+  assert.equal(page.view.focus, "audio_id");
+  assert.equal(page.error.value?.field, "audio_id");
+  assert.equal(availability(page.model).selectAudio, true);
+  const requests = page.calls.length;
+  const currentError = page.error.value;
+  page.setLanguage("en");
+  assert.equal(page.error.value, currentError);
+  assert.equal(page.error.value?.describe("en"), diagnostic.en);
+  assert.equal(page.calls.length, requests);
+  await page.actions.selectAudio();
+  assert.equal(page.error.value, null);
+  assert.deepEqual(page.model.audio, { audio_id: "audio-1", name: audio.name, path: audio.path, size_bytes: audio.size });
+  await page.actions.validate();
+  assert.equal(page.model.phase, "preview");
+  assert.equal(page.model.preview?.ready, true);
 });
 
 test("启动失败与事件断线显示不可用，禁止继续确认或修改", async () => {

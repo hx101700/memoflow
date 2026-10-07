@@ -2,14 +2,14 @@
 
 API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Filetrans。CLI固定2.1.0，对照源码提交`8bbbbc722d70fb200641ef22b6f6d033aeae9f74`及本机发布包；不把未核实的新版本能力加入当前接口。
 
-精度增强[A04]与说话人分离[A03]资料最近核验：2026-10-03。产品输入方式和媒体处理以项目实现为准。
+精度增强[A04]与说话人分离[A03]的参数依据见下表。2026-10-07 再次核对模型介绍[A01]及中英文模型总览[A02]：Qwen 3.1 支持多地区中文方言、热词和上下文增强。产品输入方式和媒体处理以项目实现为准。
 
 ## 来源
 
 | 编号 | 来源 | 用途 |
 | --- | --- | --- |
 | A01 | [模型详情](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans) | 固定模型与地域 |
-| A02 | [音频规格](https://help.aliyun.com/zh/model-studio/asr-model) | 容器、时长、采样率、模型文件大小 |
+| A02 | [模型与音频规格](https://help.aliyun.com/zh/model-studio/asr-model) / [English](https://help.aliyun.com/en/model-studio/asr-model/) | 版本对应的语言与方言、容器、时长、采样率、模型文件大小 |
 | A03 | [Filetrans HTTP API](https://help.aliyun.com/zh/model-studio/fun-asr-recorded-speech-recognition-http-api) | 参数、句子JSON、子任务结果 |
 | A04 | [提高识别准确率](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy) | 即时热词、超级词、上下文 |
 | A05 | [定制热词Python SDK参考](https://docs.bailian.console.aliyun.com/zh/model-studio/vocabulary-python-sdk) | 区分词条text/weight与预编译词表prefix的约束 |
@@ -28,6 +28,8 @@ API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Fil
 | O01 | [Codex构建Skill](https://learn.chatgpt.com/docs/build-skills) | SKILL.md元信息、脚本与参考资料的技能结构 |
 
 ## 模型和本地阈值
+
+Qwen 3.1 的官方语言说明列出上海、南昌、宁波、客家、杭州、温州、湖南、福建、粤语和苏州方言[A01/A02]。项目介绍采用该版本的能力说明；识别表现还取决于录音质量与内容，使用热词及上下文补充相关术语后仍需用户校对。
 
 | 项目 | 当前依据与处理 |
 | --- | --- |
