@@ -8,7 +8,7 @@ These instructions govern the source repository. To resume work, read [doc/READM
 
 - Stage one delivers one standalone Codex Skill: configure one recording through a local page, let Codex call BL, and save original JSON, Excel, Word, and Markdown for the user to review.
 - Use `qwen-audio-3.1-asr-flash-filetrans`, China (Beijing), and temporary OSS. Hotwords and context can coexist. Speaker diarization is enabled by default; multichannel input gets a notice before a mono FLAC copy is generated. Preserve the source.
-- The final product turns voice input into meeting minutes that follow the user's preferences and requested format, and keeps learning from their examples and confirmed edits. Stage one delivers transcripts for review; stage two will add personalized minutes and feedback-based learning. Stage two is not implemented yet.
+- The final product turns voice input into content that follows the user's preferences, focus requirements, and requested format, and keeps learning from their examples and confirmed edits. Stage one delivers transcripts for review; stage two will add personalized content generation and feedback-based learning. Stage two is not implemented yet.
 - Support updated Windows 10/11 x64 systems with the built-in curl. Initial setup uses Windows PowerShell to prepare a private full CPython 3.12.10 x64 runtime, including venv, ensurepip, and tkinter, and Node.js 24.21.0 with npm 11.19.0. System Python/Node installations are not required. Dependency locks target this platform. Working network access, directory permissions, and an interactive desktop remain necessary.
 
 ## Skill and workspace

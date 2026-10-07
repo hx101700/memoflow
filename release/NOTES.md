@@ -27,7 +27,7 @@ MemoFlow v0.1.2 延续 v0.1.1 的独立运行环境，同时把“附上录音�
 
 使用前请准备好阿里云账号并开通百炼服务。安装后告诉 Codex“帮我转写录音”，按网页提示添加录音、调整设置、预览并复制确认消息。详细步骤见 [README](https://github.com/hx101700/memoflow/blob/v0.1.2/README.md)。
 
-当前版本仍交付原始 JSON、Word、Excel 和 Markdown 转写稿；个性化会议纪要与反馈学习属于后续阶段。
+当前版本仍交付原始 JSON、Word、Excel 和 Markdown 转写稿；按用户偏好生成目标内容与反馈学习属于后续阶段。
 
 ### 从旧版本升级
 

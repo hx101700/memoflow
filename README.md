@@ -2,13 +2,13 @@
 
 中文 | [English](README.en.md)
 
-> MemoFlow 是一套面向 Codex 的交互式语音转写与会议纪要 Skill。
+> MemoFlow 让 Codex 把语音输入整理成符合用户习惯和指定格式的内容。
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
-MemoFlow 面向会议、访谈、培训和通话等场景。用户在网页中选择录音、设置识别语言、说话人区分、热词、上下文和保存位置，确认后交给 Codex 执行；Skill 调用阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，生成可校对的转写稿，并制作适合继续阅读和整理的多种文档格式。
+MemoFlow 是一套面向 Codex 的交互式语音转写与个性化内容生成 Skill，适用于会议转写、内容生产、通话分析、访谈和培训等场景。用户只需在网页中选择录音、填写需要开启的识别能力并确认，Codex 就会调用阿里云百炼提供的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/zh/model-studio/qwen-audio-3-1-asr-flash-filetrans)，将录音整理成可校对的转写稿和指定格式的文档。
 
-当前已完成的是录音配置、非实时转写、精度增强、说话人区分和文档交付。后续 MemoFlow 会结合用户校对后的内容、格式范例和确认反馈，持续学习用户的表达与排版习惯，生成可以直接使用的个性化会议纪要。
+当前已经完成录音配置、非实时转写、热词与上下文增强、说话人区分和文档交付。后续 MemoFlow 会根据用户的校对反馈、重点要求和格式范例持续学习，逐步生成符合用户习惯、排版规整、可以直接继续使用的内容。
 
 ## 为什么需要 MemoFlow
 
@@ -20,7 +20,7 @@ MemoFlow 面向会议、访谈、培训和通话等场景。用户在网页中�
 - 一次转写往往还要继续校对、整理，并保存成团队习惯的格式；
 - 录音、认证、配置、转写和文件整理分散在多个工具里，操作过程容易失去上下文。
 
-MemoFlow 面向会议、访谈、培训和客户交流等场景。它先把录音整理成可回溯、可校对的文字，保留时间、说话人和重要术语，再让用户在确认后的内容上继续整理成自己的会议纪要。当前阶段先把录音配置、识别和校对交付做好。
+MemoFlow 面向这些需要把语音转成可用信息的场景：它先把录音整理成可回溯、可校对的文字，保留时间、说话人和重要术语，再让用户继续整理成自己需要的文档或内容。当前阶段先把录音配置、识别和校对交付做好。
 
 ## 为什么是 Codex + Qwen-Audio 3.1
 
@@ -32,7 +32,7 @@ MemoFlow 把识别交给 Qwen-Audio 3.1，把任务组织和结果交付交给 C
 
 - **Qwen-Audio-3.1-ASR-Flash-Filetrans**负责非实时文件识别。阿里云将它定位为多语种及方言的长音频文件转写模型，支持说话人分离、热词和上下文增强；模型文档列出的单次音频上限为 12 小时、2 GB，启用说话人分离时建议控制在 2 小时以内。[模型说明](https://help.aliyun.com/zh/model-studio/asr-model)
 - **Codex**负责本地工作流：准备 Skill 环境、打开配置页面、承接对话附件、引导认证、等待百炼返回，并把结果整理到用户选择的位置。
-- **MemoFlow**把两者连接起来：完整转写内容保存在文件中，聊天只承载操作、确认和结果位置，后续可以在文件基础上继续校对和生成会议纪要。
+- **MemoFlow**把两者连接起来：完整转写内容保存在文件中，聊天只承载操作、确认和结果位置，后续可以在文件基础上继续校对并生成指定格式的内容。
 
 识别专业词汇时，MemoFlow 使用百炼支持的即时热词和上下文增强。热词适合临时的人名、产品名和术语；上下文适合提供会议背景或领域语料，两者可以同时放进同一次请求。[阿里云精度增强说明](https://help.aliyun.com/zh/model-studio/improve-asr-accuracy)
 

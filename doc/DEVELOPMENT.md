@@ -4,7 +4,7 @@
 
 ## 业务与职责
 
-MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的会议纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON、Word、Excel 和 Markdown，交给用户校对。第二阶段的纪要生成、偏好存储及反馈学习尚未实现。
+MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的内容，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON、Word、Excel 和 Markdown，交给用户校对。第二阶段的目标内容生成、偏好存储及反馈学习尚未实现。
 
 固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，BL 2.1.0 临时 OSS 上传。
 

@@ -27,7 +27,7 @@ Send either ZIP to Codex with this request:
 
 Prepare your Alibaba Cloud account and enable Model Studio before use. After installation, ask Codex to transcribe a recording, follow the page, review the preview, and copy the confirmation message back to the conversation. See the [README](https://github.com/hx101700/memoflow/blob/v0.1.2/README.en.md) for details.
 
-The current version delivers the original JSON plus Word, Excel, and Markdown transcription documents. Personalized meeting minutes and feedback learning remain planned for a later stage.
+The current version delivers the original JSON plus Word, Excel, and Markdown transcription documents. Personalized content generation and feedback learning remain planned for a later stage.
 
 ### Upgrading from an earlier version
 
