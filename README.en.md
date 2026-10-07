@@ -2,41 +2,37 @@
 
 [中文](README.md) | English
 
-> MemoFlow helps Codex turn voice input into content that follows the user's preferences and requested format.
+> MemoFlow is an interactive Codex Skill for audio transcription and self-learning content generation.
 
 [![Latest release](https://img.shields.io/github/v/release/hx101700/memoflow?display_name=tag&sort=semver)](https://github.com/hx101700/memoflow/releases/latest) [![License](https://img.shields.io/github/license/hx101700/memoflow)](LICENSE) [![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D4)](https://github.com/hx101700/memoflow/releases/latest)
 
-MemoFlow is an interactive Codex Skill for meetings, interviews, training, customer conversations, content production, and other voice workflows. On the local web page, you choose a recording, recognition language, speaker diarization, hotwords, context, and output location. After you confirm the settings, Codex runs Alibaba Cloud Model Studio's [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://help.aliyun.com/en/model-studio/qwen-audio-3-1-asr-flash-filetrans) and prepares reviewable documents in the formats you need.
+MemoFlow is an interactive voice transcription and self-learning minutes-generation Skill for meeting transcription, content production, and call analysis. You provide a recording, choose the options you need, and hand the confirmed settings to Codex. The Skill calls Alibaba Cloud Model Studio's ASR service and produces review documents in Word, Excel, and Markdown. Later, MemoFlow will learn from reviewed transcripts, feedback, and formatted reference documents to generate polished content that follows your working style.
 
-Stage one is available now: recording setup, non-real-time transcription, accuracy enhancement, speaker diarization, and document delivery. In the next stage, MemoFlow will learn from reviewed transcripts, formatting examples, focus requirements, and confirmed feedback to generate content in each user's requested format and style.
+## What it includes
 
-## Why MemoFlow
+MemoFlow is planned as two cooperating Skills:
 
-A recording does not become useful information by itself. People still need to:
+| Skill | Capability | Status |
+| --- | --- | --- |
+| `asr-transcription` | Choose a recording in the interactive page, configure the language, speaker diarization, hotwords, context, and output folders, then let Codex call Model Studio for non-real-time file transcription. The workflow keeps the original result and creates timestamped, speaker-aware Word, Excel, and Markdown review documents. | **Available** |
+| Personalized content generation | Learn content structure, information priorities, wording, and layout from reviewed transcripts, focus requirements, formatted reference documents, and user feedback, then generate content in the requested format. | **In development** |
 
-- find important sections in a long recording without replaying everything;
-- recognize names, product names, and domain vocabulary correctly;
-- understand who said what in a multi-speaker discussion;
-- review the text and continue working in a familiar format;
-- keep authentication, configuration, transcription, and file delivery in one workflow.
+```mermaid
+flowchart TD
+    A["User provides a recording"] --> B["Codex starts asr-transcription Skill"]
+    B --> C["Configure and preview in the web page"]
+    C --> D["User confirms and sends the message to Codex"]
+    D --> E["Receive the original result and review documents"]
+    E --> F["User reviews, adds priorities, and gives format requirements"]
+    G["Existing formatted reference documents"] --> H["Personalized content Skill<br/>In development"]
+    F --> H
+    H --> I["Content in the user's requested format"]
+    I -. "More feedback" .-> H
+```
 
-MemoFlow turns recordings into text that can be revisited and reviewed, keeping timestamps, speaker information, and important terminology. Users can then continue shaping the reviewed content into the documents or content they need.
+## Install
 
-## Why Codex + Qwen-Audio 3.1
-
-Codex is strong at understanding context, organizing multi-step work, reading files, and continuing a user-defined workflow. Speech recognition itself is not its core capability. Many general-purpose workflows start with [Whisper](https://github.com/openai/whisper). Whisper is a strong general multilingual model, and its official documentation notes that performance varies by language. For meetings with dialects, names, product terms, speaker labels, and context, a general transcript can still leave substantial review work.
-
-MemoFlow gives recognition to Qwen-Audio 3.1 and workflow coordination and delivery to Codex. Within this project's scope, that combination addresses unclear speech, missed terminology, hard-to-follow multi-speaker content, and transcripts that are difficult to continue processing: Qwen handles file recognition, while Codex connects authentication, web review, file saving, and follow-up work.
-
-- **Qwen-Audio-3.1-ASR-Flash-Filetrans** performs non-real-time recognition across the model's supported languages and dialects. Alibaba Cloud documents speaker diarization, hotword enhancement, and context enhancement for this model. See the [ASR model overview](https://help.aliyun.com/zh/model-studio/asr-model).
-- **Codex** prepares the Skill environment, opens the configuration page, carries conversation attachments into the page, guides authentication, waits for Model Studio, and delivers the result.
-- **MemoFlow** keeps the full transcript in files while the conversation carries actions, confirmation, and result locations, creating a foundation for personalized content in requested formats.
-
-For specialized vocabulary, MemoFlow uses Alibaba Cloud's request-level hotwords and context enhancement. Hotwords fit temporary names, products, and terms; context supplies meeting background or domain text. Both can be sent in the same request. See the [official accuracy guide](https://help.aliyun.com/en/model-studio/improve-asr-accuracy).
-
-## First use
-
-The first run depends on network access, environment setup, and recording length. MemoFlow does not promise a fixed completion time:
+Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [Model Studio setup guide](https://help.aliyun.com/en/model-studio/first-api-call-to-qwen).
 
 1. Download the [v0.1.2 package](https://github.com/hx101700/memoflow/releases/tag/v0.1.2).
 2. Send the ZIP to Codex with:
@@ -45,38 +41,24 @@ The first run depends on network access, environment setup, and recording length
    Install this ZIP as the asr-transcription Skill. Read its SKILL.md and prepare the required environment in the current task folder.
    ```
 
-3. After setup, tell Codex:
+The full package includes Python and Node.js runtimes. The lite package downloads them from official sources during setup. Both packages support Windows 10/11 x64 and require an internet connection for the first dependency installation.
 
-   ```text
-   Please transcribe this recording.
-   ```
+## Use
 
-4. Review the recording, language, diarization, hotwords, context, and output locations in the page.
-5. Choose “Confirm and preview”, then “Copy for Codex” and send the confirmation message back to the conversation.
-6. Codex handles authentication, transcription, and document delivery for the same task.
+After installation, tell Codex:
 
-The full package includes Python and Node.js runtimes. The lite package is smaller and downloads those runtimes from official sources during setup. Both packages support Windows 10/11 x64; Python dependencies and the BL CLI still require internet access.
+```text
+Please transcribe this recording.
+```
 
-Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [Model Studio setup guide](https://help.aliyun.com/en/model-studio/first-api-call-to-qwen).
-
-## After transcription
-
-MemoFlow keeps the original result returned by Model Studio and creates three review documents from the same transcription, so you can read, filter, edit, and archive the result in the format that fits your work.
-
-## Current scope
-
-- One recording at a time; real-time transcription is not included.
-- Supported model languages and dialects, conversation attachments, local file selection, hotwords, context, and speaker diarization are supported.
-- Windows 10/11 x64 is the validated platform; macOS and Linux are not current acceptance platforms.
-- The current Skill delivers a reviewable transcript. User-specific content generation, style learning, and a feedback loop belong to stage two.
-- Recognition sends the recording and enabled enhancement content to Alibaba Cloud Model Studio in China (Beijing) and may incur charges.
+Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
 ## Help and contribute
 
 - [Usage guide](skills/asr-transcription/references/usage.md): installation, authentication, page workflow, and upgrades.
 - [Troubleshooting](skills/asr-transcription/references/errors.md): installation, login, session, and transcription issues.
 - [Report a problem](https://github.com/hx101700/memoflow/issues): include your OS, package, steps, and a redacted error.
-- [Discuss a use case](https://github.com/hx101700/memoflow/discussions): share output formats, workflows, and stage-two ideas.
+- [Discuss a use case](https://github.com/hx101700/memoflow/discussions): share workflows, formats, and stage-two needs.
 - [Support](SUPPORT.md): choose the right Issue, Discussion, or documentation entry point.
 - [Contributing](CONTRIBUTING.md): read this before changing code, docs, or examples.
 
@@ -88,6 +70,7 @@ Never post API keys, login URLs, transcript content, or private local paths in a
 | --- | --- |
 | Alibaba Cloud Model Studio | [Console](https://bailian.console.aliyun.com/) · [Documentation](https://help.aliyun.com/en/model-studio/) |
 | BL CLI | [Official site](https://bailian.console.aliyun.com/cli) · [GitHub](https://github.com/modelstudioai/cli) |
+| Qwen-Audio 3.1 | [Model overview](https://help.aliyun.com/en/model-studio/asr-model) |
 | Recognition accuracy | [Hotwords and context](https://help.aliyun.com/en/model-studio/improve-asr-accuracy) |
 | MemoFlow | [Releases](https://github.com/hx101700/memoflow/releases/latest) · [Development docs](doc/README.md) |
 
