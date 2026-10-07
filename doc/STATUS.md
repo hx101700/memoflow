@@ -4,7 +4,7 @@
 
 ## 当前工作
 
-当前目录为 `D:\Project\memoflow`，分支为 `dev`。正式版本仍为 [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1)，对应 master 的 c639b51。本轮完成项目介绍、文案与对话录音入口优化，版本保持 0.1.1；改动与两个待评审包在本机供审核。
+当前目录为 `D:\Project\memoflow`，分支为 `dev`。正式版本仍为 [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1)，对应 master 的 c639b51。本轮项目介绍、文案与对话录音入口优化已推送远端 dev，实现提交为 4019390，版本保持 0.1.1；两个待评审包在本机供审核。
 
 推送前深审已完成。现行源码、Skill、文档及 10 份 UML 的调用边界已核对，修正了图 03 的 HTTP/SSE 分派和并行关系、图 07 的原文件变化分支；本次提交同步到 dev，正式版仍按原标签管理。
 
