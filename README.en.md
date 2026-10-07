@@ -10,6 +10,8 @@
 
 MemoFlow is a set of Skills for interactive recording transcription and self-learning minutes generation, designed for meeting transcription, content production, and call analysis. You provide a recording, choose the options you need, and hand the confirmed settings to Codex. The Skill calls Alibaba Cloud Model Studio's ASR service and produces transcript drafts in Word, Excel, and Markdown. Later, MemoFlow will learn from reviewed transcripts, feedback, and formatted reference minutes to generate polished minutes that follow your working style.
 
+![Providing a recording in Codex and opening the MemoFlow configuration page](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-workflow.png)
+
 ## About MemoFlow
 
 Many recording tools provide unstructured text, leaving users to replay the audio, correct names and technical terms, identify speakers, and copy the result into their own document templates. Longer recordings, more speakers, and specific formatting requirements make this work slower and increase the chance of losing context.
@@ -28,6 +30,13 @@ The project is organized around two Skills:
 | --- | --- | --- |
 | `asr-transcription` | Choose a recording in the interactive page, configure the language, speaker diarization, hotwords, context, and save locations, then let Codex call Model Studio for non-real-time file transcription. The workflow keeps the original JSON and creates timestamped Word, Excel, and Markdown transcript drafts with speaker labels when enabled. | **Available** |
 | Personalized minutes generation | Learn structure, information priorities, wording, and layout from reviewed transcripts, focus requirements, formatted reference minutes, and user feedback, then generate minutes in the requested format. Confirmed edits and feedback will improve future output. | **In development** |
+
+<details>
+<summary>View the full transcription configuration page (demo data)</summary>
+
+![The full MemoFlow configuration page: recording, transcription settings, hotwords, context, save locations, and authentication](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
+
+</details>
 
 ```mermaid
 ---
@@ -77,6 +86,16 @@ Please transcribe this recording.
 ```
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
+
+**Review and confirm**
+
+![Reviewing the recording and settings before copying the confirmation message to Codex](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-preview.png)
+
+**After handing the task to Codex**
+
+![The handoff page shows the transcription task ID and save locations](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
+
+The web page screenshots above use demo data. They show the Chinese interface; the page also supports English.
 
 ## Help and contribute
 

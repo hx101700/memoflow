@@ -10,6 +10,8 @@
 
 MemoFlow 是一套面向会议转写、内容生产与通话分析等场景的交互式语音转写与自学习纪要生成 Skill。用户提供录制好的音频，按需开启功能并确认设置后，即可交由 Codex 调用阿里云百炼的 ASR 模型，生成 Word、Excel、Markdown 三种格式的校对稿。后续，MemoFlow 将借助 LLM，从用户的校对稿、反馈和已有的带格式纪要文档中持续学习，生成符合用户习惯、排版规整、可直接交付的新纪要。
 
+![在 Codex 中提供录音并打开 MemoFlow 配置网页](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-workflow.png)
+
 ## 具体介绍
 
 很多录音工具只能给出一段未经整理的文字。用户还要反复回听，修正人名和专业术语，区分说话人，再把内容复制到自己的文档模板中。录音越长、参与者越多、格式要求越明确，这个过程越耗时，也越容易丢失上下文。
@@ -28,6 +30,13 @@ MemoFlow 选择阿里云百炼的 [Qwen-Audio-3.1-ASR-Flash-Filetrans](https://h
 | --- | --- | --- |
 | `asr-transcription` | 用户在交互式网页中选择录音，设置识别语言、说话人区分、热词、上下文和保存位置；Codex 接收用户确认后调用阿里云百炼完成长音频非实时转写，保留原始 JSON，并生成带时间戳、可区分说话人的 Word、Excel、Markdown 校对稿。 | **已完成** |
 | 个性化纪要生成 | 以用户校对后的转写稿为基础，结合重点要求和已有的带格式纪要文档，学习内容结构、信息取舍、表达方式与排版习惯，生成符合指定格式的新纪要；将用户确认的修改和反馈用于后续生成，持续完善个性化输出。 | **开发中** |
+
+<details>
+<summary>查看完整转写配置页（演示数据）</summary>
+
+![MemoFlow 完整配置页：录音、转写设置、热词、上下文、保存位置和认证方式](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-page.png)
+
+</details>
 
 ```mermaid
 ---
@@ -75,6 +84,16 @@ flowchart TD
    ```
 
 Codex 会打开本机配置网页，请在网页中完成录音和识别设置，进入预览页后点击“复制给 Codex”，再将确认消息发回原对话。
+
+**预览确认**
+
+![核对录音和设置，复制确认消息给 Codex](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-preview.png)
+
+**交给 Codex 后**
+
+![交接结束页面显示转写任务编号和保存位置](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
+
+以上网页效果图使用演示数据。
 
 ## 帮助与参与
 
