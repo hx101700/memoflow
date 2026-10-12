@@ -1,4 +1,4 @@
-中文 | [English](https://github.com/hx101700/memoflow/blob/v0.1.1/release/NOTES.en.md)
+中文 | [English](https://github.com/hx101700/memoflow/blob/master/release/NOTES.en.md)
 
 # MemoFlow v0.1.1
 
@@ -17,8 +17,6 @@
 - `packages/core/src/files/upload.ts`：经 `resolveFileUrl()`、`uploadFile()` 将等待秒数传至 `uploadToOSS()`，OSS 上传计时器由固定的 `120_000` 毫秒改为 `timeout * 1000`。
 
 上传凭证请求保留官方15秒时限。CLI、commands、runtime 沿用官方2.1.0；修订 core 以本地 npm 归档随两个 ZIP 交付，通过依赖锁及 npm override 安装，并保留 Apache-2.0 许可与修改说明。[源码差异与构建方法](https://github.com/hx101700/memoflow/blob/v0.1.1/patches/README.md)
-
-上游问题反馈：[modelstudioai/cli#243](https://github.com/modelstudioai/cli/issues/243)。
 
 ### 下载
 

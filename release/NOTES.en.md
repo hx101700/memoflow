@@ -1,4 +1,4 @@
-[中文](https://github.com/hx101700/memoflow/blob/v0.1.1/release/NOTES.md) | English
+[中文](https://github.com/hx101700/memoflow/blob/master/release/NOTES.md) | English
 
 # MemoFlow v0.1.1
 
@@ -17,8 +17,6 @@ MemoFlow builds `bailian-cli-core@2.1.0-memoflow.1` from the official BL v2.1.0 
 - `packages/core/src/files/upload.ts`: `resolveFileUrl()` and `uploadFile()` forward the timeout in seconds to `uploadToOSS()`, replacing the fixed `120_000` ms OSS upload timer with `timeout * 1000`.
 
 Upload-policy requests retain the official 15-second timeout. The CLI, commands, and runtime packages remain at the official 2.1.0 version. Both ZIPs include the revised core as a local npm archive, installed through the dependency lock and npm override, with the Apache-2.0 license and modification notice included. [Source patch and build instructions](https://github.com/hx101700/memoflow/blob/v0.1.1/patches/README.md)
-
-Upstream report: [modelstudioai/cli#243](https://github.com/modelstudioai/cli/issues/243).
 
 ### Downloads
 
