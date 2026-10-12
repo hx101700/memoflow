@@ -61,11 +61,11 @@ flowchart TD
 
 Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [Model Studio setup guide](https://help.aliyun.com/en/model-studio/first-api-call-to-qwen).
 
-1. Download the [v0.1.0 package](https://github.com/hx101700/memoflow/releases/tag/v0.1.0).
+1. Download the [latest package](https://github.com/hx101700/memoflow/releases/latest).
 2. Send the ZIP to Codex with:
 
    ```text
-   Install this ZIP as the asr-transcription Skill. Read its SKILL.md and prepare the required environment in the current task folder.
+   Install this new ZIP as the asr-transcription Skill. Read its SKILL.md and follow the instructions to prepare the runtime environment in the current task folder. If it is already installed, update it.
    ```
 
 The full package includes Python and Node.js runtimes. The lite package downloads them from official sources during setup. Both packages support Windows 10/11 x64 and require an internet connection for the first dependency installation.

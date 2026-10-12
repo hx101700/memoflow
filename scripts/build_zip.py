@@ -16,6 +16,7 @@ REQUIRED_FILES = (
     "scripts/asr.py", "scripts/bootstrap.ps1", "scripts/runtimes.json", "scripts/requirements.txt",
     "scripts/bailian/package.json", "scripts/bailian/package-lock.json",
     "scripts/bailian/console-browser.cjs",
+    "scripts/bailian/archives/bailian-cli-core-2.1.0-memoflow.1.tgz",
     "scripts/asr_runtime/__init__.py", "scripts/asr_runtime/__main__.py",
     "scripts/asr_runtime/models.py", "scripts/asr_runtime/web.py",
     "scripts/asr_runtime/error_catalog.json",

@@ -272,6 +272,7 @@ class EnvironmentTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         manifest = self.runtime.path(".tools/bailian/node_modules/bailian-cli/package.json")
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
+        self.write_core_manifest()
         with patch("asr_runtime.utils.bailian.find_node", return_value=self.runtime.node_entry) as find:
             command = bl_command(self.runtime, ["speech", "recognize", "--dry-run"])
         find.assert_called_once_with(self.runtime)

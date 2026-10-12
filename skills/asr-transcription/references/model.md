@@ -1,6 +1,6 @@
 # 官方依据与固定能力
 
-API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Filetrans。百炼 CLI（BL）固定2.1.0，对照源码提交`8bbbbc722d70fb200641ef22b6f6d033aeae9f74`及本机发布包；不把未核实的新版本能力加入当前接口。
+API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Filetrans。百炼 CLI（BL）、commands、runtime 固定2.1.0，对照源码提交`8bbbbc722d70fb200641ef22b6f6d033aeae9f74`及本机发布包；core 使用本项目原生源码修订`2.1.0-memoflow.1`，上传超时边界见下文。不把未核实的新版本能力加入当前接口。
 
 精度增强[A04]与说话人区分（官方术语：说话人分离，speaker diarization）[A03]的参数依据见下表。2026-10-07 再次核对模型介绍[A01]及中英文模型总览[A02]：Qwen 3.1 支持多地区中文方言、热词和上下文增强。产品输入方式和媒体处理以项目实现为准。
 
@@ -56,7 +56,9 @@ Excel的5MB、20MiB解压、200个内部文件、10001行和两列是本地解�
 
 ## BL复用边界
 
-官方仓库：[modelstudioai/cli](https://github.com/modelstudioai/cli)。npm版本与完整性摘要以Skill中的`scripts/bailian/package-lock.json`为依赖来源；安装时由npm ci按锁文件获取依赖，不维护第二份依赖版本表。
+官方仓库：[modelstudioai/cli](https://github.com/modelstudioai/cli)。npm版本与完整性摘要以Skill中的`scripts/bailian/package-lock.json`为依赖来源；安装时由npm ci按锁文件获取依赖。`package.json` 的 npm override 将 core 固定为随 Skill 交付的 `scripts/bailian/archives/bailian-cli-core-2.1.0-memoflow.1.tgz`，不在安装后改写已安装包。
+
+2026-10-12核对官方 [v2.1.0](https://github.com/modelstudioai/cli/tree/fc080016469f33ce6726ae997d0ff6428c19aa49) 源码：`Client.uploadFile()` 原来只传入 identity 与 signal，`uploadToOSS()` 固定120秒，公开 `--timeout`、`DASHSCOPE_TIMEOUT` 和 Profile `timeout` 无法延长上传。本项目仅修订 core 中这条调用链，让上传使用 BL 已解析的 timeout；获取上传凭证仍为15秒。修订包沿用 Apache-2.0 许可并保留许可与修改说明，CLI、commands、runtime 保持官方2.1.0。上传、提交、轮询、下载仍由原生 BL 完成，不预加载 fetch 拦截器、不另写上传器、不增加转写重试。
 
 | 能力 | 固定源码依据 | 本项目处理 |
 | --- | --- | --- |
@@ -64,10 +66,12 @@ Excel的5MB、20MiB解压、200个内部文件、10001行和两列是本地解�
 | 环境Key | [resolver.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/core/src/auth/resolver.ts) | 用DASHSCOPE_API_KEY子进程环境，不把Key放argv |
 | 官方登录 | [login-console.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/auth/login-console.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/auth/status.ts) | BL负责回调与保存；登录后检查模型Key存在，不再调用模型验证 |
 | 完整ASR | [recognize.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/speech/recognize.ts) | 本地上传、提交、轮询、下载、out保存均由BL完成 |
-| 临时上传 | [upload.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/core/src/files/upload.ts) | 国内策略15秒、上传120秒；整文件读入内存，接近上限的大文件未全面验收 |
+| 临时上传 | [upload.ts](https://github.com/modelstudioai/cli/blob/fc080016469f33ce6726ae997d0ff6428c19aa49/packages/core/src/files/upload.ts)、[client.ts](https://github.com/modelstudioai/cli/blob/fc080016469f33ce6726ae997d0ff6428c19aa49/packages/core/src/client/client.ts) | 官方上传固定120秒；本项目修订 core 后遵循 BL timeout，当前3600秒。国内凭证请求15秒；整文件读入内存，接近上限的大文件未全面验收 |
 | 失败/轮询 | [http.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/core/src/client/http.ts)、[polling.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/runtime/src/utils/polling.ts) | 当前ASR请求失败上抛，正常未完成才轮询；不据此声称整个CLI所有命令都没有重试 |
 
-使用recognize完整模式，不传--async。项目传timeout=3600、poll-interval=5；Python进程上限3900秒。这是项目等待策略，不是官方处理承诺。最后JSON下载使用原生fetch，没有单独下载超时，保留外层进程上限。
+使用recognize完整模式，不传--async。项目传`--timeout 3600`、`--poll-interval 5`：修订 core 的上传和 BL 的轮询等待各使用3600秒，提交及每次状态请求也使用该 timeout。Python 整个 BL 子进程上限为`3600 × 2 + 300 = 7500`秒（2小时5分），300秒是获取上传凭证、提交和结果下载等余量，不是每阶段额外时限。这是本机等待策略，不是官方处理时长承诺；阶段叠加过长仍可能先触及整体上限。最后JSON下载使用原生fetch，没有单独 BL 下载超时，受外层进程上限约束。
+
+BL 将多种请求取消或超时统一显示为`Request timed out.`；轮询总截止时间到期显示`Polling timed out.`。录音大小和通用错误文本不能证明失败发生在上传阶段，也不能证明云端未受理。历史用户录音的失败阶段和云端最终结果未因本次源码修订得到确认；本机模拟服务验证不等于真实云端验收。
 
 2026-10-04的真实BL本机合约确认：`--model qwen-audio-3.1-asr-flash-filetrans`被原样提交，热词与上下文可一起进入请求；全部可选设置关闭时仍有`parameters={"channel_id":[0]}`，符合[A03]对3.1必须携带parameters对象的要求。BL2.1帮助中的增强描述仍提到3.0，云端3.1能力以[A01/A03/A04]为依据，本机合约只验证CLI实际请求，不作为云端识别成功证明。
 
@@ -89,7 +93,7 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 2026-10-03再次核对固定源码及本机2.1.0发布包：[local-server.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/shared/local-server.ts)在Windows调用cmd/start传入URL，&needapikey参数存在被拆开的引用问题。[login-console.ts](https://github.com/modelstudioai/cli/blob/8bbbbc722d70fb200641ef22b6f6d033aeae9f74/packages/commands/src/commands/auth/login-console.ts)在打开失败时输出完整备用链接，保持原回调服务至授权完成或15分钟超时；该版本未提供已核实的auth login禁用浏览器选项。
 
-本项目仅在Windows控制台登录时使用Node预加载适配：拦下上述已知的`cmd/start`登录开页调用，使BL进入其完整URL输出分支；Python验证URL后通过`os.startfile`打开一次。BL包文件保持原样，授权state、回调、凭据保存和原生15分钟会话计时均由BL负责；Python不再叠加登录总等待上限。开发源为`scripts/console-browser.cts`，发行产物为Skill内`scripts/bailian/console-browser.cjs`。适配仅覆盖该固定版本已核实的浏览器调用，不扩展为通用Node拦截器。
+本项目仅在Windows控制台登录时使用Node预加载适配：拦下上述已知的`cmd/start`登录开页调用，使BL进入其完整URL输出分支；Python验证URL后通过`os.startfile`打开一次。登录相关包源码保持原样，授权state、回调、凭据保存和原生15分钟会话计时均由BL负责；Python不再叠加登录总等待上限。开发源为`scripts/console-browser.cts`，发行产物为Skill内`scripts/bailian/console-browser.cjs`。适配仅覆盖该固定版本已核实的浏览器调用，不扩展为通用Node拦截器；上传超时通过上文的原生 core 修订处理。
 
 本项目首次调用login即要求正常Windows桌面执行权限；Windows进程令牌对照读取得到受限执行为true、正常桌面为false，程序在启动BL前用[IsTokenRestricted](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-istokenrestricted)拒绝受限令牌。此API检查限制SID列表，不是对所有桌面可用性或浏览器内部状态的检测。
 

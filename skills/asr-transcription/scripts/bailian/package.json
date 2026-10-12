@@ -1,8 +1,12 @@
 {
   "name": "asr-transcription-bailian-runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "dependencies": {
-    "bailian-cli": "2.1.0"
+    "bailian-cli": "2.1.0",
+    "bailian-cli-core": "file:archives/bailian-cli-core-2.1.0-memoflow.1.tgz"
+  },
+  "overrides": {
+    "bailian-cli-core": "$bailian-cli-core"
   }
 }

@@ -2,9 +2,11 @@
 
 此Skill将单个本地录音转写为原始JSON和Word、Excel、Markdown转写校对稿。模型固定为`qwen-audio-3.1-asr-flash-filetrans`，地域为北京。
 
-[v0.1.0 Release](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与百炼 CLI（BL）仍需联网。
+[最新 Release](https://github.com/hx101700/memoflow/releases/latest) 提供两个功能相同的包：`asr-transcription.zip` 含 Python/Node 运行时，`asr-transcription-lite.zip` 在首次安装时下载运行时；两者均在工作目录准备独立环境，安装依赖与百炼 CLI（BL）仍需联网。
 
 ## 运行准备
+
+首次安装或更新都使用README中的统一安装请求。收到新ZIP后，Codex按[安装或更新Skill](../SKILL.md#安装或更新-skill)检查实际安装情况；已有安装先结束运行中的任务，再直接覆盖更新Skill文件，沿用原工作目录并保留凭据、任务和结果。
 
 支持已更新、包含系统 curl 的 Windows 10/11 x64。首次安装使用系统自带的 Windows PowerShell，将完整 Python 3.12.10、Node.js 24.21.0（含 npm 11.19.0）及依赖准备到工作目录，无需预先安装 Python 或 Node.js。固定版本和摘要随 Skill 维护，系统已有版本不会被更改。
 
@@ -29,7 +31,7 @@ Python `bootstrap` 从 Skill 中的 Python/npm 依赖锁安装到工作目录，
 
 需要下载Python依赖时，先比较官方PyPI和阿里云镜像的文件前缀速度，优先使用较快来源，并准备锁定的pip 26.2.1。pip自行恢复中断下载，单个业务依赖最多恢复5次；该来源最终失败后，自动尝试另一个来源一次。已完整下载的wheel保存在`.asr-transcription/.runtime/wheels`供后续安装复用，换源不跨进程续接未完成的文件。两个来源都失败时停止并保留`python-install.log`，不要在Codex中额外循环重跑或改动摘要。
 
-首次安装 BL 时，也先比较 npm 官方源和 npmmirror 的包文件前缀速度，再由 `npm ci` 按原锁文件安装。下载失败先由 npm 处理有限重试；收到已识别的下载或来源错误（如连接中断、404/5xx、下载校验失败）后，安装器换到另一来源。每源至多启动一次安装进程；权限、磁盘、依赖锁或未知错误直接停止。npm 自行校验和复用工作目录中的缓存，不承诺续接未完成文件。最终失败时保留 `bootstrap.log`，不修改全局源、不放宽完整性校验，也不额外循环重装。
+首次安装 BL 时，也先比较 npm 官方源和 npmmirror 的包文件前缀速度，再由 `npm ci` 按锁文件安装。BL、commands、runtime 固定官方2.1.0，core 通过 npm override 使用随 Skill 交付的原生源码修订 `2.1.0-memoflow.1`，让上传遵循 BL timeout。下载失败先由 npm 处理有限重试；收到已识别的下载或来源错误（如连接中断、404/5xx、下载校验失败）后，安装器换到另一来源。每源至多启动一次安装进程；权限、磁盘、依赖锁或未知错误直接停止。npm 自行校验和复用工作目录中的缓存，不承诺续接未完成文件。最终失败时保留 `bootstrap.log`，不修改全局源、不放宽完整性校验，也不额外循环重装。
 
 需要诊断环境时运行：
 
@@ -152,6 +154,8 @@ $jobId = '替换为交接回执中的转写任务编号'
 ```
 
 转写读取交接时保存的授权。Codex 告知已开始并等待同一进程完成；BL 负责临时上传、提交、轮询和原始 JSON 保存，Python 随后生成三种文档。成功后直接交付，无需另行 export；失败或结果未知时停止，不自动重传。
+
+上传和轮询各使用一小时等待预算，整个 BL 进程最多等待2小时5分；这不是预计完成时间。获取上传凭证仍为15秒。超时后保留原任务和已生成文件，按[错误说明](errors.md#转写超时)核对已知结果，不能仅凭录音大小或通用超时文本判断失败阶段。
 
 取消尚未交接的页面使用 `cancel --session SESSION_ID`。它结束编辑会话，不能取消已经交接的云端任务。
 

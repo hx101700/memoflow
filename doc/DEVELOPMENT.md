@@ -6,7 +6,7 @@
 
 MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON 和 Word、Excel、Markdown 转写校对稿。第二阶段的个性化纪要生成、偏好存储及反馈学习仍在开发中，当前代码尚未实现。
 
-固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，百炼 CLI（BL）2.1.0 临时 OSS 上传。
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，百炼 CLI（BL）2.1.0 临时 OSS 上传。CLI、commands、runtime 使用官方2.1.0，core 固定为本项目原生源码修订 `2.1.0-memoflow.1`。
 
 | 参与者 | 职责 |
 | --- | --- |
@@ -160,9 +160,13 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。固定 BL 2.1.0 的 cmd/start 会拆开 URL 中的 `&`，因此只在 console 登录预加载 `console-browser.cjs`，转交完整 URL，由 Python 系统 URL 处理器打开一次。BL 包未修改，回调和凭据由 BL 管理；BL 升级时须重新核对是否可移除此适配。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。固定 BL 2.1.0 的 cmd/start 会拆开 URL 中的 `&`，因此只在 console 登录预加载 `console-browser.cjs`，转交完整 URL，由 Python 系统 URL 处理器打开一次。登录相关包源码保持原样，回调和凭据由 BL 管理；BL 升级时须重新核对是否可移除此适配。上传超时使用下文的原生 core 修订，不通过此适配处理。
 
 `recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.1.0 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
+
+官方 core 的 `Client.uploadFile()` 原来不传 timeout，`uploadToOSS()` 固定120秒。本项目在官方 v2.1.0 源码上修订这条调用链：`Client` 传入已解析的 `settings.timeout`，经 `resolveFileUrl()`、`UploadOptions` 和 `uploadFile()` 到 `uploadToOSS()`；获取上传凭证仍为15秒。上传、提交、轮询、下载与 `--out` 保存继续由 BL 执行，不增加 Python 云端上传实现或 fetch 拦截器。
+
+`WAIT_SECONDS=3600` 用于上传、提交和单次查询；BL 轮询也以该值建立总截止时间，轮询间隔为5秒。`PROCESS_SECONDS=WAIT_SECONDS*2+300=7500` 限制整个 BL 子进程，给上传和轮询各一小时及300秒余量；结果下载没有独立 BL 时限。各阶段可累积，整体上限不是每次请求时限或云端完成保证。`Request timed out.` 是多种请求超时的统一文本，不能从录音大小推断历史失败阶段；未知云端结果仍维持一次尝试约束。本机合约与真实云端验收分开记录。
 
 `transcribe --job ID` 读取交接授权，核对协议与当前模型，再独占创建 execution 目录。一次任务只有一次尝试，准备失败也保留占用；重复调用读取既有状态，不自动重试。它约束本地尝试次数，不是云端恰好一次保证。启动后 Codex 持续等待同一进程，直到文档交付或明确失败。
 
@@ -234,6 +238,10 @@ Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿�
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
+BL 安装资源同时包含 `scripts/bailian/archives/bailian-cli-core-2.1.0-memoflow.1.tgz`。归档从官方 tag `v2.1.0`（`fc080016469f33ce6726ae997d0ff6428c19aa49`）的原生 core 源码构建，包含 Apache-2.0 LICENSE 与修改说明；npm override 和锁文件使用该本地归档替换 core，CLI、commands、runtime 保持官方包。安装先复制锁定资源到工作目录，再由 npm 安装，不在安装后改写 node_modules。两个发行包均包含修订归档。
+
+源码差异和构建方法保存在 [patches](../patches/README.md)。安装检查同时核对 CLI 与 core 版本，原版 core 不会被当作已修复环境复用；旧环境按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装 BL，凭据及任务位于独立目录。开发 patch 不进入用户 ZIP。
+
 `run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
 
 Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机有限命令 `run_process()` 和安装命令 `run_installer()` 持有本次 `Popen`，在超时、中断或异常退出时共用 `stop_process_tree()` 结束其进程树；正常完成不触发停止。选择窗口只依赖标准库与 tkinter，直接使用 `sys.base_prefix/python.exe`，使取消动作对应实际窗口进程。停止范围限于本次创建的进程，不枚举其他 Python 或浏览器进程；BL 登录和识别沿用各自的生命周期。
@@ -249,7 +257,7 @@ Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机�
 
 默认输出到 `dist/`，已有同名文件不会覆盖；需要另选目标时使用 `--output`。
 
-开发在 dev，master 保存正式发布里程碑。当前正式版本为 v0.1.0；项目版本仅在下次通过验收并发布 master 时按变更递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
+开发在 dev，master 保存正式发布里程碑。当前验收发布版本为 v0.1.1；项目版本仅在下次通过验收并发布 master 时按变更递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过 Git 追溯。
 
 界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
 

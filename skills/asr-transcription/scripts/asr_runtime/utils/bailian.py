@@ -10,14 +10,15 @@ from pathlib import Path
 from typing import IO, NotRequired, TypedDict, cast
 from urllib.parse import parse_qs, urlsplit
 
-from .. import BAILIAN_VERSION
+from .. import BAILIAN_CORE_VERSION, BAILIAN_VERSION
 from ..models import ErrorReport, JobConfig
 from .auth import bailian_environment
 from .environment import Runtime, SetupError, check_login_execution_context, find_node, run_process
 
 BEIJING_BASE_URL = "https://dashscope.aliyuncs.com"
 WAIT_SECONDS = 3600
-PROCESS_SECONDS = WAIT_SECONDS + 300
+# 上传和识别轮询各使用一个等待预算，另留提交及结果下载余量。
+PROCESS_SECONDS = WAIT_SECONDS * 2 + 300
 
 
 class _CodeExplanation(TypedDict):
@@ -45,9 +46,20 @@ def installed_bl_version(runtime: Runtime) -> str | None:
         version = json.loads(path.read_text(encoding="utf-8"))["version"]
         if not isinstance(version, str) or not version:
             raise ValueError("invalid version")
-        return version
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise SetupError("工作区BL包信息损坏，请检查安装目录。") from exc
+    if version == BAILIAN_VERSION:
+        core = runtime.path(".tools/bailian/node_modules/bailian-cli-core/package.json")
+        try:
+            core_version = json.loads(core.read_text(encoding="utf-8"))["version"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise SetupError("BL core安装不完整，请检查私有BL安装目录。") from exc
+        if core_version != BAILIAN_CORE_VERSION:
+            raise SetupError(
+                f"当前BL core需要上传超时修订版{BAILIAN_CORE_VERSION}。请先结束运行任务，"
+                "仅重新准备工作目录的.asr-transcription/.tools/bailian，保留凭据、任务和结果。"
+            )
+    return version
 
 
 def _node_command(runtime: Runtime, arguments: list[str]) -> list[str]:

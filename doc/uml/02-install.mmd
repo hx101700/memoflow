@@ -82,8 +82,9 @@ else 前置条件满足
         Note over B,F: 下载最终失败或本机安装失败时抛出SetupError<br/>保留日志与完整wheel；不开始BL安装
     end
     opt BL尚未安装
-        B->>S: 读取scripts/bailian的package与lock
-        B->>F: 复制到.asr-transcription/.tools/bailian
+        B->>S: 读取scripts/bailian的package、lock与core修订归档
+        B->>F: 复制到.asr-transcription/.tools/bailian<br/>包含archives/bailian-cli-core-2.1.0-memoflow.1.tgz
+        Note over B,M: npm override＋锁文件安装原生core修订包<br/>CLI、commands、runtime保持官方2.1.0<br/>归档保留Apache-2.0许可与修改说明；不在安装后改包
         B->>B: _install_bailian(runtime, node, npm)
         B->>I: rank_npm_registries()
         Note over I,M: 并行采样固定BL 2.1.0 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序

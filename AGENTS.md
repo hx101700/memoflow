@@ -24,6 +24,7 @@
 
 1. 保持入口 → application → utils 的轻量分层；单一操作允许入口直接分派。共享数据及 JSON 协议类型放 `models.py`，规则不执行 I/O，utils 不反向导入用例。
 2. BL 负责鉴权、临时上传、提交、轮询、下载及原始 JSON 落盘，直接复用公开 CLI。Python 负责本机配置、媒体处理、结果解析和文档生成。
+   BL、commands、runtime 固定官方2.1.0；core 固定本项目原生源码修订 `2.1.0-memoflow.1`，仅让临时 OSS 上传沿用 BL 已解析的 timeout，获取上传凭证仍为15秒。修订包在 `scripts/bailian/archives/`，由 npm override 与锁文件安装，保留 Apache-2.0 许可和修改说明；不在运行时拦截 fetch、不另写上传器、不增加转写重试。
 3. 前端源码位于 `frontend/`，使用 Vue 3、TypeScript 与 Element Plus；优先使用组件公开参数、插槽和默认交互，定制必须有具体产品需求。组件绑定表单状态，API 模块处理本机传输。Key 展示与编辑只由 `KeyDisplay.vue` 的局部状态持有，与可提交表单分开，保存后由服务端执行凭据读取；Key 不进入任务配置、日志或浏览器持久存储。
 4. 复用 `files`、`job_files`、`hotwords`、`results` 等现有能力；删除旧入口、兼容层和重复实现。新增校验或抽象必须指出当前业务消费者。
 5. 每个命名函数或方法提供简短中文职责说明，直接描述动作与结果。Python 使用 docstring，TypeScript 使用函数前注释；外部约束和非显然原因写在相关实现旁。共享输入、状态与回执提供明确类型，类型检查属于开发流程。
@@ -43,6 +44,7 @@
 - 热词导入去表头及完全空白行，保留错误值；显示序号按当前数组连续编号，与组件稳定行标识分开。导入只读取并填表；热词与上下文内容仅在点击“确认并预览”时由后端校验，分别调用 `validate_hotword_rows` / `build_vocabulary` 与 `validate_context`。
 - 网页诊断一次返回中英文，语言切换只更新显示。行错误绑定稳定行键，编辑只清受影响单元格的旧提示；重复组至少两项时保留红标。关闭热词或上下文增强清空对应区域，API Key 状态独立。
 - 交接成功后按认证方式处理，使用 `transcribe --job ID`。缺少控制台模型凭据才登录；用户授权完回复“已完成”，读取原 BL 结果后继续同一任务，不再询问业务授权。启动转写后等待同一进程直到交付或明确失败。每任务一次尝试，失败或结果未知不自动重试。
+- 转写传 `--timeout 3600`，修订 core 的上传与 BL 轮询各使用一小时预算；Python 整个 BL 进程上限为7500秒（两小时加300秒余量），不是云端时长保证。提交和每次状态请求也使用 BL timeout，结果下载无独立 BL 时限。通用 `Request timed out` 与录音大小不能确定失败阶段或云端最终结果。
 - BL 登录从首次调用就使用正常桌面执行权限，工具支持时设置 `sandbox_permissions=require_escalated`；受限令牌在 BL 启动前被拒绝。固定版本的 Windows 适配只转交完整 URL 给系统浏览器一次，授权会话、回调与凭据仍由 BL 管理。
 - 原始 JSON 有效使用 `JSON_READY` 表达；三种成品完成需 `delivery.status=COMPLETE` 且 `documents_ready=true`。状态含义见 [errors.md](skills/asr-transcription/references/errors.md)。
 - 新识别在执行占用前核对当前固定模型；历史成功任务仍可查询与重导，writer 使用 `config.model` 标记原模型。配置与摘要不改写。
@@ -52,7 +54,7 @@
 
 - 仅修改当前仓库及明确批准的测试位置；保留 `data/` 原始用户数据。真实录音、Key、令牌、签名 URL、转写、原响应和运行日志不得提交或打包。
 - 开发在 `dev`，`master` 用于验收里程碑。提交、推送、合并、发布需用户明确意图；精确路径暂存，不强推或重写历史；同次网络推送失败两次即停止。
-- 项目版本号仅在通过验收并发布到 `master` 时变更。当前正式版本为 `0.1.0`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
+- 项目版本号仅在通过验收并发布到 `master` 时变更。当前验收发布版本为 `0.1.1`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
 - 固定发行清单位于 `scripts/build_zip.py`。两个 ZIP 共用 Skill 运行文件与仓库最新版 README.md、README.en.md；README 从仓库根读取，不维护包用副本。`asr-transcription.zip` 额外在 `assets/runtimes` 保存两个原始官方运行时 ZIP；`asr-transcription-lite.zip` 不附运行时。AGENTS、开发文档、测试、UML、已安装依赖及用户数据不入包。新增运行文件时同步清单和包边界检查。正式发布使用相应版本标签，同时提供两个包。
 - 前端通过 Vite 构建到 Skill 的 `scripts/asr_runtime/static/`，核心产物为 `index.html`、`app.js` 和 `app.css`，同时交付 `favicon.svg` 与第三方许可说明。发行包使用构建产物；Vue/TypeScript 源码、开发配置、构建依赖及 `node_modules` 保留在开发仓库。
 - Python 依赖由 Skill 中 `scripts/requirements.txt` 锁定版本与摘要；安装工具 pip 26.2.1 的文件与摘要固定在 `utils/installation.py`，BL 锁在 `scripts/bailian/`。Python 安装前比较 PyPI 与阿里云镜像的文件前缀吞吐；每个下载阶段按来源顺序各启动至多一次 `pip download`，连接重试2次、业务依赖的中断恢复最多5次由 pip 完成，仍失败才切换另一源。完整 wheel 保存在工作目录，安装阶段仅使用本机文件。

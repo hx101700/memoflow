@@ -2,3 +2,4 @@
 
 MODEL = "qwen-audio-3.1-asr-flash-filetrans"
 BAILIAN_VERSION = "2.1.0"
+BAILIAN_CORE_VERSION = "2.1.0-memoflow.1"

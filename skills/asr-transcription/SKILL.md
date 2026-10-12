@@ -1,6 +1,6 @@
 ---
 name: asr-transcription
-description: 在 Codex 中通过本机网页将单个录音转为带时间戳的 Word、Excel 和 Markdown 转写校对稿。用户附上录音、提供本机录音路径或请求转写时使用，也支持百炼凭据配置和已有转写任务重导。
+description: 在 Codex 中通过本机网页将单个录音转为带时间戳的 Word、Excel 和 Markdown 转写校对稿。用户附上录音、提供本机录音路径或请求转写时使用，也支持新 ZIP 的安装或更新、百炼凭据配置和已有转写任务重导。
 ---
 
 # 录音转写
@@ -9,6 +9,7 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 
 ## 选择入口
 
+- **安装或更新**：用户提供新 ZIP 并要求安装时，按“安装或更新 Skill”处理。
 - **新录音**：先准备环境并打开网页；本次提供的录音附件或路径带入同一网页，由用户核对后确认转写。
 - **已有转写任务**：使用原工作目录与确切 `job_id`，进入“已有转写任务”。只询问当前对话缺少的目录或编号。
 - **只调整凭据**：按[凭据修复](references/errors.md#鉴权失败与重新配置)处理。指定 API Key 可在网页单独保存；用户告知完成后，用 `cancel --session SESSION_ID` 结束这次编辑会话，无需录音或转写。
@@ -21,11 +22,17 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 
 首次安装先核对宿主提供的系统与架构：当前完整包和轻量包适用于 Windows 10/11 x64。匹配后，按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
 
-## 更新 Skill
+## 安装或更新 Skill
 
-用户提供新版本 ZIP 时，先确认同一工作目录没有正在执行的任务，再替换已安装的 Skill 文件，并在原工作目录重新运行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`。安装器会复用有效的私有 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果；不会删除或迁移这些数据。
+首次安装与更新使用同一请求：
+
+> 请将这个新的ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境，已安装则更新。
+
+收到新 ZIP 后检查实际安装情况。首次安装按“准备运行”执行；已安装则先确认同一工作目录没有正在执行的任务，再直接覆盖更新已安装的 Skill 文件，省去备份步骤，并在原工作目录重新运行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`。安装器复用有效的私有 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果。
 
 如果诊断提示虚拟环境绑定了其他 Python，结束使用该环境的任务后，只删除 `WORKSPACE/.asr-transcription/.venv`，再运行 bootstrap。保留 `.env`、`.state`、`.tools` 和输出目录，不删除整个 `.asr-transcription`。更新完成后继续使用原 Skill 入口和同一工作目录。
+
+若提示 BL core 需要上传超时修订版，按[环境版本修复](references/errors.md#常见问题处理)只重新安装当前工作目录的 BL，保留 Python、Node、凭据、任务及结果。
 
 ## 新录音
 

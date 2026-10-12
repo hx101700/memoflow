@@ -5,7 +5,7 @@ import subprocess
 import sys
 from unittest.mock import patch
 
-from asr_runtime import BAILIAN_VERSION
+from asr_runtime import BAILIAN_CORE_VERSION, BAILIAN_VERSION
 from asr_runtime.application.bootstrap import _install_bailian, bootstrap
 from asr_runtime.utils.environment import SetupError, locked_python_versions, run_process
 from asr_runtime.utils.installation import NPM_REGISTRIES, PIP_SHA256, PIP_VERSION, PYTHON_INDEXES
@@ -25,6 +25,7 @@ class BootstrapTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         self.manifest = self.runtime.path(".tools/bailian/node_modules/bailian-cli/package.json")
         self.manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
+        self.write_core_manifest()
         for name, value in (
             ("check_python", None),
             ("check_node", (self.runtime.root / "node.exe", "v24.19.0")),
@@ -217,6 +218,10 @@ class BootstrapTests(RuntimeTestCase):
             result = bootstrap(self.runtime)
 
         self.assertEqual(result["status"], "installed")
+        self.assertEqual(result["core_version"], BAILIAN_CORE_VERSION)
+        archive = f"archives/bailian-cli-core-{BAILIAN_CORE_VERSION}.tgz"
+        self.assertEqual((self.runtime.bl_directory / archive).read_bytes(),
+                         self.runtime.resource("scripts/bailian/" + archive).read_bytes())
         verify.assert_called_once_with(self.runtime)
         pip = next(argv for argv in calls if "download" in argv)
         self.assertIn("--require-hashes", pip)

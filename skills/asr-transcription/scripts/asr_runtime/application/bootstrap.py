@@ -9,7 +9,7 @@ import venv
 from pathlib import Path
 from typing import TextIO, cast
 
-from .. import BAILIAN_VERSION
+from .. import BAILIAN_CORE_VERSION, BAILIAN_VERSION
 from ..utils.bailian import installed_bl_version, verify_bl_installation
 from ..utils.environment import (
     Runtime,
@@ -176,7 +176,9 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
 
     if installed is None:
         destination.mkdir(parents=True, exist_ok=True)
-        for name in ("package.json", "package-lock.json"):
+        for name in ("package.json", "package-lock.json",
+                     f"archives/bailian-cli-core-{BAILIAN_CORE_VERSION}.tgz"):
+            (destination / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / name, destination / name)
 
         _install_bailian(runtime, node, npm)
@@ -186,5 +188,6 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
     if not key_file.exists():
         shutil.copyfile(runtime.resource("assets/env.example"), key_file)
     return {"status": "already_installed" if installed is not None else "installed",
-            "version": BAILIAN_VERSION, "directory": str(destination), "key_file": str(key_file),
+            "version": BAILIAN_VERSION, "core_version": BAILIAN_CORE_VERSION,
+            "directory": str(destination), "key_file": str(key_file),
             "python": str(python), "base_python": str(runtime.base_python), "node": str(node)}

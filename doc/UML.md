@@ -2,7 +2,7 @@
 
 本页描述第一阶段 asr-transcription Skill 的实际对象、调用和状态。第二阶段个性化纪要生成与反馈学习仍在开发中，当前代码尚未实现，不在图中虚构服务。
 
-核对日期：2026-10-07。Python 图中 application、utils 等位置相对于 skills/asr-transcription/scripts/asr_runtime/；frontend 路径相对于仓库根。函数模块使用生命线，具有生命周期的 Session、Runtime、PathPicker 使用对象；状态图描述协议中的状态字符串。
+核对日期：2026-10-12。Python 图中 application、utils 等位置相对于 skills/asr-transcription/scripts/asr_runtime/；frontend 路径相对于仓库根。函数模块使用生命线，具有生命周期的 Session、Runtime、PathPicker 使用对象；状态图描述协议中的状态字符串。
 
 当前协议区分编辑会话 `session_id` 与转写任务 `job_id`：网页填写和预览不产生 `job_id`，用户发送含 `session_id` 的确认消息后才交接。预览展示登记、返回修改、两小时期限及一次结束通知见图 03、07；交接后的认证与执行见图 04、05。持久回执使相同会话恢复同一个任务，网页服务结束不影响执行。
 
@@ -19,6 +19,8 @@
 图 01C 区分预览设置、已授权配置、交接回执与执行结果。图 02 描述依赖安装，图 06、08 描述本地重导和执行记录失败，这些职责没有迁移到编辑会话。
 
 图 02 先由 Windows PowerShell 准备私有 Python/Node，再调用原有 Python 安装用例；图 01A 的 Runtime 提供本机运行时绝对路径。完整包附 `assets/runtimes` 下的原始官方 ZIP，轻量包从官方来源下载或复用工作目录缓存。两者使用相同固定摘要，实际运行时均解压到用户工作目录，包内资源保持只读。
+
+图 02 同时复制随 Skill 交付的原生 core 修订归档，由 npm override 与锁文件安装 `2.1.0-memoflow.1`；CLI、commands、runtime 保持官方2.1.0。图 05 仍由同一 BL 进程完成临时上传、提交、轮询与结果下载：上传遵循3600秒 timeout，凭证请求保持15秒，轮询预算3600秒；Python 整体进程上限7500秒。该修订没有增加独立上传器、fetch 拦截器或自动重试，时限不是云端完成保证。
 
 Python 依赖与百炼 CLI（BL）分别比较各自两个固定下载来源。Python 由 pip 处理有限续传；BL 由 npm 处理连接重试、缓存和完整性校验，仅在已识别的下载错误后换源。本机安装、权限及锁错误停止；安装恢复不改变识别任务的一次执行约束。
 

@@ -61,11 +61,11 @@ flowchart TD
 
 使用前请准备[阿里云账号](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account)，并按[百炼官方指引](https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen)完成服务准备。
 
-1. 下载 [v0.1.0 安装包](https://github.com/hx101700/memoflow/releases/tag/v0.1.0)。
+1. 下载[最新安装包](https://github.com/hx101700/memoflow/releases/latest)。
 2. 把 ZIP 和下面这句话一起发给 Codex：
 
    ```text
-   请将这个 ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境。
+   请将这个新的ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境，已安装则更新。
    ```
 
 ![Codex 完成 Skill 安装和运行环境准备](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-installation.png)

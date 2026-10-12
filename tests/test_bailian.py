@@ -29,6 +29,7 @@ class BailianTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         manifest = self.runtime.bl_entry.parent.parent / "package.json"
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
+        self.write_core_manifest()
         self.key = "asr-transcription-synthetic-process-key"
         self.runtime.path(".env").write_text(f"DASHSCOPE_API_KEY={self.key}\n", encoding="utf-8")
         self.node = self.runtime.node_entry
@@ -61,6 +62,13 @@ class BailianTests(RuntimeTestCase):
         self.assertNotIn("--async", argv)
         self.assertFalse(self.popen.call_args.kwargs["shell"])
         self.assertEqual(self.popen.call_args.kwargs["cwd"], self.runtime.workspace)
+
+    def test_original_core_stops_before_recognition(self):
+        """验证原版 core 被明确识别，修订版安装前停止识别。"""
+        self.write_core_manifest("2.1.0")
+        with self.assertRaisesRegex(SetupError, "上传超时修订版"):
+            prepare_command(self.runtime, self.arguments, "api_key")
+        self.popen.assert_not_called()
 
     def test_api_key_only_reaches_child_environment_and_transcript_is_not_captured(self):
         """验证Key注入识别子进程并配置输出通道。"""
