@@ -13,6 +13,10 @@
 | dist/release-v0.1.1/asr-transcription.zip | 53 | 70487362 | `eaa6049c0bc239006121264145b31866148341d7ced292a3e79bfe10e9e90ea1` |
 | dist/release-v0.1.1/asr-transcription-lite.zip | 51 | 468768 | `dc1409fe8ea6dd1d07168af9b9d5ef06e5ac8a838e400c90348e47c23a120b0f` |
 
+v0.1.1于2026-10-12正式发布，Release ID为410230484。GitHub API回读确认正文与已确认的release/NOTES.md一致，draft及prerelease均为false，latest指向v0.1.1，两附件状态uploaded、大小及SHA-256与上表一致。v0.1.0的Release ID及原附件摘要保持不变，原标签未移动。修复源码提交及正式标签对应8433fdc00fb9b1eb5f91003b074f2343ad35cbb0，双语发布说明后续提交fcd3312，两个分支同步；开发记录通过后续文档提交维护。
+
+按用户要求发布后单独复核tests.test_bl_upload，3项全部通过、7.852秒：原版固定计时器复现、修订版成功、按短timeout停止且不重传。没有修改测试或产品代码后再测，也未增加云端调用；早先无HTTP证据的测试进程未退出未复现，原因仍未知。
+
 ## 2026-10-12 大文件上传超时修复
 
 修订基于官方 BL v2.1.0 源码提交 `fc080016469f33ce6726ae997d0ff6428c19aa49`。核心归档版本为 `2.1.0-memoflow.1`，CLI、commands、runtime 保持官方2.1.0。原版与修订版使用真实 BL 入口、本机 HTTP 服务及合成凭据验证，所有非夹具网络请求被阻止；未调用阿里云识别。
