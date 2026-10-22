@@ -6,7 +6,7 @@
 
 MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON 和 Word、Excel、Markdown 转写校对稿。第二阶段的个性化纪要生成、偏好存储及反馈学习仍在开发中，当前代码尚未实现。
 
-固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，百炼 CLI（BL）2.1.0 临时 OSS 上传。CLI、commands、runtime 使用官方2.1.0，core 固定为本项目原生源码修订 `2.1.0-memoflow.1`。
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.4.0` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
 
 | 参与者 | 职责 |
 | --- | --- |
@@ -22,11 +22,12 @@ MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定�
 
 ```text
 frontend/                         # Vue / TypeScript 开发源码
-skills/asr-transcription/          # Skill 安装资源，运行时只读
+skills/asr-transcription/          # Skill 安装资源，业务运行时只读
 ├── SKILL.md
 ├── agents/openai.yaml
 ├── scripts/
 │   ├── asr.py
+│   ├── update.py                 # 独立标准库更新入口
 │   ├── bootstrap.ps1
 │   ├── runtimes.json
 │   ├── requirements.txt
@@ -35,7 +36,9 @@ skills/asr-transcription/          # Skill 安装资源，运行时只读
 ├── references/
 ├── assets/
 │   ├── env.example
+│   ├── update.lock               # 稳定只读哨兵，更新时保留
 │   └── runtimes/                  # 完整发行包内的两个官方ZIP
+├── skill-manifest.json           # 构建时生成的版本与受管文件清单
 └── LICENSE
 
 工作目录/
@@ -75,7 +78,7 @@ Python 模块路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，�
 | `application/delivery.py` | 三种 writer 的顺序调用与交付汇总 |
 | `utils/environment.py` / `auth.py` | Runtime、隔离进程环境和运行凭据 |
 | `utils/installation.py` | Python/npm 固定来源测速、安装进度与结构化输出、子进程回收 |
-| `utils/bailian.py` | 公开 CLI 参数映射、BL 进程、登录链接转交和脱敏错误 |
+| `utils/bailian.py` | 公开 CLI 参数映射、BL 进程和脱敏错误 |
 | `utils/files.py` / `job_files.py` / `session_files.py` | 文件摘要与原子替换、任务协议、会话连接与交接回执 |
 | `utils/hotwords.py` / `media.py` | Excel 导入/模板、媒体探测和单声道副本 |
 | `utils/results.py` / `documents.py` | 结果解析、文档生成与目标替换 |
@@ -160,11 +163,11 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。固定 BL 2.1.0 的 cmd/start 会拆开 URL 中的 `&`，因此只在 console 登录预加载 `console-browser.cjs`，转交完整 URL，由 Python 系统 URL 处理器打开一次。登录相关包源码保持原样，回调和凭据由 BL 管理；BL 升级时须重新核对是否可移除此适配。上传超时使用下文的原生 core 修订，不通过此适配处理。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.4.0 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
 
-`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.1.0 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.4.0 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
-官方 core 的 `Client.uploadFile()` 原来不传 timeout，`uploadToOSS()` 固定120秒。本项目在官方 v2.1.0 源码上修订这条调用链：`Client` 传入已解析的 `settings.timeout`，经 `resolveFileUrl()`、`UploadOptions` 和 `uploadFile()` 到 `uploadToOSS()`；获取上传凭证仍为15秒。上传、提交、轮询、下载与 `--out` 保存继续由 BL 执行，不增加 Python 云端上传实现或 fetch 拦截器。
+官方 core 的 `Client.uploadFile()` 将已解析的 `settings.timeout` 经 `resolveFileUrl()`、`UploadOptions`、`uploadFile()` 传给 `uploadToOSS()`；上传计时器使用该秒数，获取上传凭证仍为15秒。core 的 JSON 请求期限覆盖响应头与 JSON 正文，并在 Node 请求中关闭较短的 undici headers/body 默认期限。上传、提交、轮询、下载与 `--out` 保存均使用官方包。
 
 `WAIT_SECONDS=3600` 用于上传、提交和单次查询；BL 轮询也以该值建立总截止时间，轮询间隔为5秒。`PROCESS_SECONDS=WAIT_SECONDS*2+300=7500` 限制整个 BL 子进程，给上传和轮询各一小时及300秒余量；结果下载没有独立 BL 时限。各阶段可累积，整体上限不是每次请求时限或云端完成保证。`Request timed out.` 是多种请求超时的统一文本，不能从录音大小推断历史失败阶段；未知云端结果仍维持一次尝试约束。本机合约与真实云端验收分开记录。
 
@@ -207,6 +210,28 @@ results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把
 
 JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。内容保真、识别质量与 Office 视觉效果分别验收。
 
+## Skill 自动更新
+
+更新是安装维护能力，由 `scripts/update.py` 独立完成，使用 Python 标准库，不依赖待更新的业务模块和 pip 包。Codex 在开始新的使用时直接用工作目录的基础 `.tools/python/python.exe -I -X utf8` 调用；更新入口不接收 `--workspace`，也不要求 `.venv` 完好。版本判断和下载由代码执行。更新源固定为 `hx101700/memoflow` 的最新正式 Release，不跟随 dev 或同版本内容替换。
+
+`scripts/build_zip.py` 将根 package.json 的版本与固定运行文件列表写入两包相同的 `skill-manifest.json`。该清单只记录受管路径，不包含用户资料、开发文件、运行时归档、自身或稳定哨兵。最新版本号高于本地时，更新器下载 Release 的轻量 ZIP，核对 API 返回的文件大小及可用的 SHA-256，再核对包内版本和路径集合；逐个读取文件的 ZIP CRC 检查全部完成后才替换。文件直接覆盖、不备份；旧清单独有的文件删除，清单外的文件保留，最后发布新清单。
+
+`.skill-update-state.json` 位于安装目录，记录 `checked_on`、结果和必要的覆盖状态，同一 Skill 的多个工作目录共享。日期使用 `date.today()`，在首次网络请求前保存。检查成功、没有更新或网络失败后，当天调用均读取缓存；忙时暂缓尚未联网，不记为检查。没有后台定时器、失败重试循环或额外通知进程。
+
+最终日检记录保存失败通过 `record_error` 单独返回，保留本次实际状态及安装版本；已发布的新清单是文件更新完成的依据。下次遇到残留 `applying` 但清单已是目标版本时，当天缓存按已完成更新解释。回执只提供版本、结果和必要错误，不反复输出整份文件路径或重复状态布尔字段。
+
+用户主动检查传 `--check-now`，由同一 `update_skill(check_now=True)` 越过日内缓存，其结果覆盖当天记录，后续自动检查不再联网。两种入口共用锁、下载与覆盖方法。程序通过 stderr 提供检查、版本和下载进度，stdout 返回最终 JSON；Skill 要求 Codex 在检查前、发现新版和完成后向用户提供文字说明。正文提前断开产生的 `IncompleteRead` 转为下载失败回执，保留旧文件与当日日检记录。
+
+`asr.py` 在导入业务模块前经 `skill_in_use()` 只读打开 `assets/update.lock`，共享句柄保持到命令结束。更新器用 Windows `CreateFileW` 的 share=0 独占同一文件，任何工作目录的活动页面、登录或识别都使更新暂缓；新命令遇到正在更新时明确停止。句柄由进程退出释放，不持久记录活动 PID。哨兵不在覆盖或删除清单中。
+
+此处的 Skill 写入仅限更新器的状态、同目录暂存和发行清单管理的资源。下载或预检失败保留原代码；覆盖前将本次目标的原内容存入内存，记录实际修改项与新建目录。覆盖出错时按逆序恢复或删除对应文件，清理新目录；正常退出清理暂存，不保留磁盘备份。当天检查记录保留。恢复本身失败或进程被强行中断时，`applying` 与最后发布的版本清单使入口准确报告未完成状态，不能声称已回退。任务、结果与凭据在独立工作目录，不参与覆盖。
+
+更新后 Codex 重新读取 SKILL.md，并调用原 bootstrap 准备本次目录依赖；BL 版本冲突继续使用现有定点修复，不新增第二个依赖安装器。其他工作目录按当前依赖要求分别准备。
+
+用户提供新 ZIP 的重新安装由 Codex 使用文件工具完成：先核对完整新包，等待该 Skill 安装的全部命令结束，确认专用资源目录与用户工作目录分离，再用新包重建资源目录。此步骤清除旧代码、旧资源与旧检查记录，适用于没有发行清单的旧安装；非 Skill 文件先核对归属。它不会清理独立工作目录中的环境、凭据、任务或输出。自动更新仍复用当前清单的受管文件覆盖，不增加第二个安装器。
+
+这属于 MemoFlow 的安装更新协议。[OpenAI Skill 文档](https://learn.chatgpt.com/docs/build-skills)说明 Skill 的脚本与资源结构，并推荐使用插件分发可复用能力；[工作区插件管理](https://learn.chatgpt.com/docs/enterprise/plugin-management)的每日市场同步由宿主管理。普通 ZIP Skill 的每日下载覆盖不是该平台保证，本项目通过上述入口实现。旧安装需先用包含该入口和清单的新 ZIP 更新；发布者只需继续提供两个 ZIP，不新增独立清单附件。
+
 ## 界面和构建
 
 页面使用 Vue 3、TypeScript、Element Plus。优先复用公开 props、插槽和默认交互；卡片、输入、表格、滚动、摘要、按钮、结果及图标由组件库承担。CSS 负责布局、响应式和有限主题差异，避免复制组件交互。
@@ -222,15 +247,24 @@ npm ci
 npm run check:web
 npm run test:web
 npm run build:web
-npm run build:login
 npm run test:browser
 ```
 
-`build:login` 从仓库 `scripts/console-browser.cts` 生成固定适配产物。浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
+浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
 
-用户首次从 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace`。脚本读取 `scripts/runtimes.json` 的固定官方 URL 与 SHA-256，优先核对和使用包内 `assets/runtimes` 的原始 ZIP；轻量包没有归档时复用工作目录缓存，必要时从官方来源下载。运行时解压到工作目录 `.asr-transcription/.tools/python` 和 `.tools/node` 后，用私有 Python 调用现有 `asr.py --workspace ... bootstrap`。它只负责基础运行时，不重复实现 pip/npm 依赖安装。Python 为安装管理器的完整 ZIP，含 Tk、venv 和 ensurepip；Node ZIP 含配套 npm。包内归档保持只读，联网下载的完整归档保留在工作目录缓存。
+首次安装使用完整版，由 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace`，核对 `scripts/runtimes.json` 中的固定摘要，再从包内 `assets/runtimes` 解压原始 ZIP 到工作目录 `.asr-transcription/.tools/python` 和 `.tools/node`。Python 为安装管理器的完整 ZIP，含 Tk、venv 和 ensurepip；Node ZIP 含配套 npm。PowerShell 随后用私有 Python 调用现有 `asr.py --workspace ... bootstrap`，pip/npm 依赖安装仍由 Python 用例负责。
 
-运行命令始终使用工作目录内的 Python/Node 绝对路径。安装不注册系统 Python，不修改全局 PATH、npm registry 或用户的其他环境；网络和组织策略导致的失败仍按实际错误停止。bootstrap 的既有 venv 检查同时核对 `sys.base_prefix` 是否指向本工作目录的 `.tools/python`。旧版系统环境或迁移后路径不符时保留并停止；结束使用环境的任务后仅重建 `.venv`，凭据、BL 安装、任务与结果保留。doctor 同时提供当前 `python_base` 和预期 `base_python`，便于定位差异。
+后续自动下载轻量包，保留已安装运行时；依赖准备直接由现有基础 Python 进入同一个 Python bootstrap，不重复走运行时准备。npm 的位置由私有 Node 目录派生，使用该 Node 执行 npm-cli.js。源码安装或显式恢复缺少包内归档时，原 PowerShell 工具仍支持工作目录缓存和官方来源下载；此分支不属于正常轻量更新。
+
+运行命令始终使用工作目录内的 Python/Node 绝对路径。安装不注册系统 Python，不修改全局 PATH、npm registry 或用户的其他环境；网络和组织策略导致的失败仍按实际错误停止。bootstrap 与 doctor 共用 `installed_python_versions()`，在同一个 venv 子进程中核对平台、`sys.base_prefix` 和依赖加载及版本。旧版系统环境或迁移后路径不符时保留并停止；结束使用环境的任务后仅重建 `.venv`，凭据、BL 安装、任务与结果保留。doctor 的 `python_base` 是诊断进程信息，实际 venv 绑定从目标 venv 子进程读取，不以调用者路径代替。
+
+该本地探针用退出码2表示绑定不符、3表示依赖缺失，其余执行失败报告实际退出码；只有依赖缺失或版本不匹配才进入依赖安装。bootstrap 成功已经包含必要验证，正常更新后不再额外调用 doctor。BL 包信息由调用方读取一次，可用性检查直接启动固定入口并核对运行版本，正式业务调用仍独立核对当前 BL 版本。
+
+升级使用 `bootstrap --cleanup-old-cache`：环境全部准备成功后，`installation.prune_download_cache()` 按当前Python依赖锁与pip版本删除旧wheel，按npm锁保留当前实际包名及版本。实际安装了依赖或BL时也清理旧缓存；普通环境复用不额外扫描。清理数量放在cache_cleanup，失败单独放cache_cleanup_warning，保持已完成的环境准备结果。
+
+Python始终使用`--no-cache-dir`，本项目只清理自己保存的.runtime/wheels。[pip官方说明](https://pip.pypa.io/en/stable/topics/caching/)区分原生缓存与下载目标。npm使用私有Node调用公开的cache ls/clean/verify，并显式指定工作目录的.runtime/npm-cache，索引和内容删除交给npm。[npm说明](https://docs.npmjs.com/cli/v11/commands/npm-cache/)及[11.19.0源码](https://github.com/npm/cli/blob/v11.19.0/lib/commands/cache.js)提供依据。旧包逐键clean后执行一次verify回收失效索引：同一旧包的官方源和镜像键可能共享内容，批量clean遇到已删除的共享内容会提前结束；真实隔离缓存已复现该问题。verify仅在删除旧键后使用，属于npm缓存整理，不是重复的环境检查。
+
+当前镜像真实缓存键使用cdn.npmmirror.com/packages路径，原生cache ls按包规格筛选只命中55个当前条目中的2个，不能据此计算删除差集。本项目仅识别固定两源的registry路径及实际镜像CDN路径，按锁中的实际name处理npm别名包；元数据和未知键保留。真实缓存合约已验证旧条目删除后当前条目仍可读取。系统缓存、已装运行时、凭据、任务和输出不在此清理范围。
 
 安装日志统一保存为 UTF-8。普通 pip 命令显式传入 `-X utf8`；Python 3.12 的 ensurepip 内部子进程使用本地编码，因此只在该调用按 `locale.getencoding()` 解码。二者均保持 `-I` 隔离模式，不修改标准库或系统编码。
 
@@ -238,9 +272,7 @@ Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿�
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
-BL 安装资源同时包含 `scripts/bailian/archives/bailian-cli-core-2.1.0-memoflow.1.tgz`。归档从官方 tag `v2.1.0`（`fc080016469f33ce6726ae997d0ff6428c19aa49`）的原生 core 源码构建，包含 Apache-2.0 LICENSE 与修改说明；npm override 和锁文件使用该本地归档替换 core，CLI、commands、runtime 保持官方包。安装先复制锁定资源到工作目录，再由 npm 安装，不在安装后改写 node_modules。两个发行包均包含修订归档。
-
-源码差异和构建方法保存在 [patches](../patches/README.md)。安装检查同时核对 CLI 与 core 版本，原版 core 不会被当作已修复环境复用；旧环境按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装 BL，凭据及任务位于独立目录。开发 patch 不进入用户 ZIP。
+BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.4.0` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
 
 `run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
 

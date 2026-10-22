@@ -23,8 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="asr-transcription 录音转写工具；转写须明确授权上传。")
     parser.add_argument("--workspace", type=Path, required=True, help="保存运行环境与结果的现有工作文件夹")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("doctor", "bootstrap", "api-key-status", "console-status", "login"):
+    for name in ("doctor", "api-key-status", "console-status", "login"):
         commands.add_parser(name)
+    bootstrap_parser = commands.add_parser("bootstrap")
+    bootstrap_parser.add_argument("--cleanup-old-cache", action="store_true", help="环境准备成功后清理旧版依赖下载缓存")
     serve_parser = commands.add_parser("serve", help="打开本机配置网页")
     serve_parser.add_argument("--port", type=int, default=0, help="本机网页端口，默认自动选择")
     serve_parser.add_argument("--no-browser", action="store_true", help="不自动打开系统浏览器")
@@ -56,9 +58,11 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "job-status":
                 from .application.transcription import job_status
                 report = job_status(runtime, args.job)
+            elif args.command == "bootstrap":
+                report = bootstrap(runtime, cleanup_old_cache=args.cleanup_old_cache)
             else:
                 actions: dict[str, Callable[[Runtime], Mapping[str, object]]] = {
-                    "doctor": doctor, "bootstrap": bootstrap, "api-key-status": api_key_status,
+                    "doctor": doctor, "api-key-status": api_key_status,
                     "console-status": console_status, "login": login_console,
                 }
                 report = actions[args.command](runtime)

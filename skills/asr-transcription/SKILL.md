@@ -1,6 +1,6 @@
 ---
 name: asr-transcription
-description: 在 Codex 中通过本机网页将单个录音转为带时间戳的 Word、Excel 和 Markdown 转写校对稿。用户附上录音、提供本机录音路径或请求转写时使用，也支持新 ZIP 的安装或更新、百炼凭据配置和已有转写任务重导。
+description: 在 Codex 中通过本机网页将单个录音转为带时间戳的 Word、Excel 和 Markdown 转写校对稿。用户附上录音、提供本机录音路径或请求转写时使用，也支持安装或检查更新本语音转写 Skill、百炼凭据配置和已有转写任务重导。
 ---
 
 # 录音转写
@@ -10,17 +10,39 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 ## 选择入口
 
 - **安装或更新**：用户提供新 ZIP 并要求安装时，按“安装或更新 Skill”处理。
+- **主动检查更新**：用户明确要求检查或更新 `asr-transcription`／语音转写 Skill，或当前上下文已明确指向此 Skill、且没有提供 ZIP 时，按“使用前检查更新”调用 `scripts/update.py --check-now`。它会立即检查并将结果计入当天记录。泛指其他项目、依赖或其他 Skill 的更新不触发此入口。
 - **新录音**：先准备环境并打开网页；本次提供的录音附件或路径带入同一网页，由用户核对后确认转写。
 - **已有转写任务**：使用原工作目录与确切 `job_id`，进入“已有转写任务”。只询问当前对话缺少的目录或编号。
 - **只调整凭据**：按[凭据修复](references/errors.md#鉴权失败与重新配置)处理。指定 API Key 可在网页单独保存；用户告知完成后，用 `cancel --session SESSION_ID` 结束这次编辑会话，无需录音或转写。
 
 ## 准备运行
 
-`SKILL_DIR` 是本文件所在目录，`ENTRY` 是其中 `scripts/asr.py` 的绝对路径。工作目录复用本次已约定的位置，否则采用当前 Codex 任务目录并告知用户；目录不可用或位于 Skill 内时才另选。所有命令显式传入 `--workspace WORKSPACE`。
+`SKILL_DIR` 是本文件所在目录，`ENTRY` 是其中 `scripts/asr.py` 的绝对路径。工作目录复用本次已约定的位置，否则采用当前 Codex 任务目录并告知用户；目录不可用或位于 Skill 内时才另选。通过 `ENTRY` 执行的业务命令显式传入 `--workspace WORKSPACE`。
 
-环境与凭据位于 `WORKSPACE/.asr-transcription`，默认输出为 `WORKSPACE/transcriptions`。准备完成后的命令使用 `WORKSPACE/.asr-transcription/.venv/Scripts/python.exe` 执行 `ENTRY`。
+环境与凭据位于 `WORKSPACE/.asr-transcription`，默认输出为 `WORKSPACE/transcriptions`。`BASE_PYTHON` 是其中 `.tools/python/python.exe` 的绝对路径，用于更新与依赖准备；准备完成后的业务命令使用 `.venv/Scripts/python.exe` 执行 `ENTRY`。
 
-首次安装先核对宿主提供的系统与架构：当前完整包和轻量包适用于 Windows 10/11 x64。匹配后，按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，它将完整 Python、Node.js 和依赖准备到该工作目录，无需系统预装运行时。下载需要正常 Windows 网络执行权限；Codex 工具支持时，从首次 bootstrap 就使用 `sandbox_permissions=require_escalated`。成功回执已包含依赖检查；可用环境直接复用，`doctor` 用于故障诊断。等待同一安装进程完成，失败后报告实际原因；不改用系统 Python/Node 或安装全局包。
+每个工作目录分别准备依赖。缺少本工作目录已按当前 Skill 准备成功的证据时，在打开录音页面前运行一次 bootstrap；同一目录本次准备成功后，填写、交接、登录和转写直接复用。更新器的版本结果和日检缓存只针对共享 Skill 文件，不代表另一个工作目录的环境已准备好。
+
+首次安装使用完整版 `asr-transcription.zip`，先核对宿主提供的 Windows 10/11 x64 系统与架构。匹配后，按[运行准备](references/usage.md#运行准备)用 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`，将包内 Python、Node.js（含 npm）及依赖准备到工作目录。安装需要正常 Windows 网络执行权限；Codex 工具支持时使用 `sandbox_permissions=require_escalated`。等待同一安装进程完成，失败后报告实际原因。成功回执已包含必要检查，后续直接复用；`doctor` 用于主动诊断或具体故障排查。
+
+后续轻量更新复用原工作目录的运行时。准备新版依赖时，按[复用已有运行时](references/usage.md#复用已有运行时)直接用 `BASE_PYTHON -E -S -B -X utf8 ENTRY --workspace WORKSPACE bootstrap`。Node 与 npm 由工具从同一工作目录的 `.tools/node` 定位。仅在新工作目录尚无运行时或运行时需要修复时，回到完整版的 PowerShell 准备入口。
+
+## 使用前检查更新
+
+开始一次新的使用时，用 `WORKSPACE/.asr-transcription/.tools/python/python.exe -I -X utf8` 调用 `SKILL_DIR/scripts/update.py`，该独立入口不传 `--workspace`。已有私有基础 Python 时可直接检查更新，无需先安装旧业务依赖或修复 `.venv`；基础 Python 尚未准备时先按“准备运行”安装。代码判断版本、下载最新正式 Release 的轻量包并直接覆盖。程序按机器本地日期每天最多联网检查一次，失败也计入；不另查 GitHub 或循环重跑。具体命令及回执见[自动更新](references/usage.md#自动更新)。
+
+用户主动要求更新本 Skill 时传 `--check-now`，即使当天已经检查也立即检查；此后自动调用仍复用当天结果。参数只用于明确指向本 Skill、或上下文已确定指向本 Skill 的检查与更新请求。
+
+执行前先用文字告知用户将检查 Skill 更新；程序发现新版并输出下载进度时，告知当前版本、目标版本和正在更新。收到最终回执后用文字说明已更新、已是最新、当天已有检查结果、暂缓或失败，再继续用户请求。以代码实际结果为准。
+
+- `updated`：重新读取当前 `SKILL.md`，复用原工作目录的 `BASE_PYTHON` 执行 `bootstrap --cleanup-old-cache`。环境准备成功后，工具清理旧版依赖下载缓存并保留当前版本；再继续用户请求。另一个工作目录仍须使用与当前 Skill 匹配的依赖。
+- `latest`、`checked_today`、`local_ahead`：按“准备运行”确认本工作目录已匹配当前 Skill，再继续业务入口；`checked_today` 是共享 Skill 的当天缓存，`last_status` 给出原结果。只要求检查更新且没有后续业务时，报告版本结果即可。
+- `deferred`：已有命令正在使用此 Skill，继续原任务，空闲后下次使用再检查。已启动的页面、登录和转写沿原进程继续。
+- 更新失败：检查或下载失败时使用当前安装；覆盖失败时工具恢复原文件，清理本次新增文件、目录与暂存。根据回执告知用户实际版本后继续。若回执明确报告恢复未完成，按[更新问题](references/errors.md#skill更新问题)处理。`unmanaged` 表示源码或没有发行清单的旧安装，不启动覆盖。
+
+回执含 `record_error` 时，说明检查记录保存问题，安装结果以本次 `status` 和 `installed_version` 为准；已完成的更新仍须重新读取 Skill。
+
+bootstrap回执的 `cache_cleanup` 表示旧缓存清理数量；若含 `cache_cleanup_warning`，说明缓存尚未全部清理，告知用户实际问题，环境准备结果保持原样。
 
 ## 安装或更新 Skill
 
@@ -28,11 +50,11 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 
 > 请将这个新的ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境，已安装则更新。
 
-收到新 ZIP 后检查实际安装情况。首次安装按“准备运行”执行；已安装则先确认同一工作目录没有正在执行的任务，再直接覆盖更新已安装的 Skill 文件，省去备份步骤，并在原工作目录重新运行 `scripts/bootstrap.ps1 -Workspace WORKSPACE`。安装器复用有效的私有 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果。
+收到新 ZIP 后先在临时目录完整解压并核对 Skill 入口及包内清单。首次安装使用完整版并按“准备运行”执行；已有安装按[ZIP重新安装](references/usage.md#zip重新安装)替换旧发行资源，省去备份步骤，再复用原工作目录的基础 Python 执行 `bootstrap --cleanup-old-cache`。等待所有使用同一 Skill 安装目录的命令结束，不能只检查当前工作目录。更新前告知用户将更新，完成后说明实际结果。安装器复用有效的私有 Python、Node、虚拟环境、百炼 CLI、凭据、任务和结果。
 
 如果诊断提示虚拟环境绑定了其他 Python，结束使用该环境的任务后，只删除 `WORKSPACE/.asr-transcription/.venv`，再运行 bootstrap。保留 `.env`、`.state`、`.tools` 和输出目录，不删除整个 `.asr-transcription`。更新完成后继续使用原 Skill 入口和同一工作目录。
 
-若提示 BL core 需要上传超时修订版，按[环境版本修复](references/errors.md#常见问题处理)只重新安装当前工作目录的 BL，保留 Python、Node、凭据、任务及结果。
+当前工具使用官方 BL `2.4.0`。若提示 BL 版本不匹配，按[环境版本修复](references/errors.md#常见问题处理)只重新安装当前工作目录的 BL，保留 Python、Node、凭据、任务及结果。
 
 ## 新录音
 
@@ -48,7 +70,7 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 | 控制台模式，凭据状态未知 | 调用一次 `console-status`，读取 `configured`。 |
 | 控制台模式缺少模型凭据，或用户要求重新登录 | 首次调用 `login` 就使用正常桌面执行权限；Codex 工具支持时设置 `sandbox_permissions=require_escalated`。按[控制台登录](references/usage.md#控制台登录)操作，保留原进程，提示用户授权完成后回复“已完成”。 |
 
-`login` 最终回执已包含 BL 本地状态，直接读取 `configured`；它表示模型凭据存在，在线有效性由实际 BL 调用判断。用户回复“已完成”后读取原登录结果并执行**同一个已交接任务**，不要求重新粘贴会话编号或再次授权。BL 授权页只由系统浏览器打开一次。
+`login` 最终回执已包含 BL 本地状态，直接读取 `configured`；它表示模型凭据存在，在线有效性由实际 BL 调用判断。用户回复“已完成”后读取原登录结果并执行**同一个已交接任务**，不要求重新粘贴会话编号或再次授权。授权页由官方 BL 在系统默认浏览器中打开；Codex 保留原登录进程供用户完成授权。
 
 编辑会话从打开起有效两小时，交接、取消或到期后服务自动结束，页面显示终态供用户关闭。到期不影响已经交接的任务、登录或转写。交接前可返回修改；交接后配置固定，若需新识别由用户明确提出并新开页面。用户取消编辑时运行 `cancel --session SESSION_ID`。交接回执丢失时见[会话交接恢复](references/errors.md#会话交接恢复)。
 

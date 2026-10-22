@@ -69,6 +69,8 @@ def api_key_status(runtime: Runtime) -> dict[str, str | bool]:
 def bailian_environment(runtime: Runtime, auth_mode: str) -> dict[str, str]:
     """构造BL环境，按鉴权方式配置工作区API Key。"""
     env = child_environment(runtime)
+    # 固定版本调用使用官方开关跳过额外的npm版本查询。
+    env["NO_UPDATE_NOTIFIER"] = "1"
     if auth_mode == "api_key":
         env["DASHSCOPE_API_KEY"] = read_api_key(runtime)
     elif auth_mode != "console":

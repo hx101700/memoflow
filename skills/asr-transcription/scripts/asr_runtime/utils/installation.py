@@ -1,17 +1,20 @@
 """比较依赖下载来源并持续转发安装进程的输出。"""
 
 import os
+import re
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from http.client import HTTPException, HTTPResponse
 from typing import TextIO, cast
+from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 
 from .. import BAILIAN_VERSION
-from .environment import Runtime, SetupError, child_environment, stop_process_tree
+from .environment import Runtime, SetupError, child_environment, npm_entry, run_process, stop_process_tree
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,80 @@ NPM_REGISTRIES = ("https://registry.npmjs.org/", "https://registry.npmmirror.com
 _SAMPLE_BYTES = 256 * 1024
 _SAMPLE_SECONDS = 5.0
 _SOCKET_TIMEOUT = 5.0
+
+
+def _npm_cached_package(key: str) -> tuple[str, str] | None:
+    """识别固定npm来源及其镜像CDN下载键中的包名和版本。"""
+    prefix = "make-fetch-happen:request-cache:"
+    if not key.startswith(prefix):
+        return None
+    url = urlsplit(key[len(prefix):])
+    parts = unquote(url.path).strip("/").split("/")
+    if url.scheme != "https" or len(parts) < 3:
+        return None
+    filename = parts[-1]
+    if url.hostname == "cdn.npmmirror.com" and parts[0] == "packages" and len(parts) >= 4:
+        name, version = "/".join(parts[1:-2]), parts[-2]
+    elif url.hostname in {"registry.npmjs.org", "registry.npmmirror.com"} and parts[-2] == "-":
+        name = "/".join(parts[:-2])
+        start = name.rsplit("/", 1)[-1] + "-"
+        if not filename.startswith(start) or not filename.endswith(".tgz"):
+            return None
+        version = filename[len(start):-4]
+    else:
+        return None
+    if (not re.fullmatch(r"(?:@[^/]+/)?[^/]+", name) or not version
+            or filename != name.rsplit("/", 1)[-1] + "-" + version + ".tgz"):
+        return None
+    return name, version
+
+
+def prune_download_cache(
+    runtime: Runtime, python_versions: Mapping[str, str],
+    npm_packages: Mapping[str, Mapping[str, object]],
+) -> dict[str, int]:
+    """清理本工作目录的旧依赖下载缓存，保留当前锁和pip所需版本。"""
+    current_npm: set[tuple[str, str]] = set()
+    for path, package in npm_packages.items():
+        if not path:
+            continue
+        name = package.get("name", path.rsplit("node_modules/", 1)[-1])
+        version = package.get("version")
+        if not isinstance(name, str) or not isinstance(version, str):
+            raise SetupError("BL依赖锁缺少包名或版本，无法清理旧缓存。")
+        current_npm.add((name, version))
+    kept_wheels = {(re.sub(r"[-_.]+", "-", name).lower(), version)
+                   for name, version in {**python_versions, "pip": PIP_VERSION}.items()}
+    removed = {"python_wheels": 0, "npm_entries": 0}
+    for wheel in sorted(runtime.path(".runtime/wheels").glob("*.whl")):
+        parts = wheel.name[:-4].split("-")
+        if len(parts) < 5:
+            continue
+        wheel_version = re.sub(r"[-_.]+", "-", parts[0]).lower(), parts[1]
+        if wheel_version not in kept_wheels:
+            # 删除缓存条目本身，文件链接的目标保持原样。
+            wheel.unlink()
+            removed["python_wheels"] += 1
+    cache = runtime.path(".runtime/npm-cache")
+    if not cache.is_dir() or not any(cache.iterdir()):
+        return removed
+    command = [str(runtime.node_entry), str(npm_entry(runtime.node_entry)), "--cache", str(cache), "cache"]
+    listed = run_process(runtime, [*command, "ls"])
+    if listed.returncode:
+        raise SetupError(f"npm缓存列表读取失败（退出码{listed.returncode}），旧npm缓存尚未清理。")
+    obsolete = [key for key in listed.stdout.splitlines()
+                if (identity := _npm_cached_package(key)) is not None and identity not in current_npm]
+    if obsolete:
+        # 镜像键可能共享内容；npm批量clean遇到已删内容会提前退出，逐键处理后由verify回收残留索引。
+        for key in obsolete:
+            cleaned = run_process(runtime, [*command, "clean", key])
+            if cleaned.returncode:
+                raise SetupError(f"npm旧缓存清理未完成（退出码{cleaned.returncode}）。")
+        verified = run_process(runtime, [*command, "verify"])
+        if verified.returncode:
+            raise SetupError(f"npm缓存索引整理未完成（退出码{verified.returncode}）。")
+        removed["npm_entries"] = len(obsolete)
+    return removed
 
 
 def _sample_download(url: str) -> float:

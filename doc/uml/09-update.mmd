@@ -1,0 +1,62 @@
+sequenceDiagram
+actor U as 用户
+participant C as Codex＋Skill
+participant P as scripts/update.py
+participant S as 已安装Skill
+participant G as GitHub正式Release
+participant E as Python bootstrap
+participant W as 本次工作目录
+U->>C: 使用录音转写Skill
+Note over C,W: 使用工作目录基础.tools/python，无需先修复venv<br/>已有页面、登录、转写继续原进程
+C->>U: 文字说明将检查更新
+C->>P: 基础Python -I -X utf8 scripts/update.py<br/>用户主动要求时增加--check-now；不传workspace
+P->>S: 独占打开assets/update.lock
+alt 业务命令持有共享只读句柄
+    P-->>C: deferred，未联网、不记检查日期
+else 获得独占句柄
+    P->>S: 读取skill-manifest.json和日检状态
+    alt 当地日期今天已检查，且非用户主动检查
+        P-->>C: checked_today，返回原结果
+    else 今天尚未检查，或用户明确主动检查
+        P->>S: 先写checked_on和checking
+        P->>G: GET releases/latest
+        alt 安装版本相同或更高
+            P->>S: 保存latest或local_ahead
+        else 存在更高正式版本
+            P->>G: 下载asr-transcription-lite.zip
+            P->>P: 核对大小和可用SHA-256<br/>检查包内版本、路径集合及ZIP CRC
+            alt 下载或预检失败
+                P->>S: 保存failed，旧文件保持
+                Note over P,S: 当天不再自动检查，继续原安装
+            else 预检通过
+            P->>P: 原文件暂存在内存，记录实际修改项和新目录
+            P->>S: 写applying及目标版本
+            P->>S: 直接替换受管文件，删除旧清单独有文件
+            Note over P,S: 不备份；保留哨兵、运行时归档和无关文件<br/>凭据、环境、任务与结果在工作目录，不参与覆盖
+            alt 覆盖完成
+                P->>S: 最后发布新manifest，保存updated
+                Note over P,S: 最终日检记录写入失败单独返回record_error<br/>保留实际安装结果；已发布清单证明文件更新完成
+            else 覆盖失败
+                P->>S: 从内存恢复已改文件；删除新增文件与目录
+                P->>S: 保存failed及恢复结果，清理暂存
+                Note over P,S: 回退成功继续原版本，当天不再自动查<br/>无法完成恢复时准确报告，业务入口停止
+            end
+            end
+        end
+    end
+    P->>S: 释放独占句柄
+    P-->>C: JSON回执
+end
+C->>U: 文字报告实际版本与更新结果
+opt updated
+    C->>S: 重新读取SKILL.md
+end
+opt updated，或业务工作目录尚未确认匹配当前Skill
+    C->>E: 复用已有基础Python运行bootstrap<br/>升级时带--cleanup-old-cache
+    E->>W: 复用原依赖安装和修复流程
+    Note over C,W: 日检缓存只针对共享Skill<br/>各工作目录分别准备，成功后清理旧下载缓存、保留当前缓存<br/>后续直接复用，不额外doctor
+end
+opt 安装可用且有待执行的业务请求
+    C->>S: 使用asr.py执行本次请求
+    Note over C,S: asr.py在业务导入前共享打开哨兵<br/>句柄保持到本次命令结束，更新期间新业务明确停止
+end

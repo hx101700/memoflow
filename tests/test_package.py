@@ -11,7 +11,7 @@ import sys
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from scripts.build_zip import REPOSITORY_FILES, REQUIRED_FILES, SKILL_DIRECTORY, build_zip
+from scripts.build_zip import MANIFEST, UPDATE_LOCK, REPOSITORY_FILES, REQUIRED_FILES, SKILL_DIRECTORY, build_zip
 from asr_runtime.utils.environment import Runtime
 from tests.support import RuntimeTestCase, SKILL_ROOT
 
@@ -28,6 +28,7 @@ class PackageTests(RuntimeTestCase):
             shutil.copyfile(SKILL_ROOT / relative, destination)
         for relative in REPOSITORY_FILES:
             shutil.copyfile(SKILL_ROOT.parents[1] / relative, self.source / relative)
+        shutil.copyfile(SKILL_ROOT.parents[1] / "package.json", self.source / "package.json")
 
     def extract(self, name="解压 验收目录"):
         """构建独立包并解压到本例指定目录。"""
@@ -69,18 +70,23 @@ class PackageTests(RuntimeTestCase):
         with ZipFile(report["path"]) as archive:
             names = archive.namelist()
             self.assertEqual(names, report["files"])
-            self.assertEqual(set(names), set(REQUIRED_FILES) | set(REPOSITORY_FILES))
+            self.assertEqual(set(names), set(REQUIRED_FILES) | set(REPOSITORY_FILES) | {MANIFEST})
             self.assertEqual(len(names), report["file_count"])
             self.assertIn("SKILL.md", names)
             self.assertIn("scripts/bootstrap.ps1", names)
             self.assertIn("scripts/runtimes.json", names)
             self.assertTrue(all(name.split("/")[0] in
-                                {"SKILL.md", "LICENSE", "README.md", "README.en.md", "agents", "scripts", "references", "assets"}
+                                {"SKILL.md", "LICENSE", "README.md", "README.en.md", MANIFEST, "agents", "scripts", "references", "assets"}
                                 for name in names))
             self.assertFalse(any("tools" in name.split("/") for name in names))
             for name in names:
+                if name == MANIFEST:
+                    continue
                 source = self.source if name in REPOSITORY_FILES else self.skill
                 self.assertEqual(archive.read(name), (source / name).read_bytes())
+            manifest = json.loads(archive.read(MANIFEST))
+            self.assertEqual(manifest["version"], json.loads((self.source / "package.json").read_bytes())["version"])
+            self.assertEqual(set(manifest["files"]), set(names) - {MANIFEST, UPDATE_LOCK})
             for name in excluded:
                 self.assertNotIn(name, names)
 
@@ -212,7 +218,7 @@ class PackageTests(RuntimeTestCase):
         self.assertEqual(before, {name: hashlib.sha256((skill / name).read_bytes()).hexdigest()
                                   for name in REQUIRED_FILES})
         self.assertEqual({path.relative_to(skill).as_posix() for path in skill.rglob("*") if path.is_file()},
-                         set(REQUIRED_FILES) | set(REPOSITORY_FILES))
+                         set(REQUIRED_FILES) | set(REPOSITORY_FILES) | {MANIFEST})
         self.assertFalse((skill / ".asr-transcription").exists())
 
     def test_two_workspaces_keep_credentials_and_state_separate(self):

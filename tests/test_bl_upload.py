@@ -8,39 +8,29 @@ import time
 import unittest
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 from asr_runtime import MODEL
 from asr_runtime.utils.auth import bailian_environment
-from tests.support import ROOT, RuntimeTestCase, contract_runtime
-
-CONTRACT_BL_ENTRY = ROOT / ".runtime/skill-contract-workspace/.asr-transcription/.tools/bailian/node_modules/bailian-cli/dist/bailian.mjs"
-
-
-_PATCHED_ENTRY_VALUE = os.environ.get("MEMOFLOW_BL_UPLOAD_ENTRY", "")
-PATCHED_BL_ENTRY = Path(_PATCHED_ENTRY_VALUE) if _PATCHED_ENTRY_VALUE else None
+from tests.support import CONTRACT_BL_ENTRY, RuntimeTestCase, contract_runtime
 _PRELOAD_SOURCE = r"""
 const fs = require("node:fs");
 const originalFetch = globalThis.fetch;
 const originalSetTimeout = globalThis.setTimeout;
 const evidence = {
   policy_requests: 0, blocked_external_requests: 0, upload_aborted: false,
-  upload_timer_ms: null, effective_upload_timer_ms: null
+  upload_timer_ms: null
 };
 let lastTimerMs = null;
-let lastEffectiveTimerMs = null;
 
 // 保存请求阶段与计时证据，供进程未退出时检查。
 function snapshot() {
   fs.writeFileSync(fixture.evidence_path, JSON.stringify(evidence), "utf8");
 }
 
-// 记录原生计时器；只在固定版本复现中缩短已核实的 120 秒上传计时器。
+// 记录官方上传使用的计时器，保持实际等待时长。
 globalThis.setTimeout = function recordTimer(callback, delay, ...args) {
   lastTimerMs = delay;
-  lastEffectiveTimerMs = delay === 120000 && fixture.fixed_upload_timer_ms !== null
-    ? fixture.fixed_upload_timer_ms : delay;
-  return originalSetTimeout(callback, lastEffectiveTimerMs, ...args);
+  return originalSetTimeout(callback, delay, ...args);
 };
 
 // 精确重定向上传凭证请求，所有其它请求只能到本次本机服务。
@@ -56,7 +46,6 @@ globalThis.fetch = async function localFetch(input, options) {
   }
   if (target === fixture.base_url + "/upload") {
     evidence.upload_timer_ms = lastTimerMs;
-    evidence.effective_upload_timer_ms = lastEffectiveTimerMs;
     options.signal.addEventListener("abort", function recordUploadAbort() {
       // 保存上传中止事实，不采集请求正文或凭据。
       evidence.upload_aborted = true;
@@ -75,7 +64,7 @@ process.once("exit", function saveEvidence() {
 """
 
 
-@unittest.skipUnless(CONTRACT_BL_ENTRY.is_file(), "需要已安装的固定 BL 2.1.0 才能运行上传合约")
+@unittest.skipUnless(CONTRACT_BL_ENTRY.is_file(), "需要已安装的固定官方 BL 才能运行上传合约")
 class BailianUploadContractTests(RuntimeTestCase):
     def setUp(self):
         """创建合成录音，并启动凭证、上传与识别的本机模拟服务。"""
@@ -163,7 +152,7 @@ class BailianUploadContractTests(RuntimeTestCase):
         self.thread.join(timeout=5)
         super().tearDown()
 
-    def invoke(self, timeout, *, entry=CONTRACT_BL_ENTRY, fixed_upload_timer_ms=None):
+    def invoke(self, timeout):
         """用原生 BL 入口执行本机上传合约，并读取隔离进程证据。"""
         self.runtime.path(".env").write_text(
             "DASHSCOPE_API_KEY=asr-transcription-synthetic-upload-key\n", encoding="utf-8")
@@ -171,16 +160,15 @@ class BailianUploadContractTests(RuntimeTestCase):
         fixture = {
             "base_url": self.base_url,
             "policy_url": f"https://dashscope.aliyuncs.com/api/v1/uploads?action=getPolicy&model={MODEL}",
-            "fixed_upload_timer_ms": fixed_upload_timer_ms,
             "evidence_path": str(evidence_path),
         }
         preload = self.runtime.path("upload-fixture.cjs")
         preload.write_text("const fixture = " + json.dumps(fixture) + ";\n" + _PRELOAD_SOURCE,
                            encoding="utf-8")
         output = self.runtime.path("result.json")
-        # 直接启动原生包，防止产品适配影响固定版本的故障复现。
+        # 直接运行官方包；预加载仅将上传凭证请求转给本机模拟服务。
         command = [
-            str(contract_runtime().node_entry), "--require", str(preload), str(entry),
+            str(contract_runtime().node_entry), "--require", str(preload), str(CONTRACT_BL_ENTRY),
             "speech", "recognize", "--config", "default", "--model", MODEL,
             "--url", str(self.audio), "--base-url", self.base_url, "--out", str(output),
             "--timeout", str(timeout), "--poll-interval", "0.01", "--output", "json", "--quiet",
@@ -209,30 +197,19 @@ class BailianUploadContractTests(RuntimeTestCase):
         self.assertFalse(output.exists())
         self.assertIsNone(self.submitted)
 
-    def test_fixed_upload_timer_ignores_cli_timeout_without_retry(self):
-        """证明固定 120 秒上传计时器先于用户设置中止，且不上传第二次。"""
-        result, output, evidence = self.invoke(1, fixed_upload_timer_ms=100)
-        self.assert_upload_timeout(result, output, evidence)
-        self.assertEqual(evidence["upload_timer_ms"], 120000)
-        self.assertEqual(evidence["effective_upload_timer_ms"], 100)
-
-    @unittest.skipUnless(PATCHED_BL_ENTRY and PATCHED_BL_ENTRY.is_file(), "需要指定原生源码修订后的 BL 入口")
-    def test_native_timeout_allows_upload_within_user_limit(self):
-        """验证原生修订包在一秒设置下完成三百毫秒上传与单次识别。"""
-        result, output, evidence = self.invoke(1, entry=PATCHED_BL_ENTRY)
+    def test_official_timeout_allows_upload_within_user_limit(self):
+        """验证官方包在一秒设置下完成三百毫秒上传与单次识别。"""
+        result, output, evidence = self.invoke(1)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls, ["policy", "upload", "submit", "task", "result"])
         self.assertEqual(self.submitted["input"]["file_urls"], ["oss://synthetic/合成上传.wav"])
         self.assertEqual(evidence["upload_timer_ms"], 1000)
-        self.assertEqual(evidence["effective_upload_timer_ms"], 1000)
         self.assertFalse(evidence["upload_aborted"])
         self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["transcripts"][0]
                          ["sentences"][0]["text"], "合成本机结果")
 
-    @unittest.skipUnless(PATCHED_BL_ENTRY and PATCHED_BL_ENTRY.is_file(), "需要指定原生源码修订后的 BL 入口")
-    def test_native_timeout_stops_upload_at_user_limit_without_retry(self):
-        """验证原生修订包按零点一秒设置中止上传，且不提交或重传。"""
-        result, output, evidence = self.invoke(0.1, entry=PATCHED_BL_ENTRY)
+    def test_official_timeout_stops_upload_at_user_limit_without_retry(self):
+        """验证官方包按零点一秒设置中止上传，且不提交或重传。"""
+        result, output, evidence = self.invoke(0.1)
         self.assert_upload_timeout(result, output, evidence)
         self.assertEqual(evidence["upload_timer_ms"], 100)
-        self.assertEqual(evidence["effective_upload_timer_ms"], 100)

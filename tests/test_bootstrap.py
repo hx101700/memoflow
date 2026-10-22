@@ -5,7 +5,7 @@ import subprocess
 import sys
 from unittest.mock import patch
 
-from asr_runtime import BAILIAN_CORE_VERSION, BAILIAN_VERSION
+from asr_runtime import BAILIAN_VERSION
 from asr_runtime.application.bootstrap import _install_bailian, bootstrap
 from asr_runtime.utils.environment import SetupError, locked_python_versions, run_process
 from asr_runtime.utils.installation import NPM_REGISTRIES, PIP_SHA256, PIP_VERSION, PYTHON_INDEXES
@@ -25,7 +25,6 @@ class BootstrapTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         self.manifest = self.runtime.path(".tools/bailian/node_modules/bailian-cli/package.json")
         self.manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
-        self.write_core_manifest()
         for name, value in (
             ("check_python", None),
             ("check_node", (self.runtime.root / "node.exe", "v24.19.0")),
@@ -44,30 +43,41 @@ class BootstrapTests(RuntimeTestCase):
 
     def test_complete_environment_skips_pip_and_npm_install(self):
         """验证完整环境跳过pip和npm安装。"""
-        with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=self.expected), \
+        with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=self.expected) as inspect, \
              patch("asr_runtime.application.bootstrap.npm_entry", side_effect=AssertionError("已有BL不需要npm")), \
              patch("asr_runtime.application.bootstrap.run_process", return_value=subprocess.CompletedProcess([], 0, "", "")) as run:
             report = bootstrap(self.runtime)
         self.assertEqual(report["status"], "already_installed")
-        self.assertEqual(run.call_count, 1)
-        self.assertNotIn("pip", run.call_args.args[1])
+        inspect.assert_called_once_with(self.runtime, self.expected)
+        run.assert_not_called()
         self.install.assert_not_called()
 
-    def test_python_version_check_ignores_workspace_sysconfig(self):
-        """验证真实版本检查使用标准库并保留工作区同名源码。"""
-        shadow = self.runtime.workspace / "sysconfig.py"
-        shadow.write_text("from pathlib import Path\nPath('sysconfig-executed').touch()\n"
-                          "raise RuntimeError('workspace module executed')\n", encoding="utf-8")
-
-        def execute_version(runtime, argv, **kwargs):
-            """用当前测试解释器及其基础目录执行生产版本检查。"""
-            return run_process(runtime, [sys.executable, *argv[1:-1], sys.base_prefix], **kwargs)
-
+    def test_ready_environment_skips_cache_scan_until_requested(self):
+        """验证普通环境复用不扫描缓存，显式升级清理才调用共享工具。"""
         with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=self.expected), \
-             patch("asr_runtime.application.bootstrap.run_process", side_effect=execute_version):
-            report = bootstrap(self.runtime)
+             patch("asr_runtime.application.bootstrap.prune_download_cache", return_value={"python_wheels": 1, "npm_entries": 2}) as clean:
+            bootstrap(self.runtime)
+            clean.assert_not_called()
+            report = bootstrap(self.runtime, cleanup_old_cache=True)
+        clean.assert_called_once()
+        self.assertEqual(report["cache_cleanup"], {"python_wheels": 1, "npm_entries": 2})
+
+    def test_failed_dependency_preparation_preserves_download_cache(self):
+        """验证依赖检查未通过时，即使请求清理也保留下载缓存。"""
+        with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=None), \
+             patch("asr_runtime.application.bootstrap._install_python_dependencies"), \
+             patch("asr_runtime.application.bootstrap.prune_download_cache") as clean:
+            with self.assertRaisesRegex(SetupError, "依赖校验失败"):
+                bootstrap(self.runtime, cleanup_old_cache=True)
+        clean.assert_not_called()
+
+    def test_cache_cleanup_failure_keeps_successful_environment_result(self):
+        """验证缓存清理失败单独报告，已完成的环境准备仍返回成功。"""
+        with patch("asr_runtime.application.bootstrap.installed_python_versions", return_value=self.expected), \
+             patch("asr_runtime.application.bootstrap.prune_download_cache", side_effect=SetupError("cache cleanup incomplete")):
+            report = bootstrap(self.runtime, cleanup_old_cache=True)
         self.assertEqual(report["status"], "already_installed")
-        self.assertFalse((self.runtime.workspace / "sysconfig-executed").exists())
+        self.assertIn("cache cleanup incomplete", report["cache_cleanup_warning"])
 
     def test_venv_bound_to_another_python_is_preserved(self):
         """验证旧系统解释器绑定被拒绝，保留venv并停止依赖安装。"""
@@ -76,10 +86,10 @@ class BootstrapTests(RuntimeTestCase):
 
         def execute_version(runtime, argv, **kwargs):
             """用真实测试解释器验证不同的工作区基础目录会被拒绝。"""
-            self.assertEqual(argv[-1], str(runtime.base_python.parent))
+            self.assertEqual(argv[4], str(runtime.base_python.parent))
             return run_process(runtime, [sys.executable, *argv[1:]], **kwargs)
 
-        with patch("asr_runtime.application.bootstrap.run_process", side_effect=execute_version):
+        with patch("asr_runtime.utils.environment.run_process", side_effect=execute_version):
             with self.assertRaisesRegex(SetupError, "未绑定本地.*CPython 3.12"):
                 bootstrap(self.runtime)
         self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
@@ -218,10 +228,7 @@ class BootstrapTests(RuntimeTestCase):
             result = bootstrap(self.runtime)
 
         self.assertEqual(result["status"], "installed")
-        self.assertEqual(result["core_version"], BAILIAN_CORE_VERSION)
-        archive = f"archives/bailian-cli-core-{BAILIAN_CORE_VERSION}.tgz"
-        self.assertEqual((self.runtime.bl_directory / archive).read_bytes(),
-                         self.runtime.resource("scripts/bailian/" + archive).read_bytes())
+        self.assertEqual(result["version"], BAILIAN_VERSION)
         verify.assert_called_once_with(self.runtime)
         pip = next(argv for argv in calls if "download" in argv)
         self.assertIn("--require-hashes", pip)

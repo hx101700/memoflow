@@ -7,20 +7,26 @@ participant B as bootstrap（函数模块）
 participant I as installation（函数模块）
 participant R as Runtime对象
 participant M as 本机检查与安装子进程
-participant S as Skill只读资源
+participant S as Skill资源
 participant F as 用户工作目录
-Note over U,F: Windows 10/11 x64；使用系统Windows PowerShell<br/>无需预装Python或Node；完整包附运行时，轻量包用系统curl下载<br/>Python依赖与BL安装仍需联网
+Note over U,F: Windows 10/11 x64；首次使用完整版准备Python、Node和npm<br/>轻量更新复用已安装运行时，直接进入Python bootstrap<br/>Python依赖与BL安装仍需联网
 U->>C: 安装asr-transcription Skill，选择独立工作目录
 C->>S: 读取SKILL.md与按需references
+opt 已有Skill且用户提供新ZIP
+    C->>C: 完整解压并核对新包<br/>等待使用同一Skill的全部命令结束
+    C->>S: 确认专用资源目录后用新包重建<br/>清除旧发行资源，非Skill文件先核对归属
+    Note over C,F: 原工作目录的环境、凭据、任务和输出保持原位
+end
 Note over C,S: 两包共用Skill代码、资料与仓库双语README<br/>asr-transcription.zip额外附assets/runtimes中的两个官方ZIP<br/>asr-transcription-lite.zip不附运行时；均排除开发文档和用户数据<br/>安装者决定Skill位置；本工具不自动注册用户Skill
-C->>P: Skill/scripts/bootstrap.ps1 -Workspace 用户目录
+alt 首次准备工作目录运行时，或运行时需要恢复
+C->>P: 完整包scripts/bootstrap.ps1 -Workspace 用户目录
 P->>S: 读取scripts/runtimes.json
 P->>P: 检查已有工作目录、架构与Skill边界
 loop Python 3.12.10完整包与Node 24.21.0（含npm）
     opt 目标运行时目录尚不存在
         alt 包内有对应原始运行时ZIP
             P->>S: 读取assets/runtimes中的归档
-        else 轻量包无归档
+        else 源码安装或显式恢复缺少归档
             opt 尚无摘要匹配的完整缓存
                 P->>M: Windows curl下载官方ZIP<br/>连接重试与中断续接
                 M->>F: 私有.runtime/runtime-downloads缓存
@@ -36,7 +42,11 @@ break 运行时下载、摘要、权限或能力检查失败
     P-->>C: 失败回执；保留完整缓存与已有数据
 end
 P->>E: 私有Python -E -S -B -X utf8<br/>Skill/scripts/asr.py --workspace 用户目录 bootstrap
+else 工作目录已有运行时
+C->>E: 已有基础Python -E -S -B -X utf8<br/>Skill/scripts/asr.py --workspace 用户目录 bootstrap
+end
 E->>R: Runtime(workspace, skill_root)
+Note over E,S: asr.py导入业务前共享打开assets/update.lock<br/>业务命令全程保持句柄；自动更新见图09
 R->>R: 规范化路径；工作目录须在Skill之外<br/>私有运行目录与Skill互不包含
 E->>B: bootstrap(runtime)
 B->>B: check_python()核对当前解释器
@@ -53,7 +63,7 @@ else 前置条件满足
     B->>R: prepare()创建私有运行目录与空npm配置
     R->>F: 写入.asr-transcription/.runtime及.state
     B->>F: 检查或创建.asr-transcription/.venv
-    B->>M: 私有venv Python -I检查平台、base_prefix<br/>及已装依赖版本
+    B->>M: installed_python_versions()<br/>一个私有venv子进程检查平台、base_prefix、依赖加载及版本
     Note over B,F: 旧venv基础路径不匹配时停止并保留<br/>结束使用后仅重建venv，任务和凭据保持原样
     opt Python依赖与锁不一致
         B->>I: run_installer：必要时执行ensurepip
@@ -82,12 +92,12 @@ else 前置条件满足
         Note over B,F: 下载最终失败或本机安装失败时抛出SetupError<br/>保留日志与完整wheel；不开始BL安装
     end
     opt BL尚未安装
-        B->>S: 读取scripts/bailian的package、lock与core修订归档
-        B->>F: 复制到.asr-transcription/.tools/bailian<br/>包含archives/bailian-cli-core-2.1.0-memoflow.1.tgz
-        Note over B,M: npm override＋锁文件安装原生core修订包<br/>CLI、commands、runtime保持官方2.1.0<br/>归档保留Apache-2.0许可与修改说明；不在安装后改包
+        B->>S: 读取scripts/bailian的package与lock
+        B->>F: 复制到.asr-transcription/.tools/bailian
+        Note over B,M: npm锁文件安装官方BL 2.4.0<br/>core、commands、runtime均使用官方包
         B->>B: _install_bailian(runtime, node, npm)
         B->>I: rank_npm_registries()
-        Note over I,M: 并行采样固定BL 2.1.0 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序
+        Note over I,M: 并行采样固定BL 2.4.0 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序
         I-->>B: 两个npm来源的优先顺序
         loop 按顺序最多两个来源；成功后结束循环
             B->>I: run_installer：npm ci --json --prefer-offline<br/>指定registry，沿用npm默认的npmjs地址替换规则
@@ -110,11 +120,20 @@ else 前置条件满足
         B->>S: 读取assets/env.example
         B->>F: 复制空模板至.asr-transcription/.env
     end
+    opt 升级指定cleanup-old-cache，或本次实际安装依赖/BL
+        B->>I: prune_download_cache(runtime, 当前依赖锁)
+        I->>F: 删除旧wheel，保留当前依赖与pip版本
+        I->>M: 私有Node执行npm cache ls<br/>显式指定本工作目录缓存
+        opt 存在已识别的旧版下载键
+            I->>M: 逐键npm cache clean，再执行一次verify<br/>回收共享旧内容的残留索引；当前缓存保留
+        end
+        I-->>B: 清理数量；失败单独报告cache_cleanup_warning
+    end
     B-->>E: installed / already_installed，Key文件位置
-    E-->>P: JSON安装回执
-    P-->>C: 转发回执
+    E-->>C: JSON安装回执；经PowerShell调用时原样转发
 end
 Note over B,F: 环境准备保留既有Key和任务<br/>安装后的命令使用工作目录venv与同一--workspace<br/>Python安装和检查使用隔离模式，从指定环境加载依赖
+Note over C,M: bootstrap成功已包含验证，后续直接继续业务<br/>doctor仅用于主动诊断或排障，复用同一环境探针
 Note over I,F: run_installer转发进度并保存本机日志<br/>CLI stdout保留最终JSON；npm结果使用临时JSON<br/>中断时回收本次安装进程树
 Note over P,F: 包内ZIP保持只读；下载的ZIP与完整wheel保留在工作目录<br/>运行时实际解压到工作目录；系统PATH与注册表保持原样<br/>旧venv可能引用创建位置；移动目录后按诊断修复，保留任务和凭据
 Note over P,S: Skill内scripts/bootstrap.ps1、scripts/runtimes.json<br/>scripts/asr.py、scripts/asr_runtime/__main__.py<br/>application/bootstrap.py；utils/installation.py、environment.py、bailian.py

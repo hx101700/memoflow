@@ -8,6 +8,10 @@
 /outputs/
 /.state/
 /.runtime/
+/.skill-update-state.json
+/skills/asr-transcription/.skill-update-state.json
+/skills/asr-transcription/.skill-update-*/
+/skills/asr-transcription/skill-manifest.json
 /.secrets/
 *.pem
 *.key

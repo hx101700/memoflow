@@ -10,13 +10,13 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 SKILL_DIRECTORY = Path("skills/asr-transcription")
 REPOSITORY_FILES = ("README.md", "README.en.md")
+MANIFEST = "skill-manifest.json"
+UPDATE_LOCK = "assets/update.lock"
 REQUIRED_FILES = (
-    "SKILL.md", "agents/openai.yaml", "LICENSE", "assets/env.example",
+    "SKILL.md", "agents/openai.yaml", "LICENSE", "assets/env.example", UPDATE_LOCK,
     "references/usage.md", "references/errors.md", "references/model.md",
-    "scripts/asr.py", "scripts/bootstrap.ps1", "scripts/runtimes.json", "scripts/requirements.txt",
+    "scripts/asr.py", "scripts/update.py", "scripts/bootstrap.ps1", "scripts/runtimes.json", "scripts/requirements.txt",
     "scripts/bailian/package.json", "scripts/bailian/package-lock.json",
-    "scripts/bailian/console-browser.cjs",
-    "scripts/bailian/archives/bailian-cli-core-2.1.0-memoflow.1.tgz",
     "scripts/asr_runtime/__init__.py", "scripts/asr_runtime/__main__.py",
     "scripts/asr_runtime/models.py", "scripts/asr_runtime/web.py",
     "scripts/asr_runtime/error_catalog.json",
@@ -90,6 +90,9 @@ def build_zip(root: Path, destination: Path | None = None, *, runtime_directory:
     """按同一源码生成轻量包或附带两个官方运行时归档的完整包。"""
     root = root.resolve(strict=True)
     files = release_files(root)
+    version = json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
+    manifest = {"schema_version": 1, "name": "asr-transcription", "version": version,
+                "files": [name for name in files if name != UPDATE_LOCK]}
     if runtime_directory is not None:
         files.update(runtime_files(root, runtime_directory))
     files = dict(sorted(files.items()))
@@ -99,8 +102,9 @@ def build_zip(root: Path, destination: Path | None = None, *, runtime_directory:
     with ZipFile(destination, "x", compression=ZIP_DEFLATED) as archive:
         for name, path in files.items():
             archive.write(path, name, compress_type=ZIP_STORED if name.endswith(".zip") else ZIP_DEFLATED)
+        archive.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     return {"status": "created", "path": str(destination),
-            "file_count": len(files), "files": list(files)}
+            "file_count": len(files) + 1, "files": [*files, MANIFEST]}
 
 
 def main() -> int:

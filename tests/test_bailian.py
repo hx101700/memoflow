@@ -29,7 +29,6 @@ class BailianTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         manifest = self.runtime.bl_entry.parent.parent / "package.json"
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
-        self.write_core_manifest()
         self.key = "asr-transcription-synthetic-process-key"
         self.runtime.path(".env").write_text(f"DASHSCOPE_API_KEY={self.key}\n", encoding="utf-8")
         self.node = self.runtime.node_entry
@@ -63,10 +62,11 @@ class BailianTests(RuntimeTestCase):
         self.assertFalse(self.popen.call_args.kwargs["shell"])
         self.assertEqual(self.popen.call_args.kwargs["cwd"], self.runtime.workspace)
 
-    def test_original_core_stops_before_recognition(self):
-        """验证原版 core 被明确识别，修订版安装前停止识别。"""
-        self.write_core_manifest("2.1.0")
-        with self.assertRaisesRegex(SetupError, "上传超时修订版"):
+    def test_old_cli_stops_before_recognition(self):
+        """验证旧CLI在构造识别命令时被拒绝。"""
+        manifest = self.runtime.bl_entry.parent.parent / "package.json"
+        manifest.write_text(json.dumps({"version": "2.1.0"}), encoding="utf-8")
+        with self.assertRaisesRegex(SetupError, "BL 2.4.0"):
             prepare_command(self.runtime, self.arguments, "api_key")
         self.popen.assert_not_called()
 
@@ -83,6 +83,7 @@ class BailianTests(RuntimeTestCase):
         self.assertEqual(kwargs["stderr"], subprocess.PIPE)
         self.assertEqual(kwargs["env"]["DASHSCOPE_API_KEY"], self.key)
         self.assertEqual(kwargs["env"]["DO_NOT_TRACK"], "1")
+        self.assertEqual(kwargs["env"]["NO_UPDATE_NOTIFIER"], "1")
         self.assertNotIn("NODE_OPTIONS", kwargs["env"])
         self.assertNotIn(self.key, repr(self.popen.call_args.args))
 
@@ -334,21 +335,18 @@ class BailianTests(RuntimeTestCase):
 
     def test_successful_login_process_still_checks_public_status(self):
         """验证登录进程成功后仍检查公开状态。"""
-        self.process.stdout = io.StringIO("")
-        self.process.stderr = io.StringIO("")
         self.process.communicate.return_value = (json.dumps({"authenticated": False}), "")
         with patch("asr_runtime.utils.bailian.check_login_execution_context"):
             report = login_console(self.runtime)
         self.assertFalse(report["configured"])
         self.assertEqual(self.popen.call_count, 2)
         first, second = self.popen.call_args_list
-        self.assertEqual(first.args[0][1:3], ("--require", str(self.runtime.resource("scripts/bailian/console-browser.cjs"))))
-        self.assertEqual(first.args[0][4:], ("auth", "login", "--console", "--console-site", "domestic",
+        self.assertEqual(first.args[0][2:], ("auth", "login", "--console", "--console-site", "domestic",
                                              "--config", "default", "--output", "json", "--quiet"))
         self.assertNotIn("--base-url", first.args[0])
         self.assertEqual(second.args[0][2:4], ("auth", "status"))
         self.assertNotIn("DASHSCOPE_API_KEY", first.kwargs["env"])
-        self.process.wait.assert_called_once_with(timeout=None)
+        self.assertIsNone(self.process.communicate.call_args_list[0].kwargs["timeout"])
 
     def test_failed_login_does_not_repeat_login_or_request_status(self):
         """验证登录失败立即返回原进程错误。"""

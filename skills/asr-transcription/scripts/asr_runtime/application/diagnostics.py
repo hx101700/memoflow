@@ -30,8 +30,6 @@ def doctor(runtime: Runtime) -> dict[str, object]:
         issues.append(str(exc))
     if not runtime.base_python.is_file():
         issues.append("工作区Python尚未安装，请运行Skill的scripts/bootstrap.ps1。")
-    elif Path(sys.base_prefix).resolve() != runtime.base_python.parent:
-        issues.append("当前Python未绑定工作区独立运行时，请运行Skill的scripts/bootstrap.ps1检查环境。")
     try:
         node, node_version = check_node(runtime)
         report["node"] = {"path": str(node), "version": node_version}
@@ -55,7 +53,7 @@ def doctor(runtime: Runtime) -> dict[str, object]:
             expected = locked_python_versions(runtime)
             installed = installed_python_versions(runtime, expected)
             if installed is None:
-                issues.append("Python运行依赖缺失或无法加载，请运行Skill的scripts/bootstrap.ps1。")
+                issues.append("Python运行依赖缺失或无法加载，请用工作区基础Python运行bootstrap。")
             else:
                 report["python_packages"] = installed
                 for name, version in expected.items():

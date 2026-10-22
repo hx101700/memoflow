@@ -3,7 +3,8 @@
 安装、认证、网页配置、文件要求和重导集中维护在 Skill 的 [usage.md](../skills/asr-transcription/references/usage.md)。
 
 - 第一次使用：从[项目介绍](../README.md)了解安装入口，把录音发到对话中即可进入网页配置，也可在页面选择文件或填写 API Key。
-- 安装包选择：完整包附带 Python 与 Node，轻量包首次安装时下载；两者均在工作目录准备独立环境，业务依赖与百炼 CLI（BL）仍需联网。操作见[运行准备](../skills/asr-transcription/references/usage.md#运行准备)。
+- 安装包选择：首次安装使用完整版，附带Python、Node.js与npm；后续由Codex自动下载轻量包更新，复用原工作目录运行时。业务依赖与百炼CLI仍按锁联网安装。操作见[运行准备](../skills/asr-transcription/references/usage.md#运行准备)。
+- 自动更新：安装包含更新入口的新包后，Codex 在使用前调用代码，每个安装目录每天最多检查一次正式版本；有更新时用轻量包覆盖，活动任务期间暂缓。使用方法与回执见[自动更新](../skills/asr-transcription/references/usage.md#自动更新)。
 - 热词：直接填写或导入 Excel，当前序号连续；导入和编辑时保留原值，点击“确认并预览”后才校验内容并标红错误单元格。
 - 修改与语言切换：只清除改动单元格的旧提示，其他行保留；重复组剩一条时移除重复提示。表格较长时在固定高度内滚动；中英切换保留表格与滚动位置，错误和警告随之切换。关闭热词或上下文增强会清空对应区域，不影响 API Key。
 - 当前设置：宽屏右侧摘要随表单更新并跟随滚动；较窄窗口保持单列，正式核对仍在独立预览页完成。
@@ -14,7 +15,7 @@
 - 结果查询与重导：使用确切转写任务编号 `job_id`，先另存人工修改的文件。历史成功任务保持原模型标签。
 - 服务中断：下次在同一工作目录开页时自动检查可回收残留；未到期、进程存活或归属不明时保留，详见[中断与临时文件](../skills/asr-transcription/references/usage.md#中断与临时文件)。正式凭据、任务和结果不会作为缓存清除。
 - 失败处理：参阅 [errors.md](../skills/asr-transcription/references/errors.md)，保留回执和已生成文件；失败不自动重传。
-- 参数依据：参阅 [model.md](../skills/asr-transcription/references/model.md) 的官方来源。
+- 参数依据：参阅 [model.md](../skills/asr-transcription/references/model.md) 的官方来源。当前工具固定官方 BL 2.4.0，已有安装的版本不匹配时按[错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)更新工作目录的 BL。
 
 Skill 指令与用户工作目录分别承担操作指导和运行数据存储；仓库开发文档不进入安装包。
 

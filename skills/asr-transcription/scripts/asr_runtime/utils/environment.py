@@ -326,16 +326,32 @@ def locked_python_versions(runtime: Runtime) -> dict[str, str]:
 
 
 def installed_python_versions(runtime: Runtime, packages: dict[str, str]) -> dict[str, str] | None:
-    """加载工作区venv依赖并返回版本，加载失败时返回None。"""
+    """核对工作区venv绑定并加载依赖，返回版本或依赖缺失结果。"""
     python = runtime.path(".venv/Scripts/python.exe")
     if not python.is_file():
         return None
     result = run_process(runtime, [str(python), "-I", "-c",
-        "import av, dotenv, openpyxl, et_xmlfile, defusedxml, docx, lxml.etree, typing_extensions; "
-        "import importlib.metadata as m, json, sys; "
-        "print(json.dumps({name:m.version(name) for name in sys.argv[1:]}))", *packages])
-    if result.returncode:
+        "import sys, sysconfig\n"
+        "from pathlib import Path\n"
+        "if (sys.version_info[:2] != (3, 12) or sys.implementation.name != 'cpython'\n"
+        "    or sysconfig.get_platform() != 'win-amd64'\n"
+        "    or Path(sys.base_prefix).resolve() != Path(sys.argv[1]).resolve()):\n"
+        "    raise SystemExit(2)\n"
+        "import importlib.metadata as m, json\n"
+        "try:\n"
+        "    import av, dotenv, openpyxl, et_xmlfile, defusedxml, docx, lxml.etree, typing_extensions\n"
+        "    print(json.dumps({name:m.version(name) for name in sys.argv[2:]}))\n"
+        "except ImportError:\n"
+        "    raise SystemExit(3)\n",
+        str(runtime.base_python.parent), *packages])
+    # 本地探针以2表示绑定错误、3表示依赖缺失；其余失败按实际运行问题停止。
+    if result.returncode == 2:
+        raise SetupError("工作区虚拟环境未绑定本地Windows x64 CPython 3.12。"
+                         "已保留该环境；请清理工作区.asr-transcription/.venv后，用工作区基础Python重新运行bootstrap。")
+    if result.returncode == 3:
         return None
+    if result.returncode:
+        raise SetupError(f"工作区虚拟环境无法完成检查（退出码{result.returncode}）；请检查私有Python和.venv。")
     try:
         versions = json.loads(result.stdout)
         if not isinstance(versions, dict) or set(versions) != set(packages):

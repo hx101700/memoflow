@@ -61,14 +61,26 @@ flowchart TD
 
 使用前请准备[阿里云账号](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account)，并按[百炼官方指引](https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen)完成服务准备。
 
-1. 下载[最新安装包](https://github.com/hx101700/memoflow/releases/latest)。
+1. 首次安装请下载[完整版 asr-transcription.zip](https://github.com/hx101700/memoflow/releases/latest)，已附带 Python、Node.js 和配套 npm。
 2. 把 ZIP 和下面这句话一起发给 Codex：
 
    ```text
-   请将这个新的ZIP 安装为 asr-transcription Skill，阅读其中的 SKILL.md，并按说明在当前任务文件夹准备运行环境，已安装则更新。
+   请将这个新的ZIP 安装为 asr-transcription Skill，阅读其中的SKILL.md，并按说明在当前任务文件夹准备运行环境，已安装则更新。
    ```
 
 ![Codex 完成 Skill 安装和运行环境准备](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-installation.png)
+
+## 更新
+
+Codex 使用语音转写 Skill 前会检查正式版本，每天最多自动检查一次。有新版时，Codex 会自动下载轻量包（lite），复用已有的 Python、Node.js 和 npm，更新 Skill 及所需依赖。需要额外检查时，告诉 Codex：
+
+   ```text
+   检查并更新语音转写 Skill。
+   ```
+
+更新失败时保持或恢复当前安装，并清理本次暂存文件。工作目录中的凭据、环境、任务和转写结果保留。
+升级成功后会清理旧版依赖下载缓存，保留当前版本可复用的缓存。
+当然，也可把新 ZIP 发给 Codex，使用上面的安装请求直接更新。
 
 ## 使用
 

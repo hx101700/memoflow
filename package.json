@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:login": "tsc scripts/console-browser.cts --module nodenext --target es2022 --strict --skipLibCheck --types node --outDir skills/asr-transcription/scripts/bailian",
     "check:web": "vue-tsc --noEmit -p frontend/tsconfig.json",
     "build:web": "npm run check:web && vite build --config frontend/vite.config.ts",
     "test:web": "tsx --test tests/test_frontend.ts tests/test_i18n.ts",

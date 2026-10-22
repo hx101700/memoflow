@@ -61,24 +61,34 @@ flowchart TD
 
 Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com/zh/account/step-1-register-an-alibaba-cloud-account) and follow the [Model Studio setup guide](https://help.aliyun.com/en/model-studio/first-api-call-to-qwen).
 
-1. Download the [latest package](https://github.com/hx101700/memoflow/releases/latest).
+1. For your first installation, download the [full package, asr-transcription.zip](https://github.com/hx101700/memoflow/releases/latest). It includes Python, Node.js, and the bundled npm.
 2. Send the ZIP to Codex with:
 
    ```text
    Install this new ZIP as the asr-transcription Skill. Read its SKILL.md and follow the instructions to prepare the runtime environment in the current task folder. If it is already installed, update it.
    ```
 
-The full package includes Python and Node.js runtimes. The lite package downloads them from official sources during setup. Both packages support Windows 10/11 x64 and require an internet connection for the first dependency installation.
-
 ![Codex completes the Skill installation and runtime setup](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/codex-installation.png)
+
+## Update
+
+Before using the transcription Skill, Codex checks for the latest release, with at most one automatic check per day. When a newer version is available, Codex automatically downloads the lite package and reuses the installed Python, Node.js, and npm to update the Skill and its required dependencies. To request another check, tell Codex:
+
+   ```text
+   Check for updates to the asr-transcription Skill and update it if needed.
+   ```
+
+If an update fails, the tool keeps or restores the current installation and removes temporary files from that attempt. Workspace credentials, environments, jobs, and transcripts are preserved.
+After a successful upgrade, obsolete dependency downloads are removed while reusable caches for the current versions are retained.
+You can also send a new ZIP to Codex and use the installation request above to update directly.
 
 ## Use
 
 After installation, tell Codex:
 
-```text
-Please transcribe this recording.
-```
+  ```text
+  Please transcribe this recording.
+  ```
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 

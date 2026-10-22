@@ -9,7 +9,7 @@ import venv
 from pathlib import Path
 from typing import TextIO, cast
 
-from .. import BAILIAN_CORE_VERSION, BAILIAN_VERSION
+from .. import BAILIAN_VERSION
 from ..utils.bailian import installed_bl_version, verify_bl_installation
 from ..utils.environment import (
     Runtime,
@@ -23,7 +23,7 @@ from ..utils.environment import (
 )
 from ..utils.installation import (
     PIP_SHA256, PIP_VERSION, PIP_WHEEL_PATH, PythonIndex,
-    rank_npm_registries, rank_python_indexes, run_installer,
+    prune_download_cache, rank_npm_registries, rank_python_indexes, run_installer,
 )
 
 _NPM_DOWNLOAD_ERRORS = {
@@ -121,7 +121,7 @@ def _install_python_dependencies(runtime: Runtime) -> None:
             raise SetupError(f"Python依赖本机安装失败；本地日志：{log_path}")
 
 
-def bootstrap(runtime: Runtime) -> dict[str, str]:
+def bootstrap(runtime: Runtime, *, cleanup_old_cache: bool = False) -> dict[str, object]:
     """检查工作区运行时，按 Skill 依赖锁准备环境与 API Key 模板。"""
     check_python()
     node, _ = check_node(runtime)
@@ -160,25 +160,15 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
     python = runtime.path(".venv/Scripts/python.exe")
     if not python.is_file():
         raise SetupError("已有虚拟环境不完整，未覆盖或自动重建。")
-    # 隔离模式使检查与安装使用标准库及venv依赖，避免导入工作区同名模块。
-    checked = run_process(runtime, [str(python), "-I", "-c",
-        "import sys, sysconfig; from pathlib import Path; "
-        "raise SystemExit(sys.version_info[:2] != (3, 12) or sys.implementation.name != 'cpython' "
-        "or sysconfig.get_platform() != 'win-amd64' or Path(sys.base_prefix).resolve() != Path(sys.argv[1]).resolve())",
-        str(runtime.base_python.parent)])
-    if checked.returncode:
-        raise SetupError("工作区虚拟环境无法启动或未绑定本地Windows x64 CPython 3.12。"
-                         "已保留该环境；请清理工作区.asr-transcription/.venv后重新运行Skill的scripts/bootstrap.ps1。")
-    if installed_python_versions(runtime, expected) != expected:
+    python_changed = installed_python_versions(runtime, expected) != expected
+    if python_changed:
         _install_python_dependencies(runtime)
         if installed_python_versions(runtime, expected) != expected:
             raise SetupError("pip结束但Python依赖校验失败，未自动重试。")
 
     if installed is None:
         destination.mkdir(parents=True, exist_ok=True)
-        for name in ("package.json", "package-lock.json",
-                     f"archives/bailian-cli-core-{BAILIAN_CORE_VERSION}.tgz"):
-            (destination / name).parent.mkdir(parents=True, exist_ok=True)
+        for name in ("package.json", "package-lock.json"):
             shutil.copyfile(source / name, destination / name)
 
         _install_bailian(runtime, node, npm)
@@ -187,7 +177,14 @@ def bootstrap(runtime: Runtime) -> dict[str, str]:
     key_file = runtime.path(".env")
     if not key_file.exists():
         shutil.copyfile(runtime.resource("assets/env.example"), key_file)
-    return {"status": "already_installed" if installed is not None else "installed",
-            "version": BAILIAN_VERSION, "core_version": BAILIAN_CORE_VERSION,
-            "directory": str(destination), "key_file": str(key_file),
-            "python": str(python), "base_python": str(runtime.base_python), "node": str(node)}
+    report: dict[str, object] = {
+        "status": "already_installed" if installed is not None else "installed",
+        "version": BAILIAN_VERSION, "directory": str(destination), "key_file": str(key_file),
+        "python": str(python), "base_python": str(runtime.base_python), "node": str(node),
+    }
+    if cleanup_old_cache or python_changed or installed is None:
+        try:
+            report["cache_cleanup"] = prune_download_cache(runtime, expected, lock["packages"])
+        except (OSError, SetupError, ValueError) as error:
+            report["cache_cleanup_warning"] = str(error)
+    return report

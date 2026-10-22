@@ -4,8 +4,10 @@ from ctypes import wintypes
 import io
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
+import venv
 from unittest.mock import Mock, patch
 
 from asr_runtime import BAILIAN_VERSION
@@ -98,14 +100,46 @@ class EnvironmentTests(RuntimeTestCase):
                 "raise RuntimeError('workspace module executed')\n", encoding="utf-8")
 
         def execute_probe(runtime, argv, **kwargs):
-            """用当前测试venv执行生产探针参数。"""
-            return run_process(runtime, [sys.executable, *argv[1:]], **kwargs)
+            """用当前测试venv及其实际基础目录执行生产探针。"""
+            return run_process(runtime, [sys.executable, *argv[1:4], sys.base_prefix, *argv[5:]], **kwargs)
 
         with patch("asr_runtime.utils.environment.run_process", side_effect=execute_probe):
             versions = installed_python_versions(self.runtime, {"openpyxl": "3.1.5"})
         self.assertEqual(versions, {"openpyxl": "3.1.5"})
         for name in ("json", "sysconfig"):
             self.assertFalse((self.runtime.workspace / f"{name}-executed").exists())
+
+    def test_dependency_probe_identifies_missing_packages_in_real_venv(self):
+        """验证可用解释器缺少依赖时返回缺失结果，供安装器准备依赖。"""
+        venv.EnvBuilder(with_pip=False).create(self.runtime.path(".venv"))
+
+        def execute_probe(runtime, argv, **kwargs):
+            """让临时venv按其实际基础目录运行生产探针。"""
+            return run_process(runtime, [*argv[:4], sys.base_prefix, *argv[5:]], **kwargs)
+
+        with patch("asr_runtime.utils.environment.run_process", side_effect=execute_probe):
+            result = installed_python_versions(self.runtime, locked_python_versions(self.runtime))
+        self.assertIsNone(result)
+
+    def test_dependency_probe_reports_unstartable_venv(self):
+        """验证基础Python路径失效的venv按运行错误报告，不当作缺少依赖。"""
+        venv.EnvBuilder(with_pip=False).create(self.runtime.path(".venv"))
+        config = self.runtime.path(".venv/pyvenv.cfg")
+        lines = config.read_text(encoding="utf-8").splitlines()
+        config.write_text("\n".join(
+            "home = " + str(self.temporary_root / "missing-base") if line.startswith("home = ") else line
+            for line in lines) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(SetupError, "虚拟环境无法完成检查"):
+            installed_python_versions(self.runtime, locked_python_versions(self.runtime))
+
+    def test_bootstrap_cli_passes_explicit_cache_cleanup(self):
+        """验证升级清理参数由CLI传给环境准备用例。"""
+        with patch("asr_runtime.__main__.bootstrap", return_value={"status": "already_installed"}) as prepare, \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = runtime_main(["--workspace", str(self.runtime.workspace), "bootstrap", "--cleanup-old-cache"])
+        self.assertEqual(code, 0)
+        self.assertEqual(prepare.call_args.args[0].workspace, self.runtime.workspace)
+        self.assertTrue(prepare.call_args.kwargs["cleanup_old_cache"])
 
     def test_runtime_cli_rejects_development_probe(self):
         """验证用户命令入口拒绝开发合约探针。"""
@@ -272,7 +306,6 @@ class EnvironmentTests(RuntimeTestCase):
         self.runtime.bl_entry.touch()
         manifest = self.runtime.path(".tools/bailian/node_modules/bailian-cli/package.json")
         manifest.write_text(json.dumps({"version": BAILIAN_VERSION}), encoding="utf-8")
-        self.write_core_manifest()
         with patch("asr_runtime.utils.bailian.find_node", return_value=self.runtime.node_entry) as find:
             command = bl_command(self.runtime, ["speech", "recognize", "--dry-run"])
         find.assert_called_once_with(self.runtime)
@@ -327,14 +360,23 @@ class EnvironmentTests(RuntimeTestCase):
         self.assertEqual(report["base_python"], str(self.runtime.base_python))
         self.assertIn("工作区Python尚未安装，请运行Skill的scripts/bootstrap.ps1。", report["issues"])
 
-    def test_doctor_reports_python_bound_outside_workspace(self):
-        """验证诊断能指出当前解释器仍使用系统基础目录。"""
+    def test_doctor_checks_target_venv_when_called_from_private_base_python(self):
+        """验证调用者基础路径正确时，仍能发现真实venv绑定了另一个Python。"""
+        venv.EnvBuilder(with_pip=False).create(self.runtime.path(".venv"))
+        packages = self.runtime.path(".venv/Lib/site-packages")
+        (packages / "test-dependencies.pth").write_text(
+            str(Path(sys.prefix) / "Lib/site-packages") + "\n", encoding="utf-8")
         self.runtime.base_python.parent.mkdir(parents=True)
         self.runtime.base_python.touch()
-        with patch("asr_runtime.application.diagnostics.check_node",
-                   side_effect=SetupError("Node unavailable")):
+        self.runtime.bl_entry.parent.mkdir(parents=True)
+        self.runtime.bl_entry.touch()
+        with patch("asr_runtime.application.diagnostics.sys.base_prefix", str(self.runtime.base_python.parent)), \
+             patch("asr_runtime.application.diagnostics.check_node", return_value=(self.runtime.node_entry, "v24.21.0")), \
+             patch("asr_runtime.application.diagnostics.installed_bl_version", return_value=BAILIAN_VERSION), \
+             patch("asr_runtime.application.diagnostics.verify_bl_installation"):
             report = doctor(self.runtime)
-        self.assertIn("当前Python未绑定工作区独立运行时，请运行Skill的scripts/bootstrap.ps1检查环境。", report["issues"])
+        self.assertEqual(len(report["issues"]), 1)
+        self.assertIn("虚拟环境未绑定", report["issues"][0])
 
     def test_doctor_does_not_require_npm(self):
         """验证环境诊断直接检查已安装的BL和Python依赖。"""
@@ -344,12 +386,25 @@ class EnvironmentTests(RuntimeTestCase):
         self.assertEqual(report["node"], {"path": str(node), "version": "v24.19.0"})
 
     def test_metadata_alone_cannot_mark_incomplete_installation_ready(self):
-        """验证BL入口启动失败被报告为安装异常。"""
-        with patch("asr_runtime.utils.bailian.bl_command", return_value=["node.exe", "bl.mjs", "--version", "--quiet"]), \
-             patch("asr_runtime.utils.bailian.run_process", return_value=subprocess.CompletedProcess([], 1, "", "missing dependency")) as run:
-            with self.assertRaisesRegex(SetupError, "不完整"):
-                verify_bl_installation(self.runtime)
-        run.assert_called_once()
+        """验证BL启动失败、错误版本或空输出均被报告为安装异常。"""
+        for result in (subprocess.CompletedProcess([], 1, "", "missing dependency"),
+                       subprocess.CompletedProcess([], 0, "bl 2.1.0\n", ""),
+                       subprocess.CompletedProcess([], 0, "", "")):
+            with self.subTest(result=result), \
+                 patch("asr_runtime.utils.bailian.run_process", return_value=result) as run:
+                with self.assertRaisesRegex(SetupError, "不完整"):
+                    verify_bl_installation(self.runtime)
+                run.assert_called_once()
+
+    def test_bl_runtime_verification_uses_one_process_without_rereading_metadata(self):
+        """验证安装可用性检查只启动一次私有BL，复用调用方已核对的包信息。"""
+        result = subprocess.CompletedProcess([], 0, f"bl {BAILIAN_VERSION}\n", "")
+        with patch("asr_runtime.utils.bailian.installed_bl_version", side_effect=AssertionError("重复读取包信息")), \
+             patch("asr_runtime.utils.bailian.run_process", return_value=result) as run:
+            verify_bl_installation(self.runtime)
+        run.assert_called_once_with(self.runtime,
+            [str(self.runtime.node_entry), str(self.runtime.bl_entry), "--version", "--quiet"],
+            isolated_config=True)
 
     def test_doctor_reports_python_version_drift(self):
         """验证环境诊断报告Python依赖版本偏差。"""
@@ -411,7 +466,7 @@ class EnvironmentTests(RuntimeTestCase):
                            "language_hints": ["zh"], "vocabulary": {"测试术语": 4}},
         }}
         outputs = [
-            subprocess.CompletedProcess([], 0, "bl 2.1.0\n", ""),
+            subprocess.CompletedProcess([], 0, f"bl {BAILIAN_VERSION}\n", ""),
             *[subprocess.CompletedProcess([], 0, "", "Usage: test") for _ in range(3)],
             subprocess.CompletedProcess([], 0, json.dumps(payload), ""),
         ]
