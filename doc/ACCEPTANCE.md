@@ -8,10 +8,10 @@
 
 | v0.1.2正式文件 | 文件数 | 字节数 | SHA-256 |
 | --- | --- | --- | --- |
-| dist/release-v0.1.2/asr-transcription.zip | 54 | 70383094 | `a06f0662bc247f407c0d20fbf40a4cf582b9481cff4ceebc39e85316110ae30a` |
-| dist/release-v0.1.2/asr-transcription-lite.zip | 52 | 364500 | `45b3fb98531af5245403797983c72891ff40c620279367f598ac8f77af0242b4` |
+| dist/release-v0.1.2/asr-transcription.zip | 54 | 70383122 | `097c8075458a40527df5b7acd69a3d6ba62d070d6f94c9bcbd06462787569d90` |
+| dist/release-v0.1.2/asr-transcription-lite.zip | 52 | 364528 | `c7edcb09e5f14410d440a2ef90edc8294889cffc6b0b0fb3914a3baf9cc2b13c` |
 
-准备标签建立后，用户补充要求README的手动更新请求明确链接到“安装”章节。双语README已同步，两个待上传包重新构建；运行资源与v0.1.2标签一致，包内README采用后续文档提交，源码逐字及120个本地链接核对通过。既有标签保持原引用。
+准备标签建立后，用户补充要求README明确旧版手动更新方式，并将完整请求链接到“安装”章节。双语README已同步，两个待上传包重新构建；运行资源与v0.1.2标签一致，包内README采用后续文档提交，源码逐字及120个本地链接核对通过。既有标签保持原引用。
 
 发布前官方API确认现有v0.1.0与v0.1.1，v0.1.2尚不存在。后续创建新标签和Release，保持已有版本及附件。
 

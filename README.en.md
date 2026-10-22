@@ -82,7 +82,7 @@ Before using the transcription Skill, Codex checks for the latest release, with 
 
 If an update fails, the tool keeps or restores the current installation and removes temporary files from that attempt. Workspace credentials, environments, jobs, and transcripts are preserved.
 After a successful upgrade, obsolete dependency downloads are removed while reusable caches for the current versions are retained.
-To update manually, send the new ZIP to Codex together with the complete request in the [Install section](#install).
+You can also update an earlier version manually: send the new ZIP to Codex together with the complete request in the [Install section](#install).
 
 ## Use
 
