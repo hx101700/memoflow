@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-10-22 v0.1.2正式发布完成
+
+GitHub Release ID为420494783，draft与prerelease均为false，latest指向v0.1.2。API回读正文与release/NOTES.md一致；两附件均uploaded，大小与SHA-256与下表正式文件一致。v0.1.0/v0.1.1的Release ID及附件摘要保持原样，最终发布列表仅含这三个正式版本。
+
+发布标签v0.1.2指向5e2818d045e9bfcd233d3fa4f92becef134b3edf，master已快进合并dev。标签建立后用户补充的README表述由daba2306f73605c0c0c0717f7d85d2048e62405d交付，双包读取该提交的最新版README，运行资源与标签相同；包内版本和两份安装清单均为0.1.2。
+
+首次通过Python urllib上传完整版时在发送正文阶段出现The write operation timed out；系统curl重试完成上传，旧的中断草稿420482210已清理。发布回执为.runtime/release-0.1.2-publish.json与release-0.1.2-verified.json。自动更新说明本轮仅推理核对，没有新增线上升级或云端识别验收。
+
 ## 2026-10-22 v0.1.2正式发布准备
 
 本次变更为版本元数据、双语发布说明与使用资料。与672e46c相比，frontend、scripts/update.py、Python执行包、打包器及UML源稿均无变动；正式版复用此前480项Python及前端/Edge验收证据。按用户要求，对自动更新文案只作代码推理核对：更新器读取包内manifest版本并与正式Release比较，Release正文不参与判断；v0.1.0/v0.1.1通过ZIP获得入口，v0.1.2安装后可获取更高正式版本。指定删除的句子只从Release文案移除，执行期共享保护及日检行为保持原实现。
