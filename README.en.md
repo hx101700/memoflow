@@ -72,6 +72,8 @@ Before using MemoFlow, [create an Alibaba Cloud account](https://help.aliyun.com
 
 ## Update
 
+If you use [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) or [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1), first give the new ZIP to Codex with the installation request above. The automatic update entry point is available starting with v0.1.2; after installing it, Codex can obtain subsequent higher formal versions.
+
 Before using the transcription Skill, Codex checks for the latest release, with at most one automatic check per day. When a newer version is available, Codex automatically downloads the lite package and reuses the installed Python, Node.js, and npm to update the Skill and its required dependencies. To request another check, tell Codex:
 
    ```text
@@ -124,7 +126,7 @@ The illustrations use demo data and show the Chinese interface. The page also su
 - [Support](https://github.com/hx101700/memoflow/blob/master/SUPPORT.md): choose the right Issue, Discussion, or documentation entry point.
 - [Contributing](https://github.com/hx101700/memoflow/blob/master/CONTRIBUTING.md): read this before changing code, docs, or examples.
 
-Never post API keys, login URLs, transcript content, or private local paths in an Issue, Discussion, or screenshot.
+Redact API keys, login URLs, transcript content, and private local paths before sharing feedback or screenshots.
 
 ## Related links
 

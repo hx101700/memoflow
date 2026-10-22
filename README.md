@@ -72,6 +72,8 @@ flowchart TD
 
 ## 更新
 
+使用 [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) 或 [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1) 时，先将新版 ZIP 交给 Codex，按上面的安装请求更新。从 v0.1.2 起提供自动更新入口；安装后可通过 Codex 获取后续更高的正式版本。
+
 Codex 使用语音转写 Skill 前会检查正式版本，每天最多自动检查一次。有新版时，Codex 会自动下载轻量包（lite），复用已有的 Python、Node.js 和 npm，更新 Skill 及所需依赖。需要额外检查时，告诉 Codex：
 
    ```text
@@ -124,7 +126,7 @@ Codex 会打开本机配置网页，请在网页中完成录音和识别设置�
 - [支持说明](https://github.com/hx101700/memoflow/blob/master/SUPPORT.md)：选择 Issue、Discussion 或文档入口。
 - [贡献指南](https://github.com/hx101700/memoflow/blob/master/CONTRIBUTING.md)：提交代码、文档和示例前请先阅读。
 
-请不要在 Issue、Discussion 或截图中提交 API Key、登录链接、录音原文或私人路径。
+提交反馈或截图前，请隐去 API Key、登录链接、录音原文和私人路径。
 
 ## 相关链接
 

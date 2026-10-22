@@ -69,7 +69,7 @@
 
 - 仅修改当前仓库及明确批准的测试位置；保留 `data/` 原始用户数据。真实录音、Key、令牌、签名 URL、转写、原响应和运行日志不得提交或打包。
 - 开发在 `dev`，`master` 用于验收里程碑。提交、推送、合并、发布需用户明确意图；精确路径暂存，不强推或重写历史；同次网络推送失败两次即停止。
-- 项目版本号仅在通过验收并发布到 `master` 时变更。当前验收发布版本为 `0.1.1`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
+- 项目版本号仅在通过验收并发布到 `master` 时变更。本次正式发布版本为 `0.1.2`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
 - 固定发行清单位于 `scripts/build_zip.py`。两个 ZIP 共用 Skill 运行文件与仓库最新版 README.md、README.en.md，并生成同一包内 `skill-manifest.json`；README 从仓库根读取，不维护包用副本。`asr-transcription.zip` 额外在 `assets/runtimes` 保存两个原始官方运行时 ZIP；`asr-transcription-lite.zip` 不附运行时。AGENTS、开发文档、测试、UML、已安装依赖及用户数据不入包。新增运行文件时同步清单和包边界检查。正式发布使用相应版本标签，同时提供两个包。
 - 前端通过 Vite 构建到 Skill 的 `scripts/asr_runtime/static/`，核心产物为 `index.html`、`app.js` 和 `app.css`，同时交付 `favicon.svg` 与第三方许可说明。发行包使用构建产物；Vue/TypeScript 源码、开发配置、构建依赖及 `node_modules` 保留在开发仓库。
 - Python 依赖由 Skill 中 `scripts/requirements.txt` 锁定版本与摘要；安装工具 pip 26.2.1 的文件与摘要固定在 `utils/installation.py`，BL 锁在 `scripts/bailian/`。Python 安装前比较 PyPI 与阿里云镜像的文件前缀吞吐；每个下载阶段按来源顺序各启动至多一次 `pip download`，连接重试2次、业务依赖的中断恢复最多5次由 pip 完成，仍失败才切换另一源。完整 wheel 保存在工作目录，安装阶段仅使用本机文件。
@@ -78,5 +78,5 @@
 - Python 安装与依赖检查子进程使用 `-I`，从指定虚拟环境加载依赖；用户工作目录中的同名模块不参与检查或安装。
 - 开发探针 `scripts/probe_bl.py` 不进入发行包，只使用固定虚构 URL；BL 合约测试使用 `127.0.0.1` 模拟服务与合成凭据。本机测试不等于真实云端验收。
 - 测试与改动相称；实际结果写 [ACCEPTANCE](doc/ACCEPTANCE.md)，状态写 [STATUS](doc/STATUS.md)，限制写 [ISSUES](doc/ISSUES.md)，重要决策写 [DEVLOG](doc/DEVLOG.md)。
-- README、AGENTS 提供同义中英文。README 保留真实截图的 HTML 注释位置；用户提供图片后再插入。Release 使用“更新内容 / What's new”介绍用户可见变化，下载表采用release/NEXT.md的“完整包（首次安装，手动下载）／轻量包（更新时使用，由Codex自动下载）”定位，发布时使用本次标签链接；安装教程集中在 README，验证数量和包摘要留在开发文档。
+- README、AGENTS 提供同义中英文。README 保留真实截图的 HTML 注释位置；用户提供图片后再插入。Release 按release/NEXT.md保留“更新内容 / What's new”“下载”“安装与更新”：用有依据的用户收益说明改动，明确首次安装、旧版ZIP升级及v0.1.2起的自动更新边界，版本和链接写具体。完整包标为首次安装推荐，轻量包供Codex更新下载，链接固定到本次标签。安装教程集中在README，验证数量和包摘要留在开发文档。
 - 调用顺序、对象或状态协议改变时，同步 [UML](doc/UML.md) 及源稿、PNG。图中函数模块使用生命线，不画成不存在的服务类。

@@ -12,4 +12,4 @@ When reporting a problem, include:
 - the exact redacted error message;
 - whether the failure is repeatable.
 
-Never include API keys, login URLs, private recordings, transcript content, or personal paths.
+Redact API keys, login URLs, private recordings, transcript content, and personal paths before sharing your report.

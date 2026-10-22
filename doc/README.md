@@ -24,7 +24,7 @@
 | [ACCEPTANCE](ACCEPTANCE.md) | 已执行的验证和未覆盖场景 |
 | [ISSUES](ISSUES.md) | 当前不足、运行限制及处理方法 |
 | [DEVLOG](DEVLOG.md) | 影响当前实现的重要决策 |
-| [发布说明：中文](../release/NOTES.md) / [English](../release/NOTES.en.md) | 已发布v0.1.1的说明；当前dev依赖差异见BL适配说明，发布状态见STATUS |
-| [下一版下载表：中文](../release/NEXT.md) / [English](../release/NEXT.en.md) | 首次完整版、后续由Codex下载lite；正式发布时替换为该版本附件链接 |
+| [发布说明：中文](../release/NOTES.md) / [English](../release/NOTES.en.md) | v0.1.2更新内容、下载和安装与更新；发布状态见STATUS |
+| [发布文案约定：中文](../release/NEXT.md) / [English](../release/NEXT.en.md) | 用户收益、明确版本边界的安装与更新说明，以及双包下载表 |
 
 详细使用资料随 Skill 放在 `references/`，最新版双语 README 从仓库根直接入包；开发文档、UML 和测试保留在仓库。每份资料维护一个职责，避免复制同一操作说明。实际实现和运行证据优先；未完成的验证明确标注。写作参考 [Google 开发者文档指南](https://developers.google.com/style/highlights)。
