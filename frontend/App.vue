@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch } from "element-plus";
+import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch, ElText } from "element-plus";
 import { Aim, ChatLineSquare, DocumentCopy, Edit, FolderOpened, Headset, Key, Monitor, Moon, Reading, Setting, Sunny, View } from "@element-plus/icons-vue";
 import en from "element-plus/es/locale/lang/en";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
@@ -106,7 +106,7 @@ onUnmounted(actions.dispose);
       <div class="topbar-inner">
         <a class="brand" href="#" @click.prevent="focus('page-title')">
           <ElIcon class="brand-mark" :size="22" aria-hidden="true"><Headset /></ElIcon>
-          <span>MemoFlow</span>
+          <span class="brand-label"><span>MemoFlow</span><ElText v-if="model.session" class="skill-version" type="info" size="small">{{ model.session.skill_version ? `v${model.session.skill_version}` : t('developmentBuild') }}</ElText></span>
         </a>
         <div class="appearance-controls">
           <ElSelect id="interface-language" v-model="language" :aria-label="t('language')" :disabled="!available.changeLanguage" class="language-select">

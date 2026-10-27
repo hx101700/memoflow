@@ -1,32 +1,33 @@
-[中文](https://github.com/hx101700/memoflow/blob/v0.1.2/release/NOTES.md) | English
+[中文](https://github.com/hx101700/memoflow/blob/v0.1.3/release/NOTES.md) | English
 
-# MemoFlow v0.1.2
+# MemoFlow v0.1.3
 
-This update makes future upgrades easier: Codex can check for and install new Skill versions while reusing the existing environment, reducing repeated downloads and manual setup. It also adopts the official Bailian CLI 2.4.0 and improves upload, login, and environment checks.
+This release improves how transcription continues when update checks run into problems, adds the installed version to the page, and upgrades to the official Bailian CLI 2.5.1, making installation status and login issues easier to identify.
 
 ### What's new
 
-- **Easier future upgrades**: added automatic Skill updates, with at most one automatic release check per day. When a new version is available, Codex downloads the lite package, updates the Skill, and reports the result. You can also ask Codex to check for updates.
-- **Smaller update downloads**: reuse the workspace's Python, Node.js, and npm while preparing any dependencies required by the new version. Credentials, jobs, and transcripts are preserved.
-- **Official upload and login fixes**: upgraded to the official Bailian CLI 2.4.0, using its upload timeout and Windows authorization-link handling in place of the previous local revision and login adapter.
-- **Clearer environment diagnostics**: corrected virtual-environment binding checks, distinguished missing dependencies from interpreter failures, and reduced repeated installation and diagnostic checks.
-- **Less space used by old downloads**: after a successful environment upgrade, remove obsolete Python dependency downloads and npm cache entries from the workspace while retaining reusable content for the current versions.
+- **Continue after update-check issues**: for recoverable problems such as GitHub HTTP 403, use the installed Skill and continue the current request by opening the recording configuration page.
+- **See the installed version on the page**: the current Skill version appears beside MemoFlow in the top-left corner, making installation checks and issue reports easier. The label adapts to light and dark themes and aligns with the brand text.
+- **Official Bailian CLI 2.5.1**: adopts the upstream fix for fast login callbacks and improves login timeout and failure messages to help diagnose authorization issues.
+- **Clearer installation guidance**: distinguishes temporary update-check failures from installation states that need repair, with the corresponding steps to continue or fix the installation.
 
 ### Downloads
 
 | Package | Description |
 | --- | --- |
-| **Full package (first installation, manual download, recommended) · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.2/asr-transcription.zip)** | Includes Python, Node.js, and the bundled npm to prepare the base environment during initial installation. |
-| **Lite package (updates, downloaded automatically by Codex) · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.2/asr-transcription-lite.zip)** | Reuses the installed Python, Node.js, and npm for subsequent Skill updates. |
+| **Full package (recommended manual download for first installation) · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.3/asr-transcription.zip)** | Includes Python, Node.js, and the bundled npm to prepare the base environment during initial installation. |
+| **Lite package (updates, downloaded automatically by Codex) · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/v0.1.3/asr-transcription-lite.zip)** | Reuses the installed Python, Node.js, and npm for subsequent Skill updates. |
 
 Installing Python dependencies and Bailian CLI still requires an internet connection.
 
 ### Installation and updates
 
-For a first installation, or your first upgrade from [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) or [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1) to v0.1.2 (this release), give the new ZIP to Codex and follow the [README](https://github.com/hx101700/memoflow/blob/v0.1.2/README.en.md#install).
+For a first installation, or an upgrade from [v0.1.0](https://github.com/hx101700/memoflow/releases/tag/v0.1.0) or [v0.1.1](https://github.com/hx101700/memoflow/releases/tag/v0.1.1), give the new ZIP to Codex and follow the [Install section of the README](https://github.com/hx101700/memoflow/blob/v0.1.3/README.en.md#install).
 
-After installing v0.1.2 (this release), you can let Codex obtain subsequent formal versions higher than v0.1.2 through automatic updates, or continue giving new ZIPs to Codex to update manually.
+If you have [v0.1.2](https://github.com/hx101700/memoflow/releases/tag/v0.1.2) installed, ask Codex to check for updates to the transcription Skill and update it to v0.1.3 (this release). After installing this version, subsequent releases higher than v0.1.3 can be obtained in the same way.
 
-If the workspace has an older Bailian CLI installation, Codex follows the updated Skill instructions to prepare the required version while preserving existing runtimes, credentials, jobs, and results.
+You can also update an earlier version manually: give the new ZIP to Codex together with the complete request in the [Install section](https://github.com/hx101700/memoflow/blob/v0.1.3/README.en.md#install).
+
+Upgrades use the original workspace and preserve existing runtimes, credentials, jobs, and transcripts. Codex prepares the Bailian CLI dependencies required by the new version.
 
 Please report problems through [Issues](https://github.com/hx101700/memoflow/issues).

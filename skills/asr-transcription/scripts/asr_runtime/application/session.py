@@ -75,6 +75,7 @@ class Session:
                  clock: Callable[[], float] = time.time) -> None:
         """创建两小时编辑会话及其输入、预览和结束状态。"""
         self.runtime = runtime
+        self.skill_version = runtime.skill_version
         self.session_id = uuid.uuid4().hex
         self.token = secrets.token_urlsafe(32)
         self._clock = clock
@@ -258,6 +259,7 @@ class Session:
                 preview = {"validation_id": self.draft["id"], "summary": self.draft["summary"],
                            **self._restored_form()}
             return {"session_id": self.session_id, "phase": self._phase, "expires_at": self.expires_at,
+                    "skill_version": self.skill_version,
                     "model": MODEL, "region": "cn-beijing",
                     "output_defaults": {"json": str(self.runtime.output_root),
                                         "document": str(self.runtime.output_root)},

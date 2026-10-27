@@ -9,12 +9,14 @@ class Runtime {
   +output_root Path
   +base_python Path
   +node_entry Path
+  +skill_version str_or_None
   +check_output_path(path)
   +prepare()
 }
 class Session {
   +str session_id
   +str expires_at
+  +str_or_None skill_version
   +float deadline
   +Draft_or_None draft
   +ConfirmationReceipt_or_None receipt

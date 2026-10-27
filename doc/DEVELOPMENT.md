@@ -6,7 +6,7 @@
 
 MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON 和 Word、Excel、Markdown 转写校对稿。第二阶段的个性化纪要生成、偏好存储及反馈学习仍在开发中，当前代码尚未实现。
 
-固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.4.0` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.5.1` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
 
 | 参与者 | 职责 |
 | --- | --- |
@@ -163,9 +163,11 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.4.0 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.5.1 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
 
-`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.4.0 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
+官方2.5.1先注册登录完成事件，再异步打开浏览器；空等返回TIMEOUT，结束却未保存凭据返回GENERAL。登录进度先写stderr，runtime/error-handler.ts最后追加根JSON错误对象；explain_cli_error读取末尾对象后继续原有脱敏与映射。成功后读取公开本机状态，是为了区分控制台会话与ASR所需的模型Key，并非再执行登录或在线验证。
+
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.5.1 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
 官方 core 的 `Client.uploadFile()` 将已解析的 `settings.timeout` 经 `resolveFileUrl()`、`UploadOptions`、`uploadFile()` 传给 `uploadToOSS()`；上传计时器使用该秒数，获取上传凭证仍为15秒。core 的 JSON 请求期限覆盖响应头与 JSON 正文，并在 Node 请求中关闭较短的 undici headers/body 默认期限。上传、提交、轮询、下载与 `--out` 保存均使用官方包。
 
@@ -220,6 +222,8 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 最终日检记录保存失败通过 `record_error` 单独返回，保留本次实际状态及安装版本；已发布的新清单是文件更新完成的依据。下次遇到残留 `applying` 但清单已是目标版本时，当天缓存按已完成更新解释。回执只提供版本、结果和必要错误，不反复输出整份文件路径或重复状态布尔字段。
 
+日检记录首次写入失败时，更新器返回failed、repair_required=false、installed_version和record_error，直接结束本次检查且不联网；日期没有落盘。已有清单、状态或读取保护无法确认时，main返回repair_required=true及非零退出码。HTTP403等网络/预检失败及成功回退继续使用当前安装；后续先判断repair_required，再按status处理，当天失败缓存也不阻止本次新转写。
+
 用户主动检查传 `--check-now`，由同一 `update_skill(check_now=True)` 越过日内缓存，其结果覆盖当天记录，后续自动检查不再联网。两种入口共用锁、下载与覆盖方法。程序通过 stderr 提供检查、版本和下载进度，stdout 返回最终 JSON；Skill 要求 Codex 在检查前、发现新版和完成后向用户提供文字说明。正文提前断开产生的 `IncompleteRead` 转为下载失败回执，保留旧文件与当日日检记录。
 
 `asr.py` 在导入业务模块前经 `skill_in_use()` 只读打开 `assets/update.lock`，共享句柄保持到命令结束。更新器用 Windows `CreateFileW` 的 share=0 独占同一文件，任何工作目录的活动页面、登录或识别都使更新暂缓；新命令遇到正在更新时明确停止。句柄由进程退出释放，不持久记录活动 PID。哨兵不在覆盖或删除清单中。
@@ -228,6 +232,8 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 更新后 Codex 重新读取 SKILL.md，并调用原 bootstrap 准备本次目录依赖；BL 版本冲突继续使用现有定点修复，不新增第二个依赖安装器。其他工作目录按当前依赖要求分别准备。
 
+更新检查只决定安装维护结果。原请求为新转写时，Codex随后实际执行serve，取得listening回执，再按宿主现有方式请求打开URL；这些动作完成后才请用户填写。仅检查或更新Skill的请求完成相应处理后结束。转写/导出的停止条件按对应业务结果解释，不扩展到可恢复更新失败或附带警告。
+
 用户提供新 ZIP 的重新安装由 Codex 使用文件工具完成：先核对完整新包，等待该 Skill 安装的全部命令结束，确认专用资源目录与用户工作目录分离，再用新包重建资源目录。此步骤清除旧代码、旧资源与旧检查记录，适用于没有发行清单的旧安装；非 Skill 文件先核对归属。它不会清理独立工作目录中的环境、凭据、任务或输出。自动更新仍复用当前清单的受管文件覆盖，不增加第二个安装器。
 
 这属于 MemoFlow 从v0.1.2起提供的安装更新协议。[OpenAI Skill 文档](https://learn.chatgpt.com/docs/build-skills)说明 Skill 的脚本与资源结构，并推荐使用插件分发可复用能力；[工作区插件管理](https://learn.chatgpt.com/docs/enterprise/plugin-management)的每日市场同步由宿主管理。普通 ZIP Skill 的每日下载覆盖不是该平台保证，本项目通过上述入口实现。v0.1.0/v0.1.1先通过新ZIP获得入口和清单，再获取后续更高的正式版本；发布者继续提供两个ZIP即可。
@@ -235,6 +241,8 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 ## 界面和构建
 
 页面使用 Vue 3、TypeScript、Element Plus。优先复用公开 props、插槽和默认交互；卡片、输入、表格、滚动、摘要、按钮、结果及图标由组件库承担。CSS 负责布局、响应式和有限主题差异，避免复制组件交互。
+
+品牌旁的版本号使用Element Plus ElText的small/info样式，与MemoFlow放在同一行内文本容器中按字体基线对齐，仅保留局部水平间距。Runtime.skill_version只读取当前skill-manifest.json中的version；Session创建时保存该值，description通过既有/api/session返回skill_version: string|null。源码目录缺少发行清单时返回null并显示开发版。版本不进入转写任务配置、业务授权或浏览器持久偏好，展示不触发额外请求或表单重建。
 
 偏好只保存当前来源下的界面语言与主题；随机端口变化时不保证跨会话继承。界面切换不改变表格、滚动位置、预览版本、音频语言、地域或输出文档格式。网页错误及警告使用 `LocalizedText={zh,en}`，动态参数在后端一次生成两种文字，页面按当前语言呈现，无需重发请求或重新校验。HTTP 的界面语言只用于原生窗口、模板示例等当次呈现；CLI 异常仍为可打印文本。首页设置 HttpOnly、SameSiteStrict Cookie；URL 和前端状态不持有连接令牌。
 
@@ -272,7 +280,7 @@ Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿�
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
-BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.4.0` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
+BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.5.1` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
 
 `run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
 
@@ -289,7 +297,7 @@ Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机�
 
 默认输出到 `dist/`，已有同名文件不会覆盖；需要另选目标时使用 `--output`。
 
-开发在 dev，master 保存正式发布里程碑。本次正式发布版本为v0.1.2；后续开发沿用该版本，下一次验收发布master时再递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过Git追溯。
+开发在 dev，master 保存正式发布里程碑。本次正式发布版本为v0.1.3；后续开发沿用该版本，下一次验收发布master时再递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过Git追溯。
 
 界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
 

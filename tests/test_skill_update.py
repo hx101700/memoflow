@@ -4,7 +4,7 @@ from datetime import date
 import hashlib
 from http.client import IncompleteRead
 from io import BytesIO, StringIO
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import json
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from zipfile import ZIP_STORED, ZipFile
 
 import update
@@ -90,6 +90,14 @@ class SkillUpdateTests(unittest.TestCase):
         """读取实际写入的日检及更新完成状态。"""
         return json.loads((self.skill / update.STATE).read_bytes())
 
+    def main_report(self):
+        """在隔离安装目录运行命令入口并解析退出码与回执。"""
+        output = StringIO()
+        with patch.object(update, "__file__", str(self.skill / "scripts/update.py")), \
+             patch.object(sys, "argv", ["update.py"]), redirect_stdout(output):
+            exit_code = update.main()
+        return exit_code, json.loads(output.getvalue())
+
     def assert_original_files(self):
         """核对预检失败后每个原始受管文件均保持完整。"""
         for name, data in self.original_files.items():
@@ -137,6 +145,117 @@ class SkillUpdateTests(unittest.TestCase):
         self.assertEqual(second["last_status"], "failed")
         self.assertIsNone(second["is_latest"])
         download.assert_called_once()
+        self.assert_original_files()
+
+    def test_http_403_allows_current_installation_and_reuses_daily_failure(self):
+        """验证 HTTP 403 保留当前安装、成功退出，且当天不再联网。"""
+        error = HTTPError(update.LATEST_URL, 403, "Forbidden", None, None)
+        with patch.object(update, "urlopen", side_effect=error) as open_url:
+            first_code, first = self.main_report()
+            cached_code, cached = self.main_report()
+        self.assertEqual(first_code, 0)
+        self.assertEqual(first["status"], "failed")
+        self.assertFalse(first["repair_required"])
+        self.assertEqual(first["installed_version"], "0.1.1")
+        self.assertIsNone(first["is_latest"])
+        self.assertIn("HTTP 403", first["message"])
+        self.assertIn("可继续使用当前安装 v0.1.1", first["message"])
+        self.assertEqual(cached_code, 0)
+        self.assertEqual(cached["status"], "checked_today")
+        self.assertEqual(cached["last_status"], "failed")
+        self.assertFalse(cached["repair_required"])
+        self.assertEqual(cached["installed_version"], "0.1.1")
+        self.assertIsNone(cached["is_latest"])
+        self.assertEqual(cached["message"], first["message"])
+        open_url.assert_called_once()
+        self.assertEqual(open_url.call_args.kwargs["timeout"], 30)
+        with update.skill_in_use(self.skill):
+            pass
+        self.assert_original_files()
+
+    def test_initial_record_write_failure_skips_network_and_allows_current_installation(self):
+        """验证首次日检记录写失败立即返回可继续结果，不误报安装需要修复。"""
+        with patch.object(update, "_write_json", side_effect=PermissionError("synthetic state write failure")) as write, \
+             patch.object(update, "_download") as download:
+            exit_code, report = self.main_report()
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "failed")
+        self.assertFalse(report["repair_required"])
+        self.assertEqual(report["installed_version"], "0.1.1")
+        self.assertIsNone(report["is_latest"])
+        self.assertIn("state write failure", report["record_error"])
+        self.assertIn("可继续使用当前安装 v0.1.1", report["message"])
+        write.assert_called_once()
+        download.assert_not_called()
+        self.assertFalse((self.skill / update.STATE).exists())
+        with update.skill_in_use(self.skill):
+            pass
+        self.assert_original_files()
+
+    def test_main_requires_repair_for_invalid_existing_manifest_or_state(self):
+        """验证已有清单或状态损坏时要求修复并以非零退出，且不联网。"""
+        for name in (update.MANIFEST, update.STATE):
+            with self.subTest(name=name):
+                (self.skill / update.MANIFEST).write_bytes(self.encode(self.installed_manifest))
+                (self.skill / update.STATE).unlink(missing_ok=True)
+                (self.skill / name).write_bytes(b"{")
+                with patch.object(update, "_download") as download:
+                    exit_code, report = self.main_report()
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(report["status"], "failed")
+                self.assertTrue(report["repair_required"])
+                self.assertIsNone(report["is_latest"])
+                self.assertNotIn("record_error", report)
+                download.assert_not_called()
+
+    def test_main_requires_repair_when_existing_manifest_or_state_cannot_be_read(self):
+        """验证无法读取已有清单或状态时不能将安装判断为可继续使用。"""
+        read_bytes = Path.read_bytes
+        (self.skill / update.STATE).write_bytes(b"{}")
+        for name in (update.MANIFEST, update.STATE):
+            with self.subTest(name=name):
+                def fail_read(path):
+                    """模拟指定安装元数据不可读取，其他文件保持正常。"""
+                    if path == self.skill / name:
+                        raise PermissionError("synthetic metadata read failure")
+                    return read_bytes(path)
+
+                with patch.object(Path, "read_bytes", fail_read), \
+                     patch.object(update, "_download") as download:
+                    exit_code, report = self.main_report()
+                self.assertEqual(exit_code, 1)
+                self.assertTrue(report["repair_required"])
+                self.assertIn("metadata read failure", report["message"])
+                self.assertNotIn("record_error", report)
+                download.assert_not_called()
+        self.assert_original_files()
+
+    def test_main_requires_repair_when_installation_lease_cannot_be_opened(self):
+        """验证无法建立安装读取保护时要求修复，而正常占用仍由原暂缓分支处理。"""
+        with patch.object(update, "_lease", side_effect=PermissionError("synthetic lease open failure")), \
+             patch.object(update, "_download") as download:
+            exit_code, report = self.main_report()
+        self.assertEqual(exit_code, 1)
+        self.assertTrue(report["repair_required"])
+        self.assertIn("lease open failure", report["message"])
+        self.assertNotIn("record_error", report)
+        download.assert_not_called()
+        self.assertFalse((self.skill / update.STATE).exists())
+        self.assert_original_files()
+
+    def test_main_requires_repair_for_unfinished_file_replacement(self):
+        """验证旧更新停在覆盖状态时继续阻止业务读取并以非零退出。"""
+        (self.skill / update.STATE).write_bytes(self.encode({
+            "checked_on": date.today().isoformat(), "status": "applying", "target_version": "0.1.2",
+        }))
+        with patch.object(update, "_download") as download:
+            exit_code, report = self.main_report()
+        self.assertEqual(exit_code, 1)
+        self.assertTrue(report["repair_required"])
+        download.assert_not_called()
+        with self.assertRaisesRegex(update.UpdateError, "更新未完成"):
+            with update.skill_in_use(self.skill):
+                self.fail("未完成文件替换时进入了业务代码")
         self.assert_original_files()
 
     def test_next_local_calendar_day_allows_one_new_check(self):

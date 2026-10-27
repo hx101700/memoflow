@@ -95,6 +95,10 @@ async function assertSessionViews(browser: Browser, url: string, description: Se
             releaseEvents();
           }
           await page.locator(unavailable ? "#session-unavailable" : "#session-ended").waitFor();
+          if (state !== "unavailable") {
+            assert.equal(await page.locator(".skill-version").innerText(), description.skill_version
+              ? `v${description.skill_version}` : language === "en" ? "Development build" : "开发版");
+          }
           assert.equal(await page.locator("#config-fields").count(), 0);
           assert.equal(await page.locator(".settings-summary").count(), 0);
           assert.equal(await page.locator(".action-bar").count(), 0);
@@ -196,6 +200,8 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     const initialSummary = (await summary.boundingBox())!;
     assert.ok(initialSummary.y + initialSummary.height <= (await page.locator(".action-bar").boundingBox())!.y);
     const sessionDescription = await (await context.request.get(origin + "/api/session")).json() as SessionDescription;
+    assert.equal(sessionDescription.skill_version, null);
+    assert.equal(await page.locator(".skill-version").innerText(), "开发版");
     await assertSessionViews(browser, connection.url, sessionDescription);
     await assertMatchingHorizontalBounds(page.locator(".intro-note"), page.locator("#audio_id"));
     assert.equal(await page.locator(".region").count(), 0);
@@ -328,6 +334,7 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     assert.equal(await page.locator("#hotword_rows").getByRole("heading", { name: "Hotword list", exact: true }).count(), 0);
     assert.equal(await page.locator(".hotword-toolbar button.is-text").count(), 2);
     assert.match(await page.locator("footer").innerText(), /^Powered by MemoFlow · Speech recognition by Alibaba Cloud Model Studio$/);
+    assert.equal(await page.locator(".skill-version").innerText(), "Development build");
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download template", exact: true }).click();
     assert.equal((await download).suggestedFilename(), "hotwords-template.xlsx");

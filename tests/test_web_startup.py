@@ -6,12 +6,19 @@ import socket
 import subprocess
 import sys
 import webbrowser
+from http.cookiejar import CookieJar
 from contextlib import redirect_stdout
+from threading import Thread
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
+from urllib.request import HTTPCookieProcessor, build_opener
+from zipfile import ZipFile
 
+import update
 from asr_runtime import web
-from asr_runtime.utils.environment import SetupError
-from tests.support import RuntimeTestCase, SKILL_ROOT
+from asr_runtime.utils.environment import Runtime, SetupError
+from scripts.build_zip import build_zip
+from tests.support import ROOT, RuntimeTestCase, SKILL_ROOT
 
 
 class WebStartupTests(RuntimeTestCase):
@@ -66,6 +73,39 @@ class WebStartupTests(RuntimeTestCase):
             with self.subTest(error=type(error).__name__):
                 self.server.reset_mock()
                 self.assertEqual(self.start(automatic=True, browser_result=error)["browser_request"], "failed")
+
+    def test_http_403_update_keeps_packaged_page_and_version_available(self) -> None:
+        """验证403及当天失败缓存后，候选包仍可提供真实页面与发行版本。"""
+        package = build_zip(ROOT, self.temporary_root / "candidate.zip")
+        installed = self.temporary_root / "installed-skill"
+        with ZipFile(package["path"]) as archive:
+            archive.extractall(installed)
+            version = json.loads(archive.read(update.MANIFEST))["version"]
+        with patch.object(update, "_download", side_effect=HTTPError(
+                update.LATEST_URL, 403, "Forbidden", {}, None)) as download:
+            report = update.update_skill(installed)
+            cached = update.update_skill(installed)
+        self.assertFalse(report["repair_required"])
+        self.assertEqual(cached["last_status"], "failed")
+        download.assert_called_once()
+        with update.skill_in_use(installed):
+            server = web.create_server(Runtime(self.runtime.workspace, installed))
+            worker = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            worker.start()
+            try:
+                client = build_opener(HTTPCookieProcessor(CookieJar()))
+                origin = f"http://127.0.0.1:{server.server_port}"
+                with client.open(origin + "/", timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn(b"app.js", response.read())
+                with client.open(origin + "/api/session", timeout=5) as response:
+                    description = json.load(response)
+                self.assertEqual(description["skill_version"], version)
+                self.assertIsNone(description["audio"])
+            finally:
+                server.shutdown()
+                worker.join(timeout=3)
+                server.server_close()
 
     def test_failed_startup_receipt_closes_the_server(self) -> None:
         """验证输出通道关闭时释放已绑定的服务器。"""

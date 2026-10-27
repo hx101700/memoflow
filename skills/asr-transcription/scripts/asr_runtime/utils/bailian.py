@@ -150,7 +150,8 @@ def explain_cli_error(returncode: int, stderr: str, private_values: list[str]) -
     """解析BL结构化错误，并附上脱敏信息与官方错误说明。"""
     catalog = cast(_ErrorCatalog, json.loads((Path(__file__).parent.parent / "error_catalog.json").read_text(encoding="utf-8")))
     try:
-        error = json.loads(stderr)["error"]
+        # 官方登录先写进度，error-handler最后以独立根JSON对象输出结构化错误。
+        error = json.loads(stderr[stderr.rfind("\n{") + 1:])["error"]
         if not isinstance(error, dict):
             error = {}
     except (ValueError, KeyError, TypeError):
@@ -251,5 +252,5 @@ def login_console(runtime: Runtime) -> dict[str, str | bool]:
                                         "--config", "default", "--output", "json"], "console")
     print(json.dumps({"status": "WAITING_FOR_LOGIN", "message": "请在系统默认浏览器完成百炼授权，完成后回到Codex发送“已完成”。"}, ensure_ascii=False), flush=True)
     _run_bl(runtime, command, [], timeout=None)
-    # BL登录空等超时也可能退出0，必须再核对公开的本地状态命令。
+    # 登录成功可能只保存控制台会话；本地状态确认转写所需的模型API Key是否存在。
     return console_status(runtime)

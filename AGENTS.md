@@ -27,7 +27,7 @@
 
 检查或下载失败使用当前安装；覆盖失败时用本次内存快照恢复已改文件、移除新增文件和目录，清理下载与暂存，不留下备份包。日检结果仍保留；回执必须准确说明原安装是否已恢复。
 
-用户主动要求更新语音转写／asr-transcription Skill，或上下文已明确指向此 Skill 时调用 `scripts/update.py --check-now`，可越过当天缓存；该次结果仍计入当日记录，后续自动调用不再联网。此参数仅用于用户明确发起的本 Skill 检查或更新。
+本次用户明确要求检查或更新语音转写／asr-transcription Skill时调用 `scripts/update.py --check-now`，上下文用于补全该主动请求所指的Skill。此参数可越过当天缓存；该次结果仍计入当日记录，后续自动调用不再联网。
 
 更新入口使用工作目录的基础 `.tools/python/python.exe -I -X utf8`，不传业务入口的 `--workspace`，已有基础 Python 时不要求先修复虚拟环境或安装旧依赖。用户提供 ZIP 重新安装时，核对完整新包及专用 Skill 资源目录、等待该安装的全部命令结束，再重建旧资源目录；不以覆盖解压留下旧实现，工作目录数据独立保留。最终日检记录保存失败通过 `record_error` 返回，保持实际安装结果和版本。
 
@@ -39,7 +39,7 @@
 
 1. 保持入口 → application → utils 的轻量分层；单一操作允许入口直接分派。共享数据及 JSON 协议类型放 `models.py`，规则不执行 I/O，utils 不反向导入用例。
 2. BL 负责鉴权、临时上传、提交、轮询、下载及原始 JSON 落盘，直接复用公开 CLI。Python 负责本机配置、媒体处理、结果解析和文档生成。
-   BL、core、commands、runtime 固定官方 `2.4.0`，由 npm 锁文件安装。官方实现已让临时 OSS 上传使用有效 timeout，并修复 Windows 登录 URL 引用；获取上传凭证仍为15秒。上传与浏览器打开直接交给 BL，不维护本地 core 修订或登录预加载适配。
+   BL、core、commands、runtime 固定官方 `2.5.1`，由 npm 锁文件安装。官方实现已让临时 OSS 上传使用有效 timeout，并修复 Windows 登录 URL 引用；获取上传凭证仍为15秒。上传与浏览器打开直接交给 BL，不维护本地 core 修订或登录预加载适配。
 3. 前端源码位于 `frontend/`，使用 Vue 3、TypeScript 与 Element Plus；优先使用组件公开参数、插槽和默认交互，定制必须有具体产品需求。组件绑定表单状态，API 模块处理本机传输。Key 展示与编辑只由 `KeyDisplay.vue` 的局部状态持有，与可提交表单分开，保存后由服务端执行凭据读取；Key 不进入任务配置、日志或浏览器持久存储。
 4. 复用 `files`、`job_files`、`hotwords`、`results` 等现有能力；删除旧入口、兼容层和重复实现。新增校验或抽象必须指出当前业务消费者。
 5. 每个命名函数或方法提供简短中文职责说明，直接描述动作与结果。Python 使用 docstring，TypeScript 使用函数前注释；外部约束和非显然原因写在相关实现旁。共享输入、状态与回执提供明确类型，类型检查属于开发流程。
@@ -69,7 +69,7 @@
 
 - 仅修改当前仓库及明确批准的测试位置；保留 `data/` 原始用户数据。真实录音、Key、令牌、签名 URL、转写、原响应和运行日志不得提交或打包。
 - 开发在 `dev`，`master` 用于验收里程碑。提交、推送、合并、发布需用户明确意图；精确路径暂存，不强推或重写历史；同次网络推送失败两次即停止。
-- 项目版本号仅在通过验收并发布到 `master` 时变更。本次正式发布版本为 `0.1.2`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
+- 项目版本号仅在通过验收并发布到 `master` 时变更。本次正式发布版本为 `0.1.3`；`dev` 上的开发、修复和文档提交沿用当前版本，下次正式发布时再按变更递增。正式版本发布后保留其标签和附件；新版本同步根 `package.json`、`package-lock.json`、新标签和发布说明。依赖版本按其各自锁文件维护。
 - 固定发行清单位于 `scripts/build_zip.py`。两个 ZIP 共用 Skill 运行文件与仓库最新版 README.md、README.en.md，并生成同一包内 `skill-manifest.json`；README 从仓库根读取，不维护包用副本。`asr-transcription.zip` 额外在 `assets/runtimes` 保存两个原始官方运行时 ZIP；`asr-transcription-lite.zip` 不附运行时。AGENTS、开发文档、测试、UML、已安装依赖及用户数据不入包。新增运行文件时同步清单和包边界检查。正式发布使用相应版本标签，同时提供两个包。
 - 前端通过 Vite 构建到 Skill 的 `scripts/asr_runtime/static/`，核心产物为 `index.html`、`app.js` 和 `app.css`，同时交付 `favicon.svg` 与第三方许可说明。发行包使用构建产物；Vue/TypeScript 源码、开发配置、构建依赖及 `node_modules` 保留在开发仓库。
 - Python 依赖由 Skill 中 `scripts/requirements.txt` 锁定版本与摘要；安装工具 pip 26.2.1 的文件与摘要固定在 `utils/installation.py`，BL 锁在 `scripts/bailian/`。Python 安装前比较 PyPI 与阿里云镜像的文件前缀吞吐；每个下载阶段按来源顺序各启动至多一次 `pip download`，连接重试2次、业务依赖的中断恢复最多5次由 pip 完成，仍失败才切换另一源。完整 wheel 保存在工作目录，安装阶段仅使用本机文件。
@@ -78,5 +78,5 @@
 - Python 安装与依赖检查子进程使用 `-I`，从指定虚拟环境加载依赖；用户工作目录中的同名模块不参与检查或安装。
 - 开发探针 `scripts/probe_bl.py` 不进入发行包，只使用固定虚构 URL；BL 合约测试使用 `127.0.0.1` 模拟服务与合成凭据。本机测试不等于真实云端验收。
 - 测试与改动相称；实际结果写 [ACCEPTANCE](doc/ACCEPTANCE.md)，状态写 [STATUS](doc/STATUS.md)，限制写 [ISSUES](doc/ISSUES.md)，重要决策写 [DEVLOG](doc/DEVLOG.md)。
-- README、AGENTS 提供同义中英文。README 保留真实截图的 HTML 注释位置；用户提供图片后再插入。Release 按release/NEXT.md保留“更新内容 / What's new”“下载”“安装与更新”：用有依据的用户收益说明改动，明确首次安装、旧版ZIP升级及v0.1.2起的自动更新边界，版本和链接写具体。完整包标为首次安装推荐，轻量包供Codex更新下载，链接固定到本次标签。安装教程集中在README，验证数量和包摘要留在开发文档。
+- README、AGENTS 提供同义中英文。README 保留真实截图的 HTML 注释位置；用户提供图片后再插入。Release 按release/NEXT.md保留“更新内容 / What's new”“下载”“安装与更新”：用有依据的用户收益说明改动，明确首次安装、旧版ZIP升级及v0.1.2起的自动更新边界，版本和链接写具体。完整包标为“首次安装推荐手动下载该发行包”，轻量包供Codex更新下载，链接固定到本次标签。安装教程集中在README，验证数量和包摘要留在开发文档。
 - 调用顺序、对象或状态协议改变时，同步 [UML](doc/UML.md) 及源稿、PNG。图中函数模块使用生命线，不画成不存在的服务类。

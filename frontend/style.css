@@ -55,6 +55,7 @@ a { color: var(--el-color-primary); }
 .topbar-inner, .action-inner { max-width: 1224px; margin: auto; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .topbar-inner { min-height: 76px; padding: 14px 24px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--el-text-color-primary); text-decoration: none; font-size: 16px; font-weight: 600; }
+.brand .skill-version { margin-inline-start: 10px; }
 .brand-mark, .section-icon { color: var(--el-text-color-secondary); }
 .appearance-controls { display: flex; gap: 10px; }
 .language-select { width: 126px; }

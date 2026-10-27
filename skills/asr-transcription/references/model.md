@@ -1,6 +1,6 @@
 # 官方依据与固定能力
 
-API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Filetrans。2026-10-19核对官方百炼 CLI（BL）`v2.4.0`源码，提交`3638180f48b8fb1c7f99d5db91d3882d021710e5`；CLI、core、commands、runtime 均固定官方2.4.0。本文区分模型API能力、公开CLI入口与本项目的本机处理。
+API资料核验基线：2026-10-04，当前模型为Qwen-Audio-3.1-ASR-Flash-Filetrans。2026-10-27核对官方百炼 CLI（BL）`v2.5.1`源码，提交`3c8031f4d994c30820eb4d145d9404ba4a0acd39`；CLI、core、commands、runtime 均固定官方2.5.1。本文区分模型API能力、公开CLI入口与本项目的本机处理。
 
 精度增强[A04]与说话人区分（官方术语：说话人分离，speaker diarization）[A03]的参数依据见下表。2026-10-07 再次核对模型介绍[A01]及中英文模型总览[A02]：Qwen 3.1 支持多地区中文方言、热词和上下文增强。产品输入方式和媒体处理以项目实现为准。
 
@@ -44,7 +44,7 @@ Qwen 3.1 的官方语言说明列出上海、南昌、宁波、客家、杭州�
 | 上下文增强 | 单段文本<=400个Unicode字符，应包含要识别的相关原词，不作为模型行为指令[A04] |
 | 组合增强 | input.context和parameters.vocabulary可同时存在；BL同一请求已核对[A03] |
 | 音轨 | channel_id指音轨，默认[0]；不同于PyAV音轨内的channels。当前不开放选择 |
-| 未开放参数 | 固定BL2.4.0的recognize参数定义未提供keep_dialect、special_word_filter入口；当前沿用模型缺省行为，不绕过CLI接入这些API参数 |
+| 未开放参数 | 固定BL2.5.1的recognize参数定义未提供keep_dialect、special_word_filter入口；当前沿用模型缺省行为，不绕过CLI接入这些API参数 |
 
 Excel的5MB、20MiB解压、200个内部文件、10001行和两列是本地解析资源限制，集中在utils/hotwords.py，不冒称模型限额。模型输入规则集中在application/rules.py，界面从服务端取得显示限制。
 
@@ -56,23 +56,23 @@ Excel的5MB、20MiB解压、200个内部文件、10001行和两列是本地解�
 
 ## BL复用边界
 
-官方仓库：[modelstudioai/cli](https://github.com/modelstudioai/cli)。npm版本与完整性摘要以Skill中的`scripts/bailian/package-lock.json`为依赖来源；安装时由npm ci获取官方BL、core、commands、runtime 2.4.0及锁定依赖。公开入口、上传和登录均使用官方实现。
+官方仓库：[modelstudioai/cli](https://github.com/modelstudioai/cli)。npm版本与完整性摘要以Skill中的`scripts/bailian/package-lock.json`为依赖来源；安装时由npm ci获取官方BL、core、commands、runtime 2.5.1及锁定依赖。公开入口、上传和登录均使用官方实现。
 
 | 能力 | 固定源码依据 | 本项目处理 |
 | --- | --- | --- |
-| 配置目录 | [paths.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/config/paths.ts) | BAILIAN_CONFIG_DIR指向WORKSPACE/.asr-transcription/.state/bailian |
-| 环境Key | [resolver.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/auth/resolver.ts) | 用DASHSCOPE_API_KEY子进程环境，不把Key放argv |
-| 官方登录 | [login-console.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/auth/login-console.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/auth/status.ts) | BL打开系统浏览器、处理回调与保存；登录后检查模型Key存在，不再调用模型验证 |
-| 完整ASR | [recognize.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/speech/recognize.ts) | 本地上传、提交、轮询、下载、out保存均由BL完成 |
-| 临时上传 | [upload.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/files/upload.ts)、[client.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/client/client.ts) | Client沿调用链传入settings.timeout，当前3600秒。国内凭证请求15秒；整文件读入内存，接近上限的大文件未全面验收 |
-| 请求期限 | [http.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/client/http.ts) | JSON请求的有效timeout覆盖响应头与正文；Node请求使用现有dispatcher并关闭更短的传输层headers/body期限。该路径不等于临时OSS上传或最终结果下载 |
-| 失败/轮询 | [polling.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/runtime/src/utils/polling.ts) | 当前ASR请求失败上抛，正常未完成才轮询；不据此声称整个CLI所有命令都没有重试 |
+| 配置目录 | [paths.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/config/paths.ts) | BAILIAN_CONFIG_DIR指向WORKSPACE/.asr-transcription/.state/bailian |
+| 环境Key | [resolver.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/auth/resolver.ts) | 用DASHSCOPE_API_KEY子进程环境，不把Key放argv |
+| 官方登录 | [login-console.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/login-console.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/status.ts) | BL打开系统浏览器、处理回调与保存；登录后检查模型Key存在，不再调用模型验证 |
+| 完整ASR | [recognize.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/speech/recognize.ts) | 本地上传、提交、轮询、下载、out保存均由BL完成 |
+| 临时上传 | [upload.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/files/upload.ts)、[client.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/client.ts) | Client沿调用链传入settings.timeout，当前3600秒。国内凭证请求15秒；整文件读入内存，接近上限的大文件未全面验收 |
+| 请求期限 | [http.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/http.ts) | JSON请求的有效timeout覆盖响应头与正文；Node请求使用现有dispatcher并关闭更短的传输层headers/body期限。该路径不等于临时OSS上传或最终结果下载 |
+| 失败/轮询 | [polling.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/utils/polling.ts) | 当前ASR请求失败上抛，正常未完成才轮询；不据此声称整个CLI所有命令都没有重试 |
 
 使用recognize完整模式，不传--async。项目传`--timeout 3600`、`--poll-interval 5`：官方BL的上传和轮询等待各使用3600秒，提交及每次状态请求也使用该timeout。Python整个BL子进程上限为`3600 × 2 + 300 = 7500`秒（2小时5分），300秒是获取上传凭证、提交和结果下载等余量，不是每阶段额外时限。这是本机等待策略，不是官方处理时长承诺；阶段叠加过长仍可能先触及整体上限。最后JSON下载使用原生fetch，没有单独BL下载超时，受外层进程上限约束。
 
 BL将多种请求取消或超时统一显示为`Request timed out.`；轮询总截止时间到期显示`Polling timed out.`。录音大小和通用错误文本不能证明失败发生在上传阶段，也不能证明云端未受理。本机模拟服务验证不等于真实云端验收。
 
-`recognize.ts`将`--model qwen-audio-3.1-asr-flash-filetrans`原样放入请求；热词与上下文可共同进入请求。全部可选设置关闭时仍生成`parameters={"channel_id":[0]}`，符合[A03]对3.1必须携带parameters对象的要求。BL 2.4.0的增强帮助仍提到3.0，云端3.1能力以[A01/A03/A04]为依据；源码请求结构与本机合约不能单独证明云端识别质量。
+`recognize.ts`将`--model qwen-audio-3.1-asr-flash-filetrans`原样放入请求；热词与上下文可共同进入请求。全部可选设置关闭时仍生成`parameters={"channel_id":[0]}`，符合[A03]对3.1必须携带parameters对象的要求。BL 2.5.1的增强帮助仍提到3.0，云端3.1能力以[A01/A03/A04]为依据；源码请求结构与本机合约不能单独证明云端识别质量。
 
 BL可能跳过失败子项、写空数组，或在没有子结果时不写文件；因此退出0仍需检查实际JSON。单文件成功结果由结果下载接口提供，当前解析对象包含file_url/properties/transcripts；句子含begin_time/end_time/text及可空speaker_id，时间单位毫秒。Python不猜字段别名，也不声称获得了全部云端子任务信封。
 
@@ -80,33 +80,39 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 ### 增强文本与Windows参数
 
-固定BL 2.4.0的[args.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/runtime/src/args.ts)只接受命令声明的参数。命令专属参数放在完整命令路径之后；全局参数可放在路径前或后。分离参数中以`--`开头的值会被视为缺少值，因此上下文构造成单个`--context=<原文>`参数，以首个等号区分选项和值；后续等号、引号、换行和反斜杠作为文本保留。
+固定BL 2.5.1的[args.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/args.ts)只接受命令声明的参数。命令专属参数放在完整命令路径之后；全局参数可放在路径前或后。分离参数中以`--`开头的值会被视为缺少值，因此上下文构造成单个`--context=<原文>`参数，以首个等号区分选项和值；后续等号、引号、换行和反斜杠作为文本保留。
 
 热词由`json.dumps`编码为一个JSON参数，再由BL的parseInstantVocabulary通过JSON.parse还原。bailian-cli-core/dist/index.mjs中的buildAsrContextMessages将上下文直接包装为input_text。本项目使用参数数组、Node入口和shell=False；Windows参数引用交给Python标准库处理。[Python参数传递规则](https://docs.python.org/3.12/library/subprocess.html#converting-an-argument-sequence-to-a-string-on-windows)、[JSON序列化](https://docs.python.org/3.12/library/json.html#json.dumps)
 
+固定2.5.1的[即时热词解析](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/speech/vocabulary-input.ts)只检查JSON对象及权重为有限数值，不检查词条长度、允许权重集合、2000条上限、50个超级词上限或重复词；[上下文封装](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/asr-routes.ts)也未实施400字符限制。因此本项目仍在预览前执行模型规则并返回表格行/单元格、文本字符位置。`--speaker-count`依赖`--diarization`的规则与CLI有交集，但本机校验还限定整数2–100并向预览页返回字段错误，具有当前消费者。
+
 完整命令受Windows的32767个UTF-16单元限制（含末尾NUL）。交接时生成实际任务编号和路径后，复用正式参数映射检查完整Node命令；超限在配置与回执写入前返回，保留当前预览供用户返回修改。此检查不读取凭据或启动BL；执行时仍核对当次完整命令。[CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
 
-固定BL 2.4.0的即时热词参数接收JSON文本，未提供读取词典文件的公开参数。因此模型允许的2000条词语在Windows上仍可能超过整条命令长度；超限时需要减少词条或缩短路径，不把输入另存文件并假定CLI能够读取。参数入口见[recognize.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/speech/recognize.ts)。
+固定BL 2.5.1的即时热词参数接收JSON文本，未提供读取词典文件的公开参数。因此模型允许的2000条词语在Windows上仍可能超过整条命令长度；超限时需要减少词条或缩短路径，不把输入另存文件并假定CLI能够读取。参数入口见[recognize.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/speech/recognize.ts)。
 
 ### Windows控制台登录
 
-固定2.4.0的[local-server.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/shared/local-server.ts)使用`buildOpenInvocation()`构造系统打开请求。Windows分支显式引用完整目标URL，使用`cmd /d /v:off /s /c`和`windowsVerbatimArguments`，保留`&needapikey=true`及编码字符。MemoFlow直接运行官方`bl auth login --console`，由BL打开系统默认浏览器。
+固定2.5.1的[local-server.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/shared/local-server.ts)使用`buildOpenInvocation()`构造系统打开请求。Windows分支显式引用完整目标URL，使用`cmd /d /v:off /s /c`和`windowsVerbatimArguments`，保留`&needapikey=true`及编码字符。MemoFlow直接运行官方`bl auth login --console`，由BL打开系统默认浏览器。
 
-[login-console.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/auth/login-console.ts)管理授权state、回调与凭据保存；系统打开请求失败时输出同一会话的完整备用链接。BL原生授权会话最多15分钟，Python不叠加登录总等待上限；页面是否实际可见仍须以用户反馈为准。
+[login-console.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/login-console.ts)管理授权state、回调与凭据保存。2.5.1先注册完成事件和计时器，再异步打开浏览器，且始终向stderr打印同一会话的完整登录地址。回调检查Origin、处理本地网络预检、要求`access_token`，并防止重复保存及关闭残留连接。最多15分钟未收到凭据明确返回TIMEOUT（5）；结束却未保存凭据返回GENERAL（1）。Python不叠加登录总等待上限；页面是否实际可见、浏览器本地网络权限是否允许回调仍须以用户反馈为准。
+
+2.5.1原生新增`auth login --console --no-browser`与`--token-stdin --console-region`，分别支持手动开页及从管道导入控制台token；当前流程继续使用默认浏览器登录，不启用这两种可选入口。登录退出0仍可能只保存控制台凭据，所以之后继续从公开`auth status`检查模型`api_key`存在，不将进程成功当成ASR在线有效性证明。
 
 本项目首次调用login即要求正常Windows桌面执行权限；程序在启动BL前用[IsTokenRestricted](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-istokenrestricted)拒绝已知会造成浏览器失败的受限令牌。此API检查限制SID列表，不是对所有桌面可用性或浏览器内部状态的检测。
 
 ### 后续调用与凭据修复
 
-2026-10-19核对固定2.4.0源码：模型凭据解析器选择显式参数、环境变量或配置中的api_key；控制台access_token用于另一类控制台请求。`auth status`读取本机authStore描述，缺少模型Key时会附带配置提示；状态字段不能证明Key当前可被云端接受。[resolver.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/auth/resolver.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/auth/status.ts)
+2026-10-27核对固定2.5.1源码：模型凭据解析器选择显式参数、环境变量或配置中的api_key；控制台access_token用于另一类控制台请求。`auth status`读取本机authStore描述，缺少模型Key时会附带配置提示；状态字段不能证明Key当前可被云端接受。[resolver.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/auth/resolver.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/status.ts)
 
-控制台登录仅在本机未保存模型Key时设置`needApiKey=true`。[login.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/auth/login.ts)。明确无效的旧Key可通过`bl config set --config default --key api_key --value= --quiet`清空，然后复用官方登录。`config set`由BL更新指定字段；清空api_key不清除控制台凭据，该命令不等于在线验证。[set.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/commands/src/commands/config/set.ts)
+控制台登录仅在本机未保存模型Key时设置`needApiKey=true`。[login.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/login.ts)。明确无效的旧Key可通过`bl config set --config default --key api_key --value= --quiet`清空，然后复用官方登录。`config set`由BL更新指定字段；清空api_key不清除控制台凭据，该命令不等于在线验证。[set.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/config/set.ts)
 
 普通Key无固定失效时间，临时Key最长1800秒；具体失效条件以[A11]为准。Python只读写用户工作目录和解释BL错误，不实现Key刷新或独立鉴权服务。
 
+2.5.1的[refresh-token.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/auth/refresh-token.ts)与[Client.console()](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/client.ts)按实际控制台地域、站点和switch agent刷新`access_token`，透传已存`security_token`；只有新token验证或原控制台请求重放成功后才写入凭据，Client也更新内存token。此分支仅处理控制台网关；ASR命令声明`auth: apiKey`并通过`requestJson()`请求，不经过控制台刷新。该修复不意味着模型Key自动刷新，也不改变当前单任务一次尝试、失败或结果未知不自动重试的策略。
+
 ### 更新与安装副作用
 
-本项目通过官方`NO_UPDATE_NOTIFIER=1`跳过BL版本检查，固定版本由项目依赖锁维护；`DO_NOT_TRACK=1`关闭遥测。`--quiet`用于控制命令输出，不承担关闭版本查询的职责。依据：[middleware.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/runtime/src/middleware.ts)、[update-checker.ts](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/runtime/src/utils/update-checker.ts)。
+本项目通过官方`NO_UPDATE_NOTIFIER=1`跳过BL版本检查，固定版本由项目依赖锁维护；`DO_NOT_TRACK=1`关闭遥测。`--quiet`用于控制命令输出，不承担关闭版本查询的职责。依据：[middleware.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/middleware.ts)、[update-checker.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/utils/update-checker.ts)。
 
 首次安装由 `scripts/bootstrap.ps1` 准备工作目录内的基础运行时，固定来源与 SHA-256 见 `scripts/runtimes.json`。完整包的 `assets/runtimes` 直接附原始官方 ZIP；轻量包由官方来源下载，相同摘要适用于两种来源。Python 使用官方 [Windows 运行时索引](https://www.python.org/ftp/python/index-windows.json)中的 `python-3.12.10-amd64.zip` 完整包。官方允许直接解压安装管理器提供的 ZIP 并从目标目录运行；嵌入式包不含 Tcl/Tk 和 pip，不能满足本项目的文件窗口和依赖安装。[完整运行时解压](https://docs.python.org/3/using/windows.html#offline-installs)、[嵌入式包范围](https://docs.python.org/3/using/windows.html#the-embeddable-package)
 
@@ -120,7 +126,7 @@ Node 使用 [24.21.0 Windows x64 ZIP](https://nodejs.org/dist/v24.21.0/)，随�
 
 `pip download`先保存完整wheel，失败才换第二个来源；`pip install --no-index --find-links`只使用本机文件，本机安装错误不再次换源。跨来源或跨进程不保留未完成下载的断点；已有完整wheel可复用。这些策略仅用于依赖准备，云端转写仍不自动重试。Skill没有随包wheel。PyAV许可见[官方LICENSE](https://github.com/PyAV-Org/PyAV/blob/v18.1.0/LICENSE.txt)；项目自身LICENSE不替代第三方许可。
 
-BL 首次安装复用同一前缀采样方法，并行比较 `registry.npmjs.org` 与 [npmmirror](https://npmmirror.com/) 上固定版本的 `bailian-cli-2.4.0.tgz`：最多 256 KiB、约 5 秒，仅排序，不保存采样包。正式安装由 npm 完成；当前命令指定 `registry`，npm 默认的 `replace-registry-host=npmjs` 将原锁中的官方 tarball 地址切换到所选来源，版本与 integrity 保持原值，不改全局配置。该公开配置见 [npm 11](https://docs.npmjs.com/cli/v11/using-npm/config/#replace-registry-host) 与 [npm 9](https://docs.npmjs.com/cli/v9/using-npm/config/#replace-registry-host)。
+BL 首次安装复用同一前缀采样方法，并行比较 `registry.npmjs.org` 与 [npmmirror](https://npmmirror.com/) 上固定版本的 `bailian-cli-2.5.1.tgz`：最多 256 KiB、约 5 秒，仅排序，不保存采样包。正式安装由 npm 完成；当前命令指定 `registry`，npm 默认的 `replace-registry-host=npmjs` 将原锁中的官方 tarball 地址切换到所选来源，版本与 integrity 保持原值，不改全局配置。该公开配置见 [npm 11](https://docs.npmjs.com/cli/v11/using-npm/config/#replace-registry-host) 与 [npm 9](https://docs.npmjs.com/cli/v9/using-npm/config/#replace-registry-host)。
 
 两类来源的 5 秒采样窗口均从响应就绪后开始，评分包含此前的连接与响应头等待；单次 socket 等待上限为 5 秒，完整测速总耗时可能更长。采样结果仅代表该时刻的一段请求，不能保证 npm/pip 的完整安装速度。
 

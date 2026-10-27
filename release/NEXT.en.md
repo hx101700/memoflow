@@ -11,5 +11,5 @@ Replace `__RELEASE_TAG__` in the download links below with the formal version ta
 
 | Package | Description |
 | --- | --- |
-| **Full package (first installation, manual download, recommended) · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription.zip)** | Includes Python, Node.js, and the bundled npm to prepare the base environment during initial installation. |
+| **Full package (recommended manual download for first installation) · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription.zip)** | Includes Python, Node.js, and the bundled npm to prepare the base environment during initial installation. |
 | **Lite package (updates, downloaded automatically by Codex) · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription-lite.zip)** | Reuses the installed Python, Node.js, and npm for subsequent Skill updates. |

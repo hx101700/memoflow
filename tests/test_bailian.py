@@ -66,7 +66,7 @@ class BailianTests(RuntimeTestCase):
         """验证旧CLI在构造识别命令时被拒绝。"""
         manifest = self.runtime.bl_entry.parent.parent / "package.json"
         manifest.write_text(json.dumps({"version": "2.1.0"}), encoding="utf-8")
-        with self.assertRaisesRegex(SetupError, "BL 2.4.0"):
+        with self.assertRaisesRegex(SetupError, f"BL {BAILIAN_VERSION}"):
             prepare_command(self.runtime, self.arguments, "api_key")
         self.popen.assert_not_called()
 

@@ -11,5 +11,5 @@
 
 | 安装包 | 说明 |
 | --- | --- |
-| **完整包（首次安装，手动下载，推荐） · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription.zip)** | 附带 Python、Node.js 和配套 npm，用于首次安装时准备基础运行环境。 |
+| **完整包（首次安装推荐手动下载该发行包） · [asr-transcription.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription.zip)** | 附带 Python、Node.js 和配套 npm，用于首次安装时准备基础运行环境。 |
 | **轻量包（更新时使用，由 Codex 自动下载） · [asr-transcription-lite.zip](https://github.com/hx101700/memoflow/releases/download/__RELEASE_TAG__/asr-transcription-lite.zip)** | 复用已安装的 Python、Node.js 和 npm，适合后续更新。 |

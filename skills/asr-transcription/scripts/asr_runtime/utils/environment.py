@@ -126,6 +126,20 @@ class Runtime:
             raise SetupError("资源路径指向Skill目录外：{relative}", relative=relative)
         return path
 
+    @property
+    def skill_version(self) -> str | None:
+        """读取当前安装的发行版本，源码目录返回空值。"""
+        manifest = self.resource("skill-manifest.json")
+        if not manifest.is_file():
+            return None
+        try:
+            version = json.loads(manifest.read_bytes())["version"]
+            if not isinstance(version, str):
+                raise ValueError("invalid skill version")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise SetupError("Skill发行清单无法读取，请重新安装Skill。") from exc
+        return version
+
     def check_output_path(self, path: Path) -> None:
         """检查输出目标位于Skill资源目录之外。"""
         if path.resolve().is_relative_to(self.skill_root):

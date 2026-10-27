@@ -40,6 +40,21 @@ class EnvironmentTests(RuntimeTestCase):
             with self.subTest(workspace=workspace), self.assertRaises(SetupError):
                 Runtime(workspace, self.runtime.skill_root)
 
+    def test_skill_version_uses_release_manifest_or_source_checkout(self):
+        """验证发行版本来自当前清单，源码目录保持未发布标识。"""
+        self.assertIsNone(self.runtime.skill_version)
+        manifest = self.runtime.resource("skill-manifest.json")
+        data = json.dumps({"version": "0.1.2"}).encode("utf-8")
+        manifest.write_bytes(data)
+        self.assertEqual(self.runtime.skill_version, "0.1.2")
+        self.assertEqual(manifest.read_bytes(), data)
+
+    def test_unreadable_skill_version_reports_installation_problem(self):
+        """验证损坏的发行资料按安装问题报告。"""
+        self.runtime.resource("skill-manifest.json").write_text("{invalid", encoding="utf-8")
+        with self.assertRaisesRegex(SetupError, "发行清单无法读取"):
+            _ = self.runtime.skill_version
+
     def test_runtime_rejects_skill_inside_private_state_before_writing(self):
         """验证私有运行根等于或包含Skill时在构造阶段停止。"""
         for relative in (".asr-transcription", ".asr-transcription/installed-skill"):

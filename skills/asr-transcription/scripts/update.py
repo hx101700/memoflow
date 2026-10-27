@@ -244,7 +244,12 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
                               latest_version=None, is_latest=None, checked_on=today)
         # 先登记检查日期，网络失败或进程退出也消耗当日检查机会。
         state = {"checked_on": today, "status": "checking", "report": report}
-        _write_json(root / STATE, state)
+        try:
+            _write_json(root / STATE, state)
+        except OSError as error:
+            report.update({"status": "failed", "repair_required": False, "record_error": str(error),
+                           "message": f"更新检查记录保存失败，已跳过本次联网检查。可继续使用当前安装 v{current['version']}。"})
+            return report
         print(f"正在检查 Skill 正式版本（当前 v{current['version']}）。", file=sys.stderr, flush=True)
         applying = False
         originals: dict[str, bytes | None] = {}
@@ -320,6 +325,7 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
                     message += " 恢复原安装未完成：" + str(restore_error)
             if not applying:
                 report["installed_version"] = current["version"]
+                message += f" 可继续使用当前安装 v{current['version']}。"
             report.update({"status": "failed", "repair_required": applying, "message": message})
         if not applying or report["status"] == "updated":
             state["status"] = report["status"]
@@ -342,7 +348,8 @@ def main() -> int:
     try:
         report = update_skill(Path(__file__).resolve().parents[1], check_now=options.check_now)
     except (OSError, ValueError, UpdateError) as error:
-        report = {"status": "failed", "is_latest": None, "message": str(error)}
+        report = {"status": "failed", "repair_required": True, "is_latest": None,
+                  "message": f"无法确认当前 Skill 安装状态，请先修复安装或重新安装最新 ZIP。{error}"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 1 if report.get("repair_required") else 0
 

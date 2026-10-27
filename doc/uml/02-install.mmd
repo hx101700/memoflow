@@ -94,10 +94,10 @@ else 前置条件满足
     opt BL尚未安装
         B->>S: 读取scripts/bailian的package与lock
         B->>F: 复制到.asr-transcription/.tools/bailian
-        Note over B,M: npm锁文件安装官方BL 2.4.0<br/>core、commands、runtime均使用官方包
+        Note over B,M: npm锁文件安装官方BL 2.5.1<br/>core、commands、runtime均使用官方包
         B->>B: _install_bailian(runtime, node, npm)
         B->>I: rank_npm_registries()
-        Note over I,M: 并行采样固定BL 2.4.0 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序
+        Note over I,M: 并行采样固定BL 2.5.1 tgz的至多256KiB前缀<br/>约5秒采样；npm官方源与npmmirror按当时吞吐排序
         I-->>B: 两个npm来源的优先顺序
         loop 按顺序最多两个来源；成功后结束循环
             B->>I: run_installer：npm ci --json --prefer-offline<br/>指定registry，沿用npm默认的npmjs地址替换规则

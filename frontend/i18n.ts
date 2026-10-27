@@ -71,6 +71,7 @@ const en = {
   textColumn: "Hotword", weightColumn: "Weight",
   loading: "Loading settings…", unavailable: "Page unavailable", unavailableHelp: "Return to Codex to reopen the transcription page.",
   footer: "Powered by MemoFlow", provider: "Speech recognition by Alibaba Cloud Model Studio", selectedBadge: "Selected",
+  developmentBuild: "Development build",
 };
 const zh: Record<keyof typeof en, string> = {
   title: "录音转写",
@@ -143,6 +144,7 @@ const zh: Record<keyof typeof en, string> = {
   textColumn: "热词", weightColumn: "权重",
   loading: "正在加载设置…", unavailable: "页面暂不可用", unavailableHelp: "请返回 Codex 重新打开转写页面。",
   footer: "Powered by MemoFlow", provider: "语音识别由阿里云百炼提供", selectedBadge: "已选择",
+  developmentBuild: "开发版",
 };
 export type MessageKey = keyof typeof en;
 export type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;

@@ -6,57 +6,102 @@ participant S as 已安装Skill
 participant G as GitHub正式Release
 participant E as Python bootstrap
 participant W as 本次工作目录
-U->>C: 使用录音转写Skill
+participant H as web模块
+participant B as 宿主开链接工具
+U->>C: 请求转写，或明确检查／更新此Skill
 Note over C,W: 使用工作目录基础.tools/python，无需先修复venv<br/>已有页面、登录、转写继续原进程
 C->>U: 文字说明将检查更新
-C->>P: 基础Python -I -X utf8 scripts/update.py<br/>用户主动要求时增加--check-now；不传workspace
-P->>S: 独占打开assets/update.lock
-alt 业务命令持有共享只读句柄
-    P-->>C: deferred，未联网、不记检查日期
-else 获得独占句柄
-    P->>S: 读取skill-manifest.json和日检状态
-    alt 当地日期今天已检查，且非用户主动检查
-        P-->>C: checked_today，返回原结果
-    else 今天尚未检查，或用户明确主动检查
-        P->>S: 先写checked_on和checking
-        P->>G: GET releases/latest
-        alt 安装版本相同或更高
-            P->>S: 保存latest或local_ahead
-        else 存在更高正式版本
-            P->>G: 下载asr-transcription-lite.zip
-            P->>P: 核对大小和可用SHA-256<br/>检查包内版本、路径集合及ZIP CRC
-            alt 下载或预检失败
-                P->>S: 保存failed，旧文件保持
-                Note over P,S: 当天不再自动检查，继续原安装
-            else 预检通过
-            P->>P: 原文件暂存在内存，记录实际修改项和新目录
-            P->>S: 写applying及目标版本
-            P->>S: 直接替换受管文件，删除旧清单独有文件
-            Note over P,S: 不备份；保留哨兵、运行时归档和无关文件<br/>凭据、环境、任务与结果在工作目录，不参与覆盖
-            alt 覆盖完成
-                P->>S: 最后发布新manifest，保存updated
-                Note over P,S: 最终日检记录写入失败单独返回record_error<br/>保留实际安装结果；已发布清单证明文件更新完成
-            else 覆盖失败
-                P->>S: 从内存恢复已改文件；删除新增文件与目录
-                P->>S: 保存failed及恢复结果，清理暂存
-                Note over P,S: 回退成功继续原版本，当天不再自动查<br/>无法完成恢复时准确报告，业务入口停止
-            end
+C->>P: 基础Python -I -X utf8 scripts/update.py<br/>仅本次明确检查／更新时加--check-now；不传workspace
+P->>S: 检查发行清单
+alt 缺少发行清单
+    P->>P: unmanaged，不覆盖，使用当前安装
+else 存在发行清单
+    P->>S: 独占打开assets/update.lock
+    alt 无法读取哨兵，保护状态不明
+        P->>P: failed，repair_required=true
+    else 业务命令持有共享只读句柄
+        P->>P: deferred，未联网、不记检查日期
+    else 获得独占句柄
+        P->>S: 读取清单及日检状态，核对上次覆盖是否完整
+        alt 旧资料无法确认或覆盖未完成
+            P->>P: failed，repair_required=true
+        else 当前安装状态可确认
+            alt 当地日期今天已检查，且非本次明确检查／更新
+                P->>P: checked_today，last_status保留原结果<br/>当天失败缓存也可继续当前安装
+            else 需检查正式版本
+                P->>S: 先写checked_on和checking
+                alt 首次检查记录写入失败
+                    P->>P: failed，repair_required=false，record_error<br/>未联网、安装未改
+                else 检查日期写入成功
+                    P->>G: GET releases/latest
+                    alt 检查请求或发布资料无效
+                        P->>P: failed，repair_required=false，保留当前安装
+                    else 正式发布资料有效
+                        alt 安装版本相同或更高
+                            P->>P: latest或local_ahead
+                        else 存在更高正式版本
+                            P->>G: 下载asr-transcription-lite.zip
+                            P->>P: 核对大小及可用SHA-256<br/>检查包内版本、路径集合及ZIP CRC
+                            alt 下载或预检失败
+                                P->>P: failed，repair_required=false，旧文件保持
+                            else 预检通过
+                                P->>P: 原文件暂存在内存，记录修改项和新目录
+                                P->>S: 写applying及目标版本
+                                P->>S: 直接替换受管文件，删除旧清单独有文件
+                                Note over P,S: 不备份；保留哨兵、运行时归档和无关文件<br/>工作目录中的凭据、环境、任务与结果不参与覆盖
+                                alt 覆盖完成
+                                    P->>S: 最后发布新manifest
+                                    P->>P: updated，installed_version为新版
+                                else 覆盖失败
+                                    P->>S: 从内存恢复已改文件；删除新增文件与目录
+                                    P->>P: failed，按恢复结果设置repair_required
+                                end
+                                P->>P: 清理本次下载与暂存
+                            end
+                        end
+                    end
+                    P->>S: 保存本次实际结果，已记日期当天不再自动查
+                    opt 最终日检记录写入失败
+                        P->>P: 单独附record_error，保留真实安装结果<br/>已发布新清单证明覆盖完成
+                    end
+                end
             end
         end
     end
-    P->>S: 释放独占句柄
-    P-->>C: JSON回执
+    Note over P,S: 已获取的独占句柄在返回时释放
 end
-C->>U: 文字报告实际版本与更新结果
-opt updated
-    C->>S: 重新读取SKILL.md
-end
-opt updated，或业务工作目录尚未确认匹配当前Skill
-    C->>E: 复用已有基础Python运行bootstrap<br/>升级时带--cleanup-old-cache
-    E->>W: 复用原依赖安装和修复流程
-    Note over C,W: 日检缓存只针对共享Skill<br/>各工作目录分别准备，成功后清理旧下载缓存、保留当前缓存<br/>后续直接复用，不额外doctor
-end
-opt 安装可用且有待执行的业务请求
-    C->>S: 使用asr.py执行本次请求
-    Note over C,S: asr.py在业务导入前共享打开哨兵<br/>句柄保持到本次命令结束，更新期间新业务明确停止
+P-->>C: JSON回执；仅repair_required=true返回非零
+C->>U: 文字报告实际版本、结果及附带警告
+alt repair_required=true
+    C->>U: 停止业务入口，按实际问题修复安装
+else 当前安装可继续
+    opt updated
+        C->>S: 重新读取SKILL.md
+        C->>E: 基础Python运行bootstrap --cleanup-old-cache
+        E->>W: 准备当前依赖；成功后清理旧下载缓存
+    end
+    alt 只检查／更新Skill，没有后续业务
+        Note over C,U: 完成相应处理并报告后结束，不自动开页
+    else 有待执行的业务请求
+        opt 本工作目录尚无匹配当前Skill的准备成功证据
+            C->>E: 复用基础Python运行bootstrap
+            E->>W: 原依赖安装与修复流程
+        end
+        Note over C,W: 日检缓存只针对共享Skill；各工作目录分别准备<br/>成功后直接复用，不额外doctor；附带清理警告按主结果继续
+        alt 本次请求新转写
+            Note over C,H: 可恢复failed、当天失败缓存、deferred、unmanaged<br/>及附带record_error不代替本次开页动作
+            C->>H: 实际执行serve，保留持久进程<br/>宿主可开链接时加--no-browser<br/>仅本次有可读录音路径时加--audio
+            Note over C,H: asr.py在业务导入前共享打开哨兵，保持到命令结束
+            H-->>C: event=listening、session_id、url、browser_request
+            alt 使用--no-browser
+                C->>B: 按宿主现有方式请求打开回执URL一次
+                B-->>C: 实际打开请求结果
+            else 普通serve
+                Note over C,H: 读取browser_request，系统浏览器由serve请求
+            end
+            C->>U: 打开请求已提交后，请用户填写并保留服务<br/>启动／开页报错则按实际回执排查
+        else 其他业务请求
+            C->>S: 用asr.py执行本次请求
+        end
+    end
 end

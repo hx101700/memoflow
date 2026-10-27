@@ -42,6 +42,14 @@ class SessionTests(WebFixture):
         self.addCleanup(self.session.cleanup)
         self.payload = self.payload_for(self.session)
 
+    def test_description_exposes_installed_skill_version(self):
+        """验证会话向网页提供当前发行版本或源码标识。"""
+        self.assertIsNone(self.session.description()["skill_version"])
+        self.runtime.resource("skill-manifest.json").write_text('{"version":"0.1.2"}', encoding="utf-8")
+        session = Session(self.runtime)
+        self.addCleanup(session.cleanup)
+        self.assertEqual(session.description()["skill_version"], "0.1.2")
+
     def test_preview_performs_no_conversion_or_job_write(self):
         """验证预览生成内存快照和用户核对信息。"""
         result = self.session.validate(self.payload)

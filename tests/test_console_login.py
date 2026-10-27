@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 from unittest.mock import Mock, patch
 
 from asr_runtime.utils.auth import bailian_environment
-from asr_runtime.utils.bailian import console_status, login_console, bl_command
+from asr_runtime.utils.bailian import console_status, login_console, bl_command, explain_cli_error
 from asr_runtime.utils.environment import SetupError, check_login_execution_context
 from tests.support import RuntimeTestCase, CONTRACT_BL_ENTRY, contract_runtime
 
@@ -50,7 +50,7 @@ class LoginPermissionTests(RuntimeTestCase):
                      "需要 Windows 及专用测试工作区中的官方 BL")
 class NativeLoginContractTests(RuntimeTestCase):
     def test_official_opener_passes_one_complete_url_and_callback_saves_credentials(self):
-        """验证官方完整开页命令只调用一次，并由原生回调保存合成凭据。"""
+        """验证完整URL只打开一次，快速回调先于开页结束仍能保存凭据。"""
         self.runtime.prepare()
         evidence = self.runtime.path("login-evidence.json")
         fixture = self.runtime.path("login-fixture.cjs")
@@ -78,20 +78,21 @@ cp.execFile = (file, args, options, callback) => {
   const target = new URL("http://" + loginUrl.searchParams.get("notice"));
   if (target.hostname !== "127.0.0.1") throw Error("Callback must use loopback.");
   queueMicrotask(() => {
-    callback(null, "", "");
-    // 先让官方开页 Promise 完成，随后其 close 监听接收回调结束事件。
-    setImmediate(() => {
+    // 回调收到响应后才完成打开程序，覆盖2.5.1修正的快速回调顺序。
       const body = JSON.stringify({ api_key: "fixture-login-key", access_token: "fixture-console-token" });
       const request = http.request(target, { method: "POST", headers: {
         "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body)
       } }, response => {
         evidence.callback_status = response.statusCode;
         response.resume();
-        response.on("end", save);
+        response.on("end", () => {
+          evidence.callback_before_open_completion = true;
+          save();
+          callback(null, "", "");
+        });
       });
       request.on("error", error => { evidence.callback_error = error.message; save(); });
       request.end(body);
-    });
   });
   return {};
 };
@@ -112,6 +113,7 @@ require("node:module").syncBuiltinESMExports();
         recorded = json.loads(evidence.read_text(encoding="utf-8"))
         self.assertEqual(recorded["blocked_external_requests"], 0)
         self.assertEqual(recorded["callback_status"], 200)
+        self.assertTrue(recorded["callback_before_open_completion"])
         self.assertEqual(len(recorded["invocations"]), 1)
         invocation = recorded["invocations"][0]
         self.assertEqual(invocation["file"], "cmd")
@@ -138,3 +140,33 @@ require("node:module").syncBuiltinESMExports();
         self.assertTrue(status["configured"])
         self.assertTrue(status["console_configured"])
         self.assertFalse(status["verified_online"])
+
+    def test_official_login_timeout_has_parseable_error_after_progress(self):
+        """验证原生登录空等返回超时，并能从进度后的JSON读取官方说明。"""
+        self.runtime.prepare()
+        fixture = self.runtime.path("login-timeout-fixture.cjs")
+        fixture.write_text(r'''
+const cp = require("node:child_process");
+const originalSetTimeout = globalThis.setTimeout;
+// 仅缩短本机夹具中的官方15分钟登录计时器。
+globalThis.setTimeout = (callback, delay, ...args) =>
+  originalSetTimeout(callback, delay === 900000 ? 50 : delay, ...args);
+globalThis.fetch = async () => { throw Error("External request blocked by login fixture."); };
+cp.execFile = (_file, _args, _options, callback) => {
+  queueMicrotask(() => callback(null, "", ""));
+  return {};
+};
+require("node:module").syncBuiltinESMExports();
+''', encoding="utf-8")
+        argv = bl_command(contract_runtime(), ["auth", "login", "--console", "--console-site", "domestic",
+                                               "--config", "default", "--output", "json"])
+        argv[1:1] = ["--require", str(fixture)]
+        result = subprocess.run(argv, cwd=self.runtime.workspace, env=bailian_environment(self.runtime, "console"),
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
+                                timeout=20, shell=False, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(result.returncode, 5, result.stderr)
+        report = explain_cli_error(result.returncode, result.stderr, [])
+        message = report["message"]
+        self.assertTrue("timed out" in message or "登录超时" in message, report)
+        self.assertNotIn("console-login?", json.dumps(report))
+        self.assertFalse(self.runtime.path(".state/bailian/config.json").exists())

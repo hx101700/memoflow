@@ -9,6 +9,7 @@ import type { Api, Configuration, EditorIssue, Endpoints, ErrorDetail, Language,
 const limits: Limits = { hotwords_bytes: 5_000_000, upload_bytes: 1_000_000_000,
   audio_seconds: 43200, hotwords_count: 2000, context_chars: 400, speaker_min: 2, speaker_max: 100 };
 const description: SessionDescription = { session_id: "session-one", phase: "editing", expires_at: "2026-10-04T12:00:00Z",
+  skill_version: "0.1.2",
   audio: null, audio_error: null,
   model: "fixed-model", region: "cn-beijing", limits, audio_suffixes: [".wav"], languages: ["zh"],
   output_defaults: { json: "D:/example", document: "D:/example" }, preview: null, terminal: null };
@@ -127,6 +128,7 @@ test("会话加载完成前不选文件或校验，完成后只订阅一次结�
   await starting;
   assert.equal(page.view.subscriptions, 1);
   assert.equal(availability(page.model).editable, true);
+  assert.equal(page.model.session?.skill_version, "0.1.2");
   page.actions.dispose();
   assert.equal(page.view.closed, 1);
 });
