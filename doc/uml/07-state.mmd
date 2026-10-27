@@ -7,7 +7,7 @@ state "expired<br/>打开满两小时" as Expired
 state "cancelled<br/>用户取消或正常收尾" as Cancelled
 [*] --> Editing : serve创建session_id
 Editing --> Preview : validate成功＋preview_ready登记
-Preview --> Editing : edit获准或confirm发现原文件变化 / 旧预览失效
+Preview --> Editing : edit获准 / 旧预览失效
 Editing --> Expired : 到期且尚未交接
 Preview --> Expired : 到期与确认共用状态锁
 Editing --> Cancelled : cancel / 先保存cancelled.json
@@ -18,6 +18,8 @@ note right of Preview
   session_id定位编辑会话
   用户发送含编号的确认消息后由Codex调用代码
   尚未展示的校验结果不能交接
+  confirm发现原文件变化或命令超长时保留预览
+  经既有edit返回修改后重新检查
   config.json原子发布标记完成
   未提交的候选回执不算成功
 end note

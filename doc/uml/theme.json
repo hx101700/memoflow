@@ -1,0 +1,32 @@
+{
+  "startOnLoad": false,
+  "securityLevel": "strict",
+  "theme": "base",
+  "fontFamily": "Microsoft YaHei, sans-serif",
+  "themeVariables": {
+    "primaryColor": "#f8fafc",
+    "primaryTextColor": "#0f172a",
+    "primaryBorderColor": "#94a3b8",
+    "lineColor": "#94a3b8",
+    "noteBkgColor": "#f1f5f9",
+    "noteTextColor": "#0f172a",
+    "noteBorderColor": "#94a3b8",
+    "edgeLabelBackground": "#ffffff",
+    "actorBkg": "#f8fafc",
+    "actorBorder": "#94a3b8",
+    "actorTextColor": "#0f172a",
+    "actorLineColor": "#94a3b8",
+    "signalColor": "#0f172a",
+    "signalTextColor": "#0f172a",
+    "labelBoxBkgColor": "#f8fafc",
+    "labelBoxBorderColor": "#94a3b8",
+    "labelTextColor": "#0f172a",
+    "loopTextColor": "#0f172a"
+  },
+  "sequence": {
+    "useMaxWidth": false,
+    "diagramMarginY": 20,
+    "wrap": false
+  },
+  "class": { "useMaxWidth": false }
+}

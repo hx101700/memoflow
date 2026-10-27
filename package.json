@@ -7,7 +7,9 @@
     "check:web": "vue-tsc --noEmit -p frontend/tsconfig.json",
     "build:web": "npm run check:web && vite build --config frontend/vite.config.ts",
     "test:web": "tsx --test tests/test_frontend.ts tests/test_i18n.ts",
-    "test:browser": "tsx --test tests/test_browser.ts"
+    "test:browser": "tsx --test tests/test_browser.ts",
+    "render:uml": "tsx scripts/render_uml.ts",
+    "check:uml": "tsc --noEmit --strict --skipLibCheck --types node --target ES2022 --module NodeNext --moduleResolution NodeNext scripts/render_uml.ts"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
@@ -17,6 +19,7 @@
   "devDependencies": {
     "@types/node": "24.10.1",
     "@vitejs/plugin-vue": "6.0.9",
+    "mermaid": "11.12.0",
     "playwright": "1.62.1",
     "tsx": "4.23.15",
     "typescript": "6.0.3",

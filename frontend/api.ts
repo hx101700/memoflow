@@ -2,8 +2,8 @@ import type { Api, Endpoints, ErrorDetail, ErrorPayload, Language, LocalizedText
 import { localize, type Translate } from "./i18n";
 
 export class UiError extends Error {
-  // 保存公开错误说明、字段位置与明确的 HTTP 状态。
-  constructor(private text: LocalizedText | (() => string), public field?: string, public httpStatus?: number, public details: ErrorDetail[] = []) {
+  // 保存公开错误说明、字段位置和单元格诊断。
+  constructor(private text: LocalizedText | (() => string), public field?: string, public details: ErrorDetail[] = []) {
     super(typeof text === "function" ? text() : text.zh);
     this.name = "UiError";
   }
@@ -14,7 +14,7 @@ export class UiError extends Error {
   }
 }
 
-// 将未知异常转换为可显示的错误对象，保留服务端字段与状态。
+// 将未知异常转换为可显示的错误对象，保留服务端字段与诊断。
 export function uiError(error: unknown, fallback: () => string, field?: string): UiError {
   if (error instanceof UiError) {
     if (field) error.field = field;
@@ -32,7 +32,7 @@ export function createApi(fetchRequest: typeof fetch, language: () => Language, 
       cache: "no-store", credentials: "same-origin" };
   }
   return {
-    // 发送 JSON 或文件字节，并传递明确的错误状态。
+    // 发送 JSON 或文件字节，并保留服务端错误说明与字段诊断。
     async request<K extends keyof Endpoints>(path: K, payload?: object, file?: File): Promise<Endpoints[K]> {
       const init = options();
       const headers = new Headers(init.headers);
@@ -54,7 +54,7 @@ export function createApi(fetchRequest: typeof fetch, language: () => Language, 
       try { data = await response.json() as Endpoints[K] & ErrorPayload; }
       catch { throw new UiError(() => t("unknownResponse")); }
       if (!response.ok || data.ok === false) {
-        throw new UiError(data.error || (() => t("failed")), data.field, response.status, data.details);
+        throw new UiError(data.error || (() => t("failed")), data.field, data.details);
       }
       return data;
     },

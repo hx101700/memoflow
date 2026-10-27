@@ -118,6 +118,7 @@ try {
 确认响应丢失时，用**本次用户确认消息中的相同编辑会话编号 `session_id`**再次运行 `confirm --session SESSION_ID`。入口先读取该会话的持久回执；成功交接过的会话返回原转写任务编号 `job_id`，不依赖网页服务仍在运行，也不创建另一任务。
 
 - 仍在填写或预览未就绪：让用户回原页面完成“确认并预览”，核对后重新发送复制消息。不得从曾经通过校验推断当前预览已展示。
+- 原录音变化或无法读取：交接被拒绝，当前预览保留。点击“返回修改”，重新选择或恢复录音，再检查并预览。
 - Windows 命令过长：当前预览保留，返回修改后重新预览；同一编辑会话仍可交接，尚无已发布任务或执行占用。
 - 已到期或已取消：本次编辑已结束，没有可执行任务。用户需要继续时重新打开页面；原文件和已保存的凭据保留。
 - 已交接：已知原执行进程仍在运行时，继续等待该进程。执行情况未知时才用 `job-status --job JOB_ID` 读取记录；尚未执行则按认证方式继续同一任务，遵守一次执行约束。
@@ -157,7 +158,7 @@ try {
 
 ### CLI与API错误
 
-- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/3638180f48b8fb1c7f99d5db91d3882d021710e5/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
+- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
 - CLI退出码、HTTP状态和API code是独立字段，按原回执分别解释。
 - Python读取BL结构化stderr的error.api_code、message、request_id、http_status，将api_code映射为本地回执的code，脱敏后给用户；cli_exit_code取自进程退出码。原始stderr、cause、hint和完整响应不进入回执。
 - 未知code明确说明字典未收录，不猜余额、权限、音频损坏或套用其它模型含义。

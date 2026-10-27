@@ -235,10 +235,10 @@ class DirectoryOptionTests(OptionsFixture):
             "context": "本次会议讨论测试术语。",
         })
         expected = {"language_hints": ["zh"], "speaker_count": 3}
-        self.assertEqual(preview["summary"]["enhancement"]["mode"], "both")
         receipt = self.confirm(self.session, preview["validation_id"])
         config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
         self.assertEqual(config["recognition_options"], expected)
+        self.assertEqual(config["enhancement"]["mode"], "both")
         self.assertEqual(config["enhancement"]["hotwords"]["count"], 1)
         self.assertEqual(config["enhancement"]["context"], "本次会议讨论测试术语。")
         self.assertTrue(config["execution_authorized"])

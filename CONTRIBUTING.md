@@ -24,4 +24,4 @@ MemoFlow is currently focused on one workflow: a Windows Codex Skill that turns 
 4. Run the narrowest relevant checks and report exactly what was run.
 5. Do not commit credentials, recordings, generated results, private logs, or local runtime directories.
 
-The `dev` branch is for development. Formal releases are made from `master` after review. See [doc/README.md](doc/README.md) for repository maintenance guidance.
+The `dev` branch is for development. Formal releases are made from `master` after review. See [doc/README.md](doc/README.md) for repository maintenance guidance and [Development and verification](doc/DEVELOPMENT.md#开发与验证) for environment prerequisites and commands.

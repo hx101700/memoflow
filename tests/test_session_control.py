@@ -31,7 +31,7 @@ class SessionControlTests(WebFixture):
         self.thread.start()
 
     def run_server(self):
-        """运行服务并在会话结束后释放连接和临时副本。"""
+        """运行服务并在会话结束后释放连接、清理会话记录。"""
         try:
             self.server.serve_forever()
         finally:
@@ -185,7 +185,7 @@ class SessionControlTests(WebFixture):
         self.assertEqual(request.call_count, 1)
         self.assertEqual(len(list(self.runtime.path(".state/jobs").iterdir())), 1)
 
-    def test_failed_confirmation_still_closes_event_stream_and_cleans_audio(self):
+    def test_failed_confirmation_still_closes_event_stream_and_preserves_audio(self):
         """验证交接写盘失败后正常关闭仍结束事件流并保留原始音频并清理会话记录。"""
         self.ready()
         stream = self.event_stream()

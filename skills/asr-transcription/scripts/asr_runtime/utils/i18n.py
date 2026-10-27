@@ -40,7 +40,7 @@ _ENGLISH: dict[str, str] = {
     "当前编辑会话已关闭。": "This editing session has closed. Open a new transcription page from Codex.",
     "编辑会话已失效，请回到 Codex 重新打开配置页。": "This editing session has expired. Return to Codex to open a new configuration page.",
     "当前编辑会话已结束，请回到 Codex 查看转写任务。": "This editing session has ended. Return to Codex to check the transcription task.",
-    "请先点击“返回修改”再编辑转写设置。": "Select Back to edit before changing the transcription settings.",
+    "请先点击“返回修改”再编辑转写设置。": "Select Back to editing before changing the transcription settings.",
     "请先在网页完成填写并进入预览页，再回到 Codex 确认。": "Complete the form and open the preview before confirming the session in Codex.",
     "文件仍在添加，请稍候。": "The file is still being added. Wait for it to finish.",
     "未知的保存位置。": "The output location is invalid.",

@@ -1,24 +1,9 @@
 # 使用资料
 
-安装、认证、网页配置、文件要求和重导集中维护在 Skill 的 [usage.md](../skills/asr-transcription/references/usage.md)。
+- [项目介绍与安装](../README.md)：选择发行包，将安装或更新请求交给 Codex。
+- [使用指南](../skills/asr-transcription/references/usage.md)：认证、录音配置、取消、更新、转写与重导。
+- [故障处理](../skills/asr-transcription/references/errors.md)：根据实际回执恢复或说明结果。
+- [模型与限制](../skills/asr-transcription/references/model.md)：参数要求、能力边界和官方依据。
+- [反馈问题](../SUPPORT.md)：选择反馈入口并提供脱敏信息。
 
-- 第一次使用：从[项目介绍](../README.md)了解安装入口，把录音发到对话中即可进入网页配置，也可在页面选择文件或填写 API Key。
-- 页面版本：左上角MemoFlow旁显示当前Skill版本，反馈问题时可一起提供。
-- 安装包选择：首次安装使用完整版，附带Python、Node.js与npm；后续由Codex自动下载轻量包更新，复用原工作目录运行时。业务依赖与百炼CLI仍按锁联网安装。操作见[运行准备](../skills/asr-transcription/references/usage.md#运行准备)。
-- 自动更新：从v0.1.2起提供，Codex在使用前每天最多检查一次正式版本；有更新时下载轻量包。v0.1.0/v0.1.1用户先将新版ZIP交给Codex更新。使用方法与回执见[自动更新](../skills/asr-transcription/references/usage.md#自动更新)。
-- 热词：直接填写或导入 Excel，当前序号连续；导入和编辑时保留原值，点击“确认并预览”后才校验内容并标红错误单元格。
-- 修改与语言切换：只清除改动单元格的旧提示，其他行保留；重复组剩一条时移除重复提示。表格较长时在固定高度内滚动；中英切换保留表格与滚动位置，错误和警告随之切换。关闭热词或上下文增强会清空对应区域，不影响 API Key。
-- 当前设置：宽屏右侧摘要随表单更新并跟随滚动；较窄窗口保持单列，正式核对仍在独立预览页完成。
-- 核对与修改：点击“确认并预览”，检查期间保留输入并暂时禁用编辑；失败后在原位置修改。预览页可“返回修改”，尚不创建任务。
-- 交给 Codex：预览确认无误后点“复制给 Codex”，发送带编辑会话编号 `session_id` 的确认消息。交接后设置固定，Codex 完成认证、识别和三种转写校对稿交付。
-- 编辑会话期限：从打开起两小时；交接、取消或到期显示结束提示，用户自行关闭页面。已交接转写任务不受编辑期限影响。
-- 取消或检查更新：填写、预览期间告知 Codex 取消本次转写或检查更新，它先结束旧编辑；下一次转写从新页面开始。取消结果可在服务退出后核实，详见[取消与回执](../skills/asr-transcription/references/errors.md#取消编辑与回执)。
-- 只更换 API Key：保存 API Key 后告知 Codex 完成，无需录音或创建任务；凭据问题见[修复说明](../skills/asr-transcription/references/errors.md#鉴权失败与重新配置)。
-- 结果查询与重导：使用确切转写任务编号 `job_id`，先另存人工修改的文件。历史成功任务保持原模型标签。
-- 服务中断：下次在同一工作目录开页时自动检查可回收残留；未到期、进程存活或归属不明时保留，详见[中断与临时文件](../skills/asr-transcription/references/usage.md#中断与临时文件)。正式凭据、任务和结果不会作为缓存清除。
-- 失败处理：参阅 [errors.md](../skills/asr-transcription/references/errors.md)，保留回执和已生成文件；失败不自动重传。
-- 参数依据：参阅 [model.md](../skills/asr-transcription/references/model.md) 的官方来源。当前工具固定官方 BL 2.5.1，已有安装的版本不匹配时按[错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)更新工作目录的 BL。
-
-Skill 指令与用户工作目录分别承担操作指导和运行数据存储；仓库开发文档不进入安装包。
-
-音频直接读取本次附件或系统窗口选中的原文件，转写完成前请保持原路径可访问。对话附件没有可读取的路径时，在页面重新选择录音。Excel 只在内存读取；只有声道合并生成 FLAC 处理文件。
+操作步骤随 Skill 在 references 中维护；本页仅作导航。

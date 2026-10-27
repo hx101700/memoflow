@@ -352,7 +352,6 @@ class Session:
             # 先报告可直接修改的文本问题，再读取可能较大的录音。
             source = self.audio_selection(payload.get("audio_id"))
             audio = validate_audio(source["path"], diarization)
-            audio["name"] = source["name"]
             warnings = [*audio["warnings"], *(hotwords["warnings"] if hotwords else [])]
 
             json_base = output_directory(self.runtime, payload.get("json_directory"), "json_directory", self.output_directories.get("json"))
@@ -364,11 +363,8 @@ class Session:
                 "enhancement": {"mode": enhancement, "hotwords": hotwords, "context": context},
             }
             summary: dict[str, object] = {
-                "auth_mode": mode,
                 "audio": {"name": audio["name"], "path": audio["path"], **{
                     field: value for field, value in audio["metadata"].items() if field != "audio_tracks"}},
-                "enhancement": {"mode": enhancement, "count": hotwords["count"] if hotwords else 0,
-                                "context_chars": len(context) if context else 0},
                 "json_directory": str(json_base), "document_directory": str(document_base),
                 "warnings": warnings,
             }
@@ -421,8 +417,7 @@ class Session:
                 path = resolve_input(audio["path"], AUDIO_SUFFIXES)
                 check_file_unchanged(path, audio["fingerprint"])
             except FileError as exc:
-                self.draft = None
-                self._phase = "editing"
+                # 保留页面正在显示的预览，让用户通过现有“返回修改”入口重新校验。
                 raise ValidationError(exc.template, "audio_id") from exc
             self._require_open()
             job_id = uuid.uuid4().hex

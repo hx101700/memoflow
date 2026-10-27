@@ -20,9 +20,9 @@ const receipt: Receipt = { session_id: "session-one", job_id: "job", config_path
 
 // 生成具备真实协议字段的合成预览。
 function validation(id = "validation-1"): ValidationResult {
-  return { validation_id: id, summary: { auth_mode: "console", audio: { name: audio.name, path: audio.path, duration_seconds: 2,
+  return { validation_id: id, summary: { audio: { name: audio.name, path: audio.path, duration_seconds: 2,
     size_bytes: audio.size, format_name: "wav", channels: 1, sample_rate: 16000 },
-    enhancement: { mode: "none", count: 0, context_chars: 0 }, json_directory: "fixture/json",
+    json_directory: "fixture/json",
     document_directory: "fixture/documents", warnings: [] } };
 }
 
@@ -245,7 +245,7 @@ test("返回修改开始后忽略迟到的预览登记错误", async () => {
   await Promise.resolve();
   await Promise.resolve();
   const returning = page.actions.edit();
-  ready.reject(new UiError(() => "预览已退出", undefined, 422));
+  ready.reject(new UiError(() => "预览已退出"));
   await checking;
   assert.equal(page.model.phase, "returning");
   assert.equal(page.error.value, null);
@@ -256,7 +256,7 @@ test("返回修改开始后忽略迟到的预览登记错误", async () => {
 });
 
 test("返回修改被拒绝保持只读预览，直到明确终态到达", async () => {
-  const page = harness({ "/api/edit": () => { throw new UiError(() => "会话已交接", undefined, 409); } });
+  const page = harness({ "/api/edit": () => { throw new UiError(() => "会话已交接"); } });
   await preview(page);
   page.handlers["/api/session"] = () => ({ ...description, phase: "preview", preview: { ...validation(), configuration: lastConfig(page),
     audio: { audio_id: "audio-1", name: audio.name, path: "D:/recordings/sample.wav", size_bytes: audio.size } } });
@@ -328,7 +328,7 @@ test("整单检查失败恢复原表格编辑，修正输入无需撤销不存�
   const rows = page.form.hotwordRows;
   const row = rows[0];
   const checking = page.actions.validate();
-  pending.reject(new UiError(() => "请修正热词。", "hotword_rows", 422,
+  pending.reject(new UiError(() => "请修正热词。", "hotword_rows",
     [{ row: 1, field: "weight", message: { zh: "请修改权重。", en: "Correct the weight." } }]));
   await checking;
   assert.equal(page.model.phase, "editing");
@@ -427,7 +427,7 @@ test("切换语言呈现已有错误的对应翻译，输入和检查次数保�
   const issues: ErrorDetail[] = [{ row: 1, field: "weight", message: { zh: "请修改权重。", en: "Correct the weight." } }];
   const page = harness({ "/api/import-hotwords": () => ({ name: words.name,
     rows: [{ text: "术语", weight: 9 }], warnings: [] }),
-    "/api/validate": () => { throw new UiError({ zh: "请修正热词。", en: "Correct the hotword list." }, "hotword_rows", 422, issues); } });
+    "/api/validate": () => { throw new UiError({ zh: "请修正热词。", en: "Correct the hotword list." }, "hotword_rows", issues); } });
   await addAudio(page);
   page.form.hotwordsEnabled = true;
   await page.actions.importHotwords([words]);
@@ -461,13 +461,13 @@ test("未选择音频定位文件选择区，空增强输入由整单接口检�
   assert.equal(page.error.value?.field, "audio_id");
   await page.actions.selectAudio();
   page.form.hotwordsEnabled = true;
-  page.handlers["/api/validate"] = () => { throw new UiError(() => "请添加热词。", "hotword_rows", 422); };
+  page.handlers["/api/validate"] = () => { throw new UiError(() => "请添加热词。", "hotword_rows"); };
   await page.actions.validate();
   assert.equal(page.error.value?.field, "hotword_rows");
   page.form.hotwordsEnabled = false;
   page.form.contextEnabled = true;
   page.form.context = " \n\t";
-  page.handlers["/api/validate"] = () => { throw new UiError(() => "内容仅包含空白，共3个字符。", "context", 422); };
+  page.handlers["/api/validate"] = () => { throw new UiError(() => "内容仅包含空白，共3个字符。", "context"); };
   await page.actions.validate();
   assert.equal(page.form.context, " \n\t");
   assert.equal(page.view.focus, "context");
@@ -485,7 +485,7 @@ test("超长上下文原样发送后显示服务器错误，关闭说话人区�
   page.form.diarizationEnabled = false;
   page.form.contextEnabled = true;
   page.form.context = "甲乙丙丁";
-  page.handlers["/api/validate"] = () => { throw new UiError(() => "参考文本超出1个字符。", "context", 422); };
+  page.handlers["/api/validate"] = () => { throw new UiError(() => "参考文本超出1个字符。", "context"); };
   page.actions.changed("speaker_count");
   assert.equal(Boolean(page.error.value), false);
   await page.actions.validate();
@@ -643,7 +643,7 @@ test("Key保存期间其他字段改变，保存错误仍指向Key且保留输�
   page.form.context = "独立保存Key时仍可填写";
   page.form.diarizationEnabled = false;
   page.actions.changed();
-  pending.reject(new UiError(() => "Key含有空白，请修正。", "auth_mode", 422));
+  pending.reject(new UiError(() => "Key含有空白，请修正。", "auth_mode"));
   assert.equal(await saving, false);
   assert.equal(page.model.phase, "editing");
   assert.equal(page.model.auth.status, "failed");
@@ -744,8 +744,8 @@ test("编辑导入异常单元格只清除该格类型标记", async () => {
 
 test("最终校验错误交给同一表格，导入失败保留已填词条", async () => {
   const detail: ErrorDetail = { row: 1, field: "weight", message: { zh: "请修改权重。", en: "Correct the weight." } };
-  const page = harness({ "/api/validate": () => { throw new UiError(() => "请修正热词。", "hotword_rows", 422, [detail]); },
-    "/api/import-hotwords": () => { throw new UiError({ zh: "当前 Excel 未按模板导入。", en: "Use the Excel template." }, "hotword_rows", 422); } });
+  const page = harness({ "/api/validate": () => { throw new UiError(() => "请修正热词。", "hotword_rows", [detail]); },
+    "/api/import-hotwords": () => { throw new UiError({ zh: "当前 Excel 未按模板导入。", en: "Use the Excel template." }, "hotword_rows"); } });
   await addAudio(page);
   page.form.hotwordsEnabled = true;
   page.actions.addHotword();
@@ -770,7 +770,7 @@ test("编辑一个单元格仅移除该格错误，其他区域变化保留词�
   ];
   const page = harness({ "/api/import-hotwords": () => ({ name: words.name,
     rows: [{ text: "", weight: 9 }, { text: "另一热词", weight: 8 }], warnings: [] }),
-    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", 422, details); } });
+    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", details); } });
   await addAudio(page);
   page.actions.setHotwordsEnabled(true);
   await page.actions.importHotwords([words]);
@@ -796,7 +796,7 @@ test("再次明确检查替换旧词表诊断，上下文失败时保留数据�
   const rows = Array.from({ length: 51 }, (_, index) => ({ text: `term${index}`, weight: 50 }));
   const page = harness({
     "/api/import-hotwords": () => ({ name: words.name, rows, warnings: [warning] }),
-    "/api/validate": () => { throw new UiError(() => "超级热词超过上限。", "hotword_rows", 422,
+    "/api/validate": () => { throw new UiError(() => "超级热词超过上限。", "hotword_rows",
       [{ row: 51, field: "weight", message: { zh: "超级热词最多50个。", en: "Up to 50 super hotwords." } }]); },
   });
   await addAudio(page);
@@ -813,7 +813,7 @@ test("再次明确检查替换旧词表诊断，上下文失败时保留数据�
   assert.equal(page.model.hotwords.issues[0].row, 51);
   assert.equal(page.calls.filter(call => call.path === "/api/validate").length, 1);
   page.handlers["/api/validate"] = () => {
-    throw new UiError({ zh: "上下文为空。", en: "Context is empty." }, "context", 422);
+    throw new UiError({ zh: "上下文为空。", en: "Context is empty." }, "context");
   };
   await page.actions.validate();
   assert.equal(page.model.phase, "editing");
@@ -833,7 +833,7 @@ test("再次明确检查替换旧词表诊断，上下文失败时保留数据�
 test("删除后错误跟随原词条稳定标识，显示行号从一重排", async () => {
   const page = harness({ "/api/import-hotwords": () => ({ name: words.name,
     rows: [{ text: "首词", weight: 4 }, { text: "第二词", weight: 4 }, { text: "保留错误", weight: 9 }], warnings: [] }),
-    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", 422,
+    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows",
       [{ row: 3, field: "weight", message: { zh: "请修改权重。", en: "Correct the weight." } }]); } });
   await addAudio(page);
   page.actions.setHotwordsEnabled(true);
@@ -858,12 +858,12 @@ for (const change of ["text", "remove"] as const) {
     ];
     const page = harness({ "/api/import-hotwords": () => ({ name: words.name,
       rows: [{ text: "IPO", weight: 4 }, { text: "IPO", weight: 5 }, { text: "其他词", weight: 9 }], warnings: [] }),
-      "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", 422, details); } });
+      "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", details); } });
     await addAudio(page);
     page.actions.setHotwordsEnabled(true);
     await page.actions.importHotwords([words]);
     await page.actions.validate();
-    const [first, second, third] = page.form.hotwordRows;
+    const [first, , third] = page.form.hotwordRows;
     assert.equal(page.model.hotwords.issues[0].duplicate_group, 1);
     assert.equal(page.model.hotwords.issues[1].duplicate_group, 1);
     page.actions.changeHotword(first.key, "weight", "3");
@@ -884,7 +884,7 @@ for (const count of [3, 4]) {
       { row: count + 1, field: "weight", message: { zh: "请修改权重。", en: "Correct the weight." } },
     ];
     const page = harness({ "/api/import-hotwords": () => ({ name: words.name, rows, warnings: [] }),
-      "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", 422, details); } });
+      "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", details); } });
     await addAudio(page);
     page.actions.setHotwordsEnabled(true);
     await page.actions.importHotwords([words]);
@@ -912,7 +912,7 @@ test("修改三个重复词之一保留剩余重复对，修改权重保持重�
   ];
   const page = harness({ "/api/import-hotwords": () => ({ name: words.name,
     rows: [{ text: "IPO", weight: 4 }, { text: "IPO", weight: 4 }, { text: "IPO", weight: 9 }, { text: "其他词", weight: 9 }], warnings: [] }),
-    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", 422, details); } });
+    "/api/validate": () => { throw new UiError(() => "请修改热词表。", "hotword_rows", details); } });
   await addAudio(page);
   page.actions.setHotwordsEnabled(true);
   await page.actions.importHotwords([words]);
@@ -931,7 +931,7 @@ test("修改三个重复词之一保留剩余重复对，修改权重保持重�
 
 test("关闭增强清空对应输入和提示，保留另一增强区域与已保存Key", async () => {
   const page = harness({ "/api/api-key": () => ({ value: "fixture-kept-key" }),
-    "/api/validate": () => { throw new UiError({ zh: "上下文过长。", en: "Context is too long." }, "context", 422); } });
+    "/api/validate": () => { throw new UiError({ zh: "上下文过长。", en: "Context is too long." }, "context"); } });
   await addAudio(page);
   await page.actions.setAuthMode(true);
   page.actions.setHotwordsEnabled(true);
@@ -989,7 +989,7 @@ test("HTTP使用同源cookie与语言头，保留服务端字段错误", async (
   const api = createApi(async (_url, init) => { sent = init;
     return new Response(JSON.stringify({ error: { zh: "上下文无效", en: "Invalid context" }, field: "context" }), { status: 422 }); }, () => "en", t);
   await assert.rejects(api.request("/api/validate", { context: "a\n'\\中文" }),
-    (reason: unknown) => reason instanceof UiError && reason.httpStatus === 422 && reason.field === "context");
+    (reason: unknown) => reason instanceof UiError && reason.field === "context" && reason.describe("en") === "Invalid context");
   assert.equal(sent?.credentials, "same-origin");
   assert.equal(new Headers(sent?.headers).get("Accept-Language"), "en");
   assert.equal(new Headers(sent?.headers).has("X-ASR-Token"), false);

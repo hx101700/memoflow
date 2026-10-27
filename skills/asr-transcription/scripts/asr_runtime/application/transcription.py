@@ -108,7 +108,7 @@ def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple
     destination = result_path(config)
     arguments = recognition_arguments(config, prepared, destination)
     enhancement = config["enhancement"]
-    private = [str(source), audio_record.get("name", source.name)]
+    private = [str(source), audio_record["name"]]
     hotwords = enhancement["hotwords"]
     if hotwords is not None:
         private.extend(hotwords["vocabulary"])

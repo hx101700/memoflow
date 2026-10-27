@@ -40,7 +40,7 @@ test("文件大小与服务端十进制限制一致，时长跨语言一致", ()
 test("服务端错误和警告按当前语言读取，原始位置及双语内容保持不变", () => {
   const text = { zh: "请修改权重。", en: "Correct the weight." };
   const issue = { row: 2, field: "weight", message: text };
-  const error = new UiError(text, "hotword_rows", 422, [issue]);
+  const error = new UiError(text, "hotword_rows", [issue]);
   assert.equal(error.describe("zh-CN"), "请修改权重。");
   assert.equal(error.describe("en"), "Correct the weight.");
   assert.equal(localize(text, "en"), "Correct the weight.");

@@ -39,9 +39,7 @@ export interface HotwordRow { text: CellValue; weight: CellValue; invalid_fields
 export interface EditorRow extends HotwordRow { key: number; row: number }
 export interface HotwordImport { name: string; rows: HotwordRow[]; warnings: LocalizedText[] }
 export interface Summary {
-  auth_mode: "console" | "api_key";
   audio: { name: string; path: string; duration_seconds: number; size_bytes: number; format_name: string; channels: number; sample_rate: number };
-  enhancement: { mode: EnhancementMode; count: number; context_chars: number };
   json_directory: string; document_directory: string; warnings: LocalizedText[];
 }
 export interface ValidationResult { validation_id: string; summary: Summary }

@@ -211,6 +211,8 @@ def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dic
         "TMPDIR": temp,
         "BAILIAN_CONFIG_DIR": str(runtime.path(".state/bailian-check" if isolated_config else ".state/bailian")),
         "DO_NOT_TRACK": "1",
+        # BL的quiet只控制输出，探针和业务调用均须关闭后台版本查询。
+        "NO_UPDATE_NOTIFIER": "1",
         "NO_COLOR": "1",
         "NPM_CONFIG_USERCONFIG": str(runtime.path(".runtime/npm-user.npmrc")),
         "NPM_CONFIG_GLOBALCONFIG": str(runtime.path(".runtime/npm-global.npmrc")),

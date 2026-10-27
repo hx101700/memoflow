@@ -688,6 +688,19 @@ for (const audioName of ["附件 recording.wav", "missing.wav"]) {
       await page.getByRole("button", { name: "Copy for Codex", exact: true }).waitFor();
       assert.equal(await page.locator("#config-fields").count(), 0);
       await assert.rejects(fs.access(path.join(root, ".asr-transcription/.state/jobs")), { code: "ENOENT" });
+      if (audioName !== "missing.wav") {
+        const audioPath = path.join(root, "fixtures/sample.wav");
+        const original = await fs.readFile(audioPath);
+        await fs.appendFile(audioPath, "changed after preview");
+        await assert.rejects(confirmSession(root, connection.session_id), /文件在校验期间发生变化/);
+        assert.equal(await page.locator("#review").isVisible(), true);
+        await page.getByRole("button", { name: "Back to editing", exact: true }).click();
+        await page.locator("#config-fields").waitFor();
+        assert.equal(await page.locator(".audio-name").innerText(), "sample.wav");
+        await fs.writeFile(audioPath, original);
+        await page.getByRole("button", { name: "Confirm and preview", exact: true }).click();
+        await page.getByRole("button", { name: "Copy for Codex", exact: true }).waitFor();
+      }
       const receipt = await confirmSession(root, connection.session_id);
       await page.locator("#session-ended").waitFor();
       assert.equal(await exited, 0, diagnostics.errors);

@@ -333,7 +333,7 @@ class WebServerTests(WebFixture):
         imported["rows"].pop(2)
         status, _, body = self.request("POST", "/api/validate", payload)
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["summary"]["enhancement"]["count"], 2)
+        self.assertEqual(self.server.session.draft["config"]["enhancement"]["hotwords"]["count"], 2)
         self.assertEqual(self.request("POST", "/api/validate-hotwords", {"rows": imported["rows"]})[0], 404)
 
     def test_hotword_request_accepts_model_limit_beyond_old_body_limit(self):
@@ -344,7 +344,7 @@ class WebServerTests(WebFixture):
             **self.payload, "enhancement_mode": "hotwords", "hotword_rows": rows,
         })
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["summary"]["enhancement"]["count"], 2000)
+        self.assertEqual(self.server.session.draft["config"]["enhancement"]["hotwords"]["count"], 2000)
 
     def test_return_to_edit_invalidates_preview_without_creating_a_job(self):
         """验证返回修改使旧预览失效，重复填写始终没有执行任务。"""

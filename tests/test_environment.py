@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import unittest
 import venv
 from unittest.mock import Mock, patch
 
@@ -18,7 +19,7 @@ from asr_runtime.application.diagnostics import doctor
 from scripts.probe_bl import SYNTHETIC_AUDIO_URL, probe
 from scripts.probe_bl import main as probe_main
 from asr_runtime.__main__ import main as runtime_main
-from tests.support import RuntimeTestCase
+from tests.support import CONTRACT_BL_ENTRY, RuntimeTestCase, contract_runtime
 
 
 class EnvironmentTests(RuntimeTestCase):
@@ -315,7 +316,7 @@ class EnvironmentTests(RuntimeTestCase):
         with self.assertRaises(SetupError):
             bl_command(self.runtime, ["--version"])
 
-    def test_bl_command_always_disables_automatic_upgrade(self):
+    def test_bl_command_includes_quiet_output_option(self):
         """验证BL命令携带quiet参数。"""
         self.runtime.bl_entry.parent.mkdir(parents=True)
         self.runtime.bl_entry.touch()
@@ -494,3 +495,31 @@ class EnvironmentTests(RuntimeTestCase):
         self.assertEqual(request_args[request_args.index("--url") + 1], SYNTHETIC_AUDIO_URL)
         self.assertEqual(request_args[request_args.index("--language") + 1], "zh")
         self.assertEqual(request_args[request_args.index("--speaker-count") + 1], "3")
+
+    @unittest.skipUnless(CONTRACT_BL_ENTRY.is_file(), "需要固定官方 BL 才能运行探针网络边界合约")
+    def test_probe_does_not_request_background_version_updates(self):
+        """用真实BL探针核对无后台联网，拦截请求以保证测试不访问外部服务。"""
+        evidence = self.runtime.path("probe-network.txt")
+        evidence.write_text("", encoding="utf-8")
+        fixture = self.runtime.path("probe-network.cjs")
+        fixture.write_text(
+            "const fs = require('node:fs');\n"
+            f"const evidence = {json.dumps(str(evidence))};\n"
+            "// 记录全部请求尝试并拒绝联网，避免quiet掩盖后台版本查询。\n"
+            "globalThis.fetch = async () => {\n"
+            "  fs.appendFileSync(evidence, 'blocked\\n');\n"
+            "  throw Error('External request blocked by the probe contract fixture.');\n"
+            "};\n", encoding="utf-8",
+        )
+
+        def installed_command(_runtime, arguments):
+            """使用已安装的官方BL，仅为本例添加网络拦截夹具。"""
+            command = bl_command(contract_runtime(), arguments)
+            command[1:1] = ["--require", str(fixture)]
+            return command
+
+        with patch("scripts.probe_bl.bl_command", side_effect=installed_command):
+            report = probe(self.runtime)
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(evidence.read_text(encoding="utf-8"), "")
+        self.assertFalse(self.runtime.path(".state/bailian-check/update-state.json").exists())

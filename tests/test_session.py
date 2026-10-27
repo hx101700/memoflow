@@ -136,14 +136,31 @@ class SessionTests(WebFixture):
         with self.assertRaises(ValidationError):
             self.session.confirm()
 
-    def test_file_changed_after_preview_cannot_be_confirmed(self):
-        """验证预览后文件变化时拒绝确认。"""
+    def test_changed_or_missing_audio_keeps_preview_editable(self):
+        """验证录音变化或删除后拒绝交接，并可返回修改后重新确认。"""
+        original = self.audio.read_bytes()
         preview = self.session.validate(self.payload)
         self.session.preview_ready(preview["validation_id"])
-        self.audio.write_bytes(self.audio.read_bytes() + b"changed")
-        with self.assertRaises(ValidationError):
-            self.session.confirm()
-        self.assertFalse(self.runtime.path(".state/jobs").exists())
+        for change in ("changed", "removed"):
+            with self.subTest(change=change):
+                if change == "changed":
+                    self.audio.write_bytes(original + b"changed")
+                else:
+                    self.audio.unlink()
+                for _ in range(2):
+                    with self.assertRaises(ValidationError):
+                        self.session.confirm()
+                self.assertFalse(self.runtime.path(".state/jobs").exists())
+                description = self.session.description()
+                self.assertEqual(description["phase"], "preview")
+                self.assertEqual(description["preview"]["validation_id"], preview["validation_id"])
+                restored = self.session.edit(preview["validation_id"])
+                self.assertEqual(restored["configuration"], self.payload)
+                self.audio.write_bytes(original)
+                preview = self.session.validate(restored["configuration"])
+                self.session.preview_ready(preview["validation_id"])
+        self.assertTrue(self.session.confirm()["ok"])
+        self.assertEqual(len(list(self.runtime.path(".state/jobs").iterdir())), 1)
 
     def test_confirmation_uses_metadata_without_reading_audio_again(self):
         """验证确认通过文件元信息复用预览快照。"""
@@ -201,12 +218,12 @@ class SessionTests(WebFixture):
                    "context": "会议涉及测试术语"}
         preview = self.session.validate(payload)
         self.session.preview_ready(preview["validation_id"])
-        self.assertEqual(preview["summary"]["enhancement"]["count"], 1)
-        self.assertEqual(preview["summary"]["enhancement"]["context_chars"], len(payload["context"]))
         with patch("asr_runtime.application.session.import_hotwords", side_effect=AssertionError("must not parse Excel again")):
             receipt = self.session.confirm()
         config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
         self.assertEqual(config["enhancement"]["hotwords"]["vocabulary"], {"术语": 4})
+        self.assertEqual(config["enhancement"]["hotwords"]["count"], 1)
+        self.assertEqual(config["enhancement"]["context"], payload["context"])
 
     def test_browser_rejects_unapproved_output_paths(self):
         """验证客户端提交源码或其他路径时被拒绝。"""

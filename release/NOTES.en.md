@@ -11,6 +11,7 @@ This release improves how transcription continues when update checks run into pr
 - **Official Bailian CLI 2.5.1**: adopts the upstream fix for fast login callbacks and improves login timeout and failure messages to help diagnose authorization issues.
 - **Clearer installation guidance**: distinguishes temporary update-check failures from installation states that need repair, with the corresponding steps to continue or fix the installation.
 - **Smoother cancellation and updates**: asking to cancel or check for updates while filling in or previewing a form ends that editing session first. Its cancellation result remains available after the page service exits, and the next transcription starts with a new page.
+- **Return to editing when a recording changes**: if the original recording is modified or moved after preview, the error keeps the preview available. You can return to the form, select the recording again, and review the updated settings.
 
 ### Downloads
 
@@ -28,6 +29,8 @@ For a first installation, or an upgrade from [v0.1.0](https://github.com/hx10170
 If you have [v0.1.2](https://github.com/hx101700/memoflow/releases/tag/v0.1.2) installed, ask Codex to “check for updates to the transcription Skill and install them” to upgrade automatically to v0.1.3 (this release). Future formal releases higher than v0.1.3 can also be obtained this way.
 
 You can also update an earlier version manually: give the new ZIP to Codex together with the complete request in the [Install section](https://github.com/hx101700/memoflow/blob/v0.1.3/README.en.md#install).
+
+If you installed an earlier v0.1.3 package, download the ZIP from this page again and give it to Codex with the installation request above to install the reissued package.
 
 Upgrades use the original workspace and preserve existing runtimes, credentials, jobs, and transcripts. Codex prepares the Bailian CLI dependencies required by the new version.
 

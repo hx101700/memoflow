@@ -44,7 +44,8 @@ def validate_audio(path: str | Path, diarization: object) -> AudioRecord:
                 or (before.st_size, before.st_mtime_ns, before.st_ino)
                 != (after.st_size, after.st_mtime_ns, after.st_ino)):
             raise ValidationError("文件在校验期间发生变化，请重新校验。", field)
-        return {"path": str(source), "metadata": cast(AudioMetadata, asdict(info)), "fingerprint": fingerprint,
+        return {"path": str(source), "name": source.name,
+                "metadata": cast(AudioMetadata, asdict(info)), "fingerprint": fingerprint,
                 "requires_mono": requires_mono, "warnings": warnings}
     except FileError as exc:
         raise ValidationError(exc.template, field) from exc

@@ -16,7 +16,7 @@ MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定�
 | Python | 管理本机会话、保存确认快照、媒体准备、调用 BL、解析结果和生成文档 |
 | BL | 鉴权、临时上传、识别提交、轮询、下载与原始 JSON 落盘 |
 
-一个完整转写任务对应一个 Skill。共享 CLI 能力集中在 `utils/bailian.py`；有独立的新 BL 用户任务时再评估拆分，当前不引入通用工具注册、云客户端、数据库或消息队列。
+一个完整转写工作流由一个 Skill 串联。共享 CLI 能力集中在 `utils/bailian.py`；有独立的新 BL 用户任务时再评估拆分，当前不引入通用工具注册、云客户端、数据库或消息队列。
 
 ## 资源边界与结构
 
@@ -108,7 +108,7 @@ Session、PathPicker 持有实际生命周期；无状态操作使用模块函�
 
 填写或预览期间用户要求取消、检查更新或安装新 ZIP，Skill 先用本次活动页面的编号运行 `cancel`，等待原 `serve` 退出，再结束请求或进入更新。Session 在同一状态锁内先原子保存 `cancelled.json`，再发布取消终态；CLI 读取已有交接或取消结果，HTTP 响应丢失后复用原结果。此文件只有取消状态，没有输入内容或连接凭据；正常清理与下次回收均保留它。服务被先行强制结束且没有记录时仍返回无法核实，不把进程结束推断为取消成功。
 
-音频从本次附件或系统文件窗口登记的原路径读取，Excel 仅在内存解析；交接保存参数与来源引用。取消、到期只清理会话临时记录，原文件和已保存 Key 保留。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
+确认发现原录音变化或无法读取时保留当前预览并拒绝交接，用户可经现有“返回修改”重新选择、校验；无需新事件或状态轮询。音频从本次附件或系统文件窗口登记的原路径读取，Excel 仅在内存解析；交接保存参数与来源引用。取消、到期只清理会话临时记录，原文件和已保存 Key 保留。结束时移除临时连接令牌并关闭服务。已经创建的任务、登录等待和转写不受两小时编辑期限影响。关闭标签页并不能可靠地证明服务结束。
 
 ### 临时文件回收
 
@@ -251,17 +251,66 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 音频使用大块 `ElButton` 打开原生文件窗口，规格说明位于框内；选中反馈使用绿色文件图标与 success 标签，选择框保持中性背景；等待使用原生 v-loading 遮罩。Excel 使用 `ElUpload` 的按钮入口在内存导入，与下载模板并排。热词编辑使用 `ElTable` 与 `ElInput`，表尾添加入口使用公开的 `append` 插槽。错误标红通过 `row-class-name`；组件原有聚焦、禁用、滚动和主题行为保持一致。
 
-Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求由根 package.json 的 `^20.19.0 || >=22.12.0` 约束；Skill 使用固定 Node 24.21.0，满足该条件。开发命令在已有开发环境中执行：
+界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
+
+当前灰阶参考 [OpenAI Apps SDK UI 原色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-primitive.css)与[语义色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-semantic.css)，以及 [Codex 公开外观示例](https://learn.chatgpt.com/docs/reference/settings#appearance)。页面、卡片、输入区使用中性灰，通过 Element Plus 背景、文本与边框变量映射；蓝色链接、绿色成功提示和红色错误保留明确语义。此处只参考公开色板，未引入 OpenAI 的 React 组件、字体或图标资源。
+
+编辑视图在宽度至少 1100px 时显示右侧 `SettingsSummary.vue`，通过 CSS Grid 分列、sticky 跟随，并按可用高度允许摘要内部滚动。摘要只读取当前表单中的文件名、大小、识别选项、增强计数和认证选择；不读取 Key、不请求校验或产生预览版本。较窄窗口保持单列；正式预览仍由 ReviewPanel 独立展示，遵循原来的确认交接协议。
+
+全局提示与字段卡片由同一个主列控制宽度。加载失败或事件连接中断时，前端进入 unavailable，统一显示一个错误结果页并隐藏填写引导、步骤和操作栏。cancelled／expired／handed_off保持独立终态说明。
+
+Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求由根 package.json 的 `^20.19.0 || >=22.12.0` 约束；Skill 使用固定 Node 24.21.0，满足该条件。具体环境前提与验证命令统一见下节。
+
+## 开发与验证
+
+在 Windows 10/11 x64 的仓库根目录运行；浏览器回归需要本机 Microsoft Edge。代码测试使用合成数据、本机HTTP服务和固定BL；安装环境需要联网，测试本身不会发起真实授权或云端识别。
+
+全新检出可使用现有安装器准备专用合约工作目录。此目录不作为用户转写工作目录；已有开发环境可直接复用。下面的第一段只用于首次准备：
 
 ```powershell
+$repoDir = (Get-Location).Path
+$contractDir = Join-Path $repoDir '.runtime/dev-workspace'
+New-Item -ItemType Directory -Path $contractDir -Force | Out-Null
+$skillDir = Join-Path $repoDir 'skills/asr-transcription'
+& "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File (Join-Path $skillDir 'scripts/bootstrap.ps1') -Workspace $contractDir
+```
+
+bootstrap成功后，使用该工作目录的基础Python准备仓库`.venv`，以便浏览器测试调用固定入口。业务库复用安装器已下载并核对的wheel；开发依赖单独安装，包含类型工具及官方Skill校验器需要的PyYAML：
+
+```powershell
+$runtimeDir = Join-Path $contractDir '.asr-transcription'
+$basePython = Join-Path $runtimeDir '.tools/python/python.exe'
+& $basePython -I -X utf8 -m venv (Join-Path $repoDir '.venv')
+$pythonPath = Join-Path $repoDir '.venv/Scripts/python.exe'
+& $pythonPath -I -X utf8 -m pip install --no-cache-dir --no-index --find-links (Join-Path $runtimeDir '.runtime/wheels') --require-hashes --only-binary=:all: -r (Join-Path $skillDir 'scripts/requirements.txt')
+& $pythonPath -I -X utf8 -m pip install --no-cache-dir -r requirements-dev.txt
+$nodeDir = Join-Path $runtimeDir '.tools/node'
+$env:PATH = "$nodeDir;$env:PATH"
+$env:MEMOFLOW_BL_CONTRACT_WORKSPACE = $contractDir
 npm ci
+```
+
+上述PATH只影响当前PowerShell进程。接续已有环境时重新设置这几个路径变量即可。`MEMOFLOW_BL_CONTRACT_WORKSPACE`应指向已安装当前固定BL的工作目录；缺失时部分合约会跳过，不能写成完整通过。`tests/support.py`的默认`.runtime/bl-2.5.1-workspace`只是已有本机环境的便捷默认值；新机器应显式设置。环境和进程合约需要正常Windows执行权限，受限令牌下的拒绝访问应按权限说明处理。
+
+按变更范围选择检查，完整发布复核采用：
+
+```powershell
+& $pythonPath -X utf8 -m unittest discover -s tests -t . -q
+& $pythonPath -X utf8 -m mypy
 npm run check:web
 npm run test:web
 npm run build:web
 npm run test:browser
+& $pythonPath -X utf8 scripts/check_docs.py
+npm run check:uml
+npm run render:uml
 ```
 
-浏览器回归使用 Playwright、本机 Edge 和真实 Python 本机服务；默认合成数据。Python 类型与运行检查见 [ACCEPTANCE](ACCEPTANCE.md)。
+浏览器测试使用仓库`.venv`和构建后的静态资源，所以先构建。UML生成方法与主题见[图稿说明](UML.md)。文档检查验证本仓库使用的相对文件和章节链接，不检查外网可用性。Skill格式可使用当前Codex提供的`skill-creator/scripts/quick_validate.py`，传入`skills/asr-transcription`；PyYAML来自上述开发依赖，校验器不复制进仓库。格式通过还须通过入口场景推演，不能代替实际流程检查。
+
+发行包构建使用`scripts/build_zip.py`。轻量包直接生成；完整版用`--runtime-directory`指向与`runtimes.json`摘要匹配的两个官方ZIP目录。打包测试检查固定文件集、当前README、manifest和源码一致性；生成文件放`dist`，实际运行结果追加[ACCEPTANCE](ACCEPTANCE.md)。本机测试、真实用户授权、云端识别与Office视觉排版分别记录验收范围。
+
+## 安装实现
 
 首次安装使用完整版，由 Windows PowerShell 执行 `scripts/bootstrap.ps1 -Workspace`，核对 `scripts/runtimes.json` 中的固定摘要，再从包内 `assets/runtimes` 解压原始 ZIP 到工作目录 `.asr-transcription/.tools/python` 和 `.tools/node`。Python 为安装管理器的完整 ZIP，含 Tk、venv 和 ensurepip；Node ZIP 含配套 npm。PowerShell 随后用私有 Python 调用现有 `asr.py --workspace ... bootstrap`，pip/npm 依赖安装仍由 Python 用例负责。
 
@@ -275,7 +324,7 @@ npm run test:browser
 
 Python始终使用`--no-cache-dir`，本项目只清理自己保存的.runtime/wheels。[pip官方说明](https://pip.pypa.io/en/stable/topics/caching/)区分原生缓存与下载目标。npm使用私有Node调用公开的cache ls/clean/verify，并显式指定工作目录的.runtime/npm-cache，索引和内容删除交给npm。[npm说明](https://docs.npmjs.com/cli/v11/commands/npm-cache/)及[11.19.0源码](https://github.com/npm/cli/blob/v11.19.0/lib/commands/cache.js)提供依据。旧包逐键clean后执行一次verify回收失效索引：同一旧包的官方源和镜像键可能共享内容，批量clean遇到已删除的共享内容会提前结束；真实隔离缓存已复现该问题。verify仅在删除旧键后使用，属于npm缓存整理，不是重复的环境检查。
 
-当前镜像真实缓存键使用cdn.npmmirror.com/packages路径，原生cache ls按包规格筛选只命中55个当前条目中的2个，不能据此计算删除差集。本项目仅识别固定两源的registry路径及实际镜像CDN路径，按锁中的实际name处理npm别名包；元数据和未知键保留。真实缓存合约已验证旧条目删除后当前条目仍可读取。系统缓存、已装运行时、凭据、任务和输出不在此清理范围。
+镜像缓存包含cdn.npmmirror.com/packages路径，原生cache ls按包规格筛选不能覆盖这类键，因此不能据此计算删除差集。本项目仅识别固定两源的registry路径及实际镜像CDN路径，按锁中的实际name处理npm别名包；元数据和未知键保留。真实缓存合约已验证旧条目删除后当前条目仍可读取。系统缓存、已装运行时、凭据、任务和输出不在此清理范围。
 
 安装日志统一保存为 UTF-8。普通 pip 命令显式传入 `-X utf8`；Python 3.12 的 ensurepip 内部子进程使用本地编码，因此只在该调用按 `locale.getencoding()` 解码。二者均保持 `-I` 隔离模式，不修改标准库或系统编码。
 
@@ -289,6 +338,8 @@ BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，�
 
 Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机有限命令 `run_process()` 和安装命令 `run_installer()` 持有本次 `Popen`，在超时、中断或异常退出时共用 `stop_process_tree()` 结束其进程树；正常完成不触发停止。选择窗口只依赖标准库与 tkinter，直接使用 `sys.base_prefix/python.exe`，使取消动作对应实际窗口进程。停止范围限于本次创建的进程，不枚举其他 Python 或浏览器进程；BL 登录和识别沿用各自的生命周期。
 
+## 发行构建
+
 `scripts/build_zip.py` 按固定逐文件映射生成两个 ZIP：Skill 资源直接作为归档根，加上仓库根最新版 README.md 和 README.en.md。完整包 `asr-transcription.zip` 额外包含 `assets/runtimes/python-3.12.10-amd64.zip` 与 `assets/runtimes/node-v24.21.0-win-x64.zip` 两个原始官方归档；轻量包 `asr-transcription-lite.zip` 不附运行时。两包代码与说明相同，Python 依赖和 BL 安装仍需联网。README 字节原样入包，仓库资料用完整 GitHub 链接，语言切换与 LICENSE 用包内链接。排除开发 doc、AGENTS、UML、测试、Vue/TS 源码、构建工具、已安装依赖、凭据和用户数据。
 
 在仓库根目录使用开发环境构建。未提供 `--runtime-directory` 时输出轻量包；提供包含两个原始官方 ZIP 的目录时，先校验摘要，再输出完整包：
@@ -301,11 +352,3 @@ Windows 虚拟环境的 Python 启动器可能另起实际工作进程。本机�
 默认输出到 `dist/`，已有同名文件不会覆盖；需要另选目标时使用 `--output`。
 
 开发在 dev，master 保存正式发布里程碑。本次正式发布版本为v0.1.3；后续开发沿用该版本，下一次验收发布master时再递增。正式标签和附件发布后保留，新版本使用新标签。依赖版本由各自锁文件维护，历史实现和发布记录通过Git追溯。
-
-界面成功反馈使用组件 success 类型，规则链接使用 primary 类型，错误与警告使用红色。页面与卡片、输入区通过 Element Plus 的背景和填充变量区分；提示条和错误条与卡片共用同一个主列容器，保持边缘对齐。
-
-当前灰阶参考 [OpenAI Apps SDK UI 原色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-primitive.css)与[语义色](https://github.com/openai/apps-sdk-ui/blob/0f00143c7a639906f1621fe58e1b6be7b5bea46d/src/styles/variables-semantic.css)，以及 [Codex 公开外观示例](https://learn.chatgpt.com/docs/reference/settings#appearance)。页面、卡片、输入区使用中性灰，通过 Element Plus 背景、文本与边框变量映射；蓝色链接、绿色成功提示和红色错误保留明确语义。此处只参考公开色板，未引入 OpenAI 的 React 组件、字体或图标资源。
-
-编辑视图在宽度至少 1100px 时显示右侧 `SettingsSummary.vue`，通过 CSS Grid 分列、sticky 跟随，并按可用高度允许摘要内部滚动。摘要只读取当前表单中的文件名、大小、识别选项、增强计数和认证选择；不读取 Key、不请求校验或产生预览版本。较窄窗口保持单列；正式预览仍由 ReviewPanel 独立展示，遵循原来的确认交接协议。
-
-全局提示与字段卡片由同一个主列控制宽度。加载失败或事件连接中断时，前端进入 unavailable，统一显示一个错误结果页并隐藏填写引导、步骤和操作栏。cancelled／expired／handed_off保持独立终态说明。

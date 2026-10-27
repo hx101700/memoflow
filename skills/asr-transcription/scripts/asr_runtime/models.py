@@ -48,7 +48,7 @@ class AudioRecord(TypedDict):
     fingerprint: FileFingerprint
     requires_mono: bool
     warnings: list[LocalizedText]
-    name: NotRequired[str]
+    name: str
 
 
 class AudioSelection(TypedDict):

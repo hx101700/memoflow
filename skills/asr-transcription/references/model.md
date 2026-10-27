@@ -114,7 +114,7 @@ BL可能跳过失败子项、写空数组，或在没有子结果时不写文件
 
 本项目通过官方`NO_UPDATE_NOTIFIER=1`跳过BL版本检查，固定版本由项目依赖锁维护；`DO_NOT_TRACK=1`关闭遥测。`--quiet`用于控制命令输出，不承担关闭版本查询的职责。依据：[middleware.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/middleware.ts)、[update-checker.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/utils/update-checker.ts)。
 
-首次安装由 `scripts/bootstrap.ps1` 准备工作目录内的基础运行时，固定来源与 SHA-256 见 `scripts/runtimes.json`。完整包的 `assets/runtimes` 直接附原始官方 ZIP；轻量包由官方来源下载，相同摘要适用于两种来源。Python 使用官方 [Windows 运行时索引](https://www.python.org/ftp/python/index-windows.json)中的 `python-3.12.10-amd64.zip` 完整包。官方允许直接解压安装管理器提供的 ZIP 并从目标目录运行；嵌入式包不含 Tcl/Tk 和 pip，不能满足本项目的文件窗口和依赖安装。[完整运行时解压](https://docs.python.org/3/using/windows.html#offline-installs)、[嵌入式包范围](https://docs.python.org/3/using/windows.html#the-embeddable-package)
+首次安装由 `scripts/bootstrap.ps1` 准备工作目录内的基础运行时，固定来源与 SHA-256 见 `scripts/runtimes.json`。完整包的 `assets/runtimes` 直接附原始官方 ZIP；正常轻量更新复用已有运行时；源码安装或显式恢复缺少归档时才从官方来源下载，并核对相同摘要。Python 使用官方 [Windows 运行时索引](https://www.python.org/ftp/python/index-windows.json)中的 `python-3.12.10-amd64.zip` 完整包。官方允许直接解压安装管理器提供的 ZIP 并从目标目录运行；嵌入式包不含 Tcl/Tk 和 pip，不能满足本项目的文件窗口和依赖安装。[完整运行时解压](https://docs.python.org/3/using/windows.html#offline-installs)、[嵌入式包范围](https://docs.python.org/3/using/windows.html#the-embeddable-package)
 
 运行时下载复用 Windows 自带 curl 的 HTTPS、连接重试与续接，摘要由 PowerShell `Get-FileHash` 校验。系统 curl 使用 Schannel；受限令牌下已观察到 `SEC_E_NO_CREDENTIALS`，因此安装入口从首次调用就遵循执行工具的正常网络权限机制。[Windows curl 官方说明](https://learn.microsoft.com/en-us/windows/curl/)
 

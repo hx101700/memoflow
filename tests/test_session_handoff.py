@@ -58,7 +58,7 @@ class SessionHandoffTests(WebFixture):
             for index in range(2000)
         ]
         preview = self.show_preview()
-        self.assertEqual(preview["summary"]["enhancement"]["count"], 2000)
+        self.assertEqual(len(self.session.draft["config"]["enhancement"]["hotwords"]["vocabulary"]), 2000)
         with patch("asr_runtime.utils.bailian.installed_bl_version", side_effect=AssertionError("交接不检查BL安装")), \
                 patch("asr_runtime.utils.auth.read_api_key", side_effect=AssertionError("交接不读取Key")), \
                 patch("asr_runtime.utils.bailian.subprocess.Popen", side_effect=AssertionError("交接不启动BL")):
