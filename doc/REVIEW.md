@@ -1,6 +1,6 @@
 # 当前质量审查
 
-日期：2026-10-27。起点：`ddb0f14`。本轮针对第一方代码、指令、规约、全部Markdown与UML进行全文审阅；本地审查与验证完成后，用户明确授权同步dev/master并重发v0.1.3；实际发布状态见STATUS。此前审查保存在[审查起点的版本](https://github.com/hx101700/memoflow/blob/ddb0f146f265071a632d12006324f4efa2392378/doc/REVIEW.md)，历史决定与运行证据继续保留在DEVLOG／ACCEPTANCE。
+日期：2026-10-27。起点：`ddb0f14`。本轮针对第一方代码、指令、规约、全部Markdown与UML进行全文审阅；本地审查与验证完成后，已按用户明确授权同步dev/master并重发v0.1.3（代码76cbf75）；实际发布证据见ACCEPTANCE。此前审查保存在[审查起点的版本](https://github.com/hx101700/memoflow/blob/ddb0f146f265071a632d12006324f4efa2392378/doc/REVIEW.md)，历史决定与运行证据继续保留在DEVLOG／ACCEPTANCE。
 
 ## 结论与覆盖
 

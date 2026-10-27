@@ -19,7 +19,7 @@
 | 前端构建与类型 | vue-tsc与Vite构建通过，生成静态资源；额外未使用符号检查通过 |
 | Skill | 官方quick_validate通过；6类入口独立推演后修正更新顺序歧义、ZIP通知和隐私边界 |
 | UML | 11图由受管入口重建，类型与文字边界通过；全部PNG已查看，01B重叠问题修正后复查 |
-| 文档链接 | 受管check_docs检查25份文档、172个本地链接通过；不代表外网链接可用性验证 |
+| 文档链接 | 受管check_docs检查25份Markdown，本地文件与章节链接通过；不代表外网链接可用性验证 |
 
 本次测试使用仓库.venv、已准备的.runtime/bl-2.5.1-workspace合约环境及本机Edge。DEVELOPMENT补齐全新检出的环境准备与验证命令；本轮没有重新执行完整冷下载安装，不把说明文字当作该场景已通过。PyYAML作为开发依赖安装后，官方Skill校验器可直接在仓库venv运行；第一次安装受临时目录权限阻止，改用正常权限并将临时目录限定在仓库后成功。
 
@@ -28,6 +28,19 @@
 前端改动通过Vite生成app.js；Mermaid与PyYAML仅用于开发，不进入固定发行文件集，运行依赖锁保持原样。UML统一使用doc/uml/theme.json与scripts/render_uml.ts，未依赖被忽略的旧渲染器。重渲染修正顺序、字段与注释，不新增不存在的生产对象。
 
 日志在.runtime/quality-review-python.log、quality-review-web.log、quality-review-browser.log；缺少这些本机文件时，可按DEVELOPMENT命令重现测试，不能仅依据历史数字认定新改动已通过。真实用户授权、云端录音质量与Office逐页视觉不在本轮验证范围。
+
+### 本轮正式交付
+
+用户明确要求并再次确认授权同步dev/master及重新发布v0.1.3。修复提交76cbf755492ef1cc7a5c647ea8d88ba1283b1230已推送两分支；同号标签使用限定旧对象的租约更新到该提交，分支均为快进。沿用Release425011703，先转草稿再替换两附件后公开，latest仍为v0.1.3。
+
+从合并后的master构建正式双包，清单、CRC、源码／README字节、版本及运行时摘要通过。GitHub回读正文与release/NOTES.md一致，两附件状态uploaded、大小与SHA-256匹配；v0.1.0/v0.1.1/v0.1.2的Release ID及附件摘要与发布前相同。
+
+| 正式文件 | 文件数 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| dist/release-v0.1.3-quality/asr-transcription.zip | 54 | 70385822 | `e4f7c725a06bdc67524c39cac6d346b026d5a888b7c0d304eb8312382f4982c9` |
+| dist/release-v0.1.3-quality/asr-transcription-lite.zip | 52 | 367228 | `20729fec1c1273fef624f990110d97f355aa3f370e5d0b0107a80d165c5dcc15` |
+
+发布回执为.runtime/quality-review-release-publish.json，包核对为quality-review-final-package-check.json。已有同号v0.1.3通过新ZIP更新；没有修改更新器的更高版本判断或替换用户已安装副本。之前的审查、取消修复和原v0.1.3发布记录保留为各自当时的事实。
 
 ## 2026-10-27 取消编辑与转去更新修复、v0.1.3重发
 
