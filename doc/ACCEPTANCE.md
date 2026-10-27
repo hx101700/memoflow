@@ -5,6 +5,13 @@
 用户已审核发布正文并授权推送master及Release，完整包标识最终为“首次安装推荐手动下载该发行包”，中英文和后续模板同义。根及BL安装清单/锁通过npm同步项目版本0.1.3，执行代码、BL2.5.1及其它依赖保持此前491项完整回归所验证的内容。
 
 版本同步后15项打包及403后页面版本响应检查通过，13.356秒，日志.runtime/release-0.1.3-package-tests.log；严格mypy32源文件、官方Skill格式及121个本地链接通过。GitHub发布前回读确认已有v0.1.0/v0.1.1/v0.1.2及其附件，v0.1.3尚不存在。正式包构建与发布后回读结果完成后追加，现有正式标签和附件保留。
+
+从合并后的master工作树构建正式双包，CRC、固定文件集、源码/最新README字节、包内manifest版本、根及BL安装清单的0.1.3，以及四个BL包2.5.1与原始运行时摘要核对通过。正式包位于dist/release-v0.1.3，未包含开发文档、测试、UML、安装环境或用户数据。
+
+| v0.1.3正式文件 | 文件数 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| dist/release-v0.1.3/asr-transcription.zip | 54 | 70386696 | `20da376cd86a7adfe4f0f3694309c0fc318eef162043a97e7e6b46458e512bfa` |
+| dist/release-v0.1.3/asr-transcription-lite.zip | 52 | 368102 | `b5dd03468896ae847cf7b7524b5971ecb0f5e5135892af5ea62d4fa54e55c661` |
 ## 2026-10-27 官方BL2.5.1兼容与原生能力复用
 
 对照官方v2.4.0与v2.5.1，后者tag固定为3c8031f4d994c30820eb4d145d9404ba4a0acd39，公开npm包及CLI/core/commands/runtime直接依赖均为2.5.1。使用npm原生package-lock-only更新依赖锁，未改Python、Node或npm版本；源码差异及本地消费者见[BL_COMPATIBILITY](BL_COMPATIBILITY.md)。

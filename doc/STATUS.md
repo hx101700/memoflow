@@ -12,7 +12,7 @@
 
 加速优化按用户要求暂缓：更新顺序、30秒网络超时、环境检查和工具调用方式保持。关于Skill与Codex交互过多导致等待的怀疑留待更多用户反馈。
 
-已测试的BL2.5.1候选双包位于dist/bl-2.5.1-review；正式版本同步至0.1.3，执行代码与依赖版本保持测试结果。空表单真实截图仍在.runtime/version-page-review。发布说明沿用已审核正文，完整包标为“首次安装推荐手动下载该发行包”，双语及后续模板同步。
+正式版本已同步至0.1.3，执行代码与依赖版本保持491项完整回归的内容。合并后的master已构建dist/release-v0.1.3双包并核对清单、源码与运行时摘要，待推送标签和发布。空表单截图仍在.runtime/version-page-review。发布说明沿用已审核正文，完整包标为“首次安装推荐手动下载该发行包”，双语及后续模板同步。
 
 ## 最近正式发布
 
@@ -45,8 +45,8 @@ BL2.5.1在全新隔离工作目录实际安装成功，doctor issues为空。最
 
 ## 交付
 
-- 当前完整候选：dist/bl-2.5.1-review/asr-transcription.zip，54文件。
-- 当前轻量候选：dist/bl-2.5.1-review/asr-transcription-lite.zip，52文件。
+- v0.1.3完整包：dist/release-v0.1.3/asr-transcription.zip，54文件。
+- v0.1.3轻量包：dist/release-v0.1.3/asr-transcription-lite.zip，52文件。
 - 真实空表单截图：.runtime/version-page-review/version-page-dark.png与version-page-light.png。
 - 正式v0.1.3准备输出到dist/release-v0.1.3；通过更高正式版本供已有v0.1.2安装检查更新。
 
