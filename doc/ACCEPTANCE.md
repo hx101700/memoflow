@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-10-27 v0.1.3正式发布与公开自动升级
+
+GitHub Release ID为425011703，draft/prerelease均为false，latest指向v0.1.3；正文与用户审核后的release/NOTES.md一致，完整包标识为“首次安装推荐手动下载该发行包”。两附件uploaded，大小及SHA-256与下表正式包一致。v0.1.0/v0.1.1/v0.1.2的Release ID及附件摘要与发布前一致。
+
+正式标签v0.1.3对应300319e458afd8cba51b5cc0447184d2c4649c75，dev/master已快进同步发布变更；源码、包内README和清单在同一发布构建核对，没有移动既有标签。
+
+发布后用与公开摘要匹配的真实v0.1.2轻量包在隔离目录解压，执行其原scripts/update.py访问公开GitHub，返回updated、installed_version=0.1.3。新受管文件与正式轻量包逐字一致；第二次执行新更新器返回checked_today、last_status=updated。更新后的asr.py复用已安装2.5.1的隔离测试工作目录运行doctor，issues=[]、bailian.version=2.5.1。该验证没有迁移用户环境或在旧2.4工作目录执行安装修复，不作此类迁移的额外结论。
+
+证据为.runtime/release-0.1.3-publish.json与release-0.1.3-live-update.json。本轮实际跨版本下载更新已验证；真实用户桌面授权及云端录音识别仍沿用此前明确的待验范围。
 ## 2026-10-27 v0.1.3发布准备
 
 用户已审核发布正文并授权推送master及Release，完整包标识最终为“首次安装推荐手动下载该发行包”，中英文和后续模板同义。根及BL安装清单/锁通过npm同步项目版本0.1.3，执行代码、BL2.5.1及其它依赖保持此前491项完整回归所验证的内容。
