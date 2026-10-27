@@ -1,6 +1,6 @@
 # 当前状态
 
-更新：2026-10-27。用户要求修正取消／更新衔接并重新发布v0.1.3，当前在dev准备；原正式v0.1.3仍在线。
+更新：2026-10-27。取消／更新衔接修复已按用户要求以同一v0.1.3重新发布，dev与master已包含修复。
 
 ## 当前工作
 
@@ -8,7 +8,7 @@
 
 已在原实现复现“取消后服务退出再读结果失败”和“取消已生效但响应丢失无法恢复”两个缺口。完整496项Python、56项前端、3项Edge、严格类型、Skill格式及124个本地链接通过；隔离实际发行入口确认页面运行时更新暂缓、取消并等待退出后可检查更新。泳道03／04／09、状态07与协议01C已同步并沿用原样式。Release中英文及后续文案约定采用用户指定的v0.1.2→当前v0.1.3及后续更高版本的表述。
 
-重发双包已在dist/release-v0.1.3-reissue构建并核对固定清单、CRC、源码／README、manifest版本及官方运行时摘要；正式发布待执行。此前已安装同号v0.1.3的用户通过新ZIP重新安装，语义版本比较不会自动识别同号重发附件。
+重发双包位于dist/release-v0.1.3-reissue，固定清单、CRC、源码／README、manifest版本及官方运行时摘要通过。GitHub Release正文、latest与双包大小及摘要已回读匹配。此前已安装同号v0.1.3的用户通过新ZIP重新安装，语义版本比较不会自动识别同号重发附件。
 
 开发依赖已更新为官方BL/core/commands/runtime 2.5.1，npm原生生成依赖锁；固定源码为3c8031f4d994c30820eb4d145d9404ba4a0acd39。语音、上传、HTTP、参数与状态等路径逐项比较，重复能力结论见[BL_COMPATIBILITY](BL_COMPATIBILITY.md)。新增一处末尾错误JSON解析，兼容原生登录stderr进度；没有接管登录、刷新或重试。
 
@@ -18,11 +18,11 @@
 
 加速优化按用户要求暂缓：更新顺序、30秒网络超时、环境检查和工具调用方式保持。关于Skill与Codex交互过多导致等待的怀疑留待更多用户反馈。
 
-正式版本为0.1.3，BL固定2.5.1；此前491项回归和dist/release-v0.1.3双包属于重发前的验证与附件。本次取消修复及重新构建的实际结果另行登记。空表单截图仍在.runtime/version-page-review，完整包标识保持“首次安装推荐手动下载该发行包”。
+正式版本为0.1.3，BL固定2.5.1；此前491项回归和dist/release-v0.1.3双包属于重发前的验证与附件。本次496项回归及重发双包记录见ACCEPTANCE最新章节。空表单截图仍在.runtime/version-page-review，完整包标识保持“首次安装推荐手动下载该发行包”。
 
 ## 最近正式发布
 
-v0.1.3 Release为425011703，latest已指向v0.1.3，标签对应300319e458afd8cba51b5cc0447184d2c4649c75。发布正文、双包大小及摘要均回读匹配；v0.1.0/v0.1.1/v0.1.2及原附件保持。
+v0.1.3沿用Release425011703，按用户明确授权重发，标签现对应d36920ac175a38aff46a36926ffb26e3f7651b9b。latest、双语发布说明及双包摘要已核对；v0.1.0/v0.1.1/v0.1.2的Release ID和原附件保持。原v0.1.3发布记录作为历史保留在ACCEPTANCE／DEVLOG。
 
 ## 既有实现
 
@@ -53,10 +53,10 @@ BL2.5.1在全新隔离工作目录实际安装成功，doctor issues为空。最
 
 ## 交付
 
-- v0.1.3完整包：dist/release-v0.1.3/asr-transcription.zip，54文件。
-- v0.1.3轻量包：dist/release-v0.1.3/asr-transcription-lite.zip，52文件。
+- v0.1.3重发完整包：dist/release-v0.1.3-reissue/asr-transcription.zip，54文件。
+- v0.1.3重发轻量包：dist/release-v0.1.3-reissue/asr-transcription-lite.zip，52文件。
 - 真实空表单截图：.runtime/version-page-review/version-page-dark.png与version-page-light.png。
-- 正式v0.1.3双包已发布到GitHub，并保留本地dist/release-v0.1.3副本；已有v0.1.2可检查更新到本版。
+- 重发v0.1.3双包已替换GitHub附件；已有v0.1.2可检查更新到本版。首次v0.1.3安装通过新ZIP更新，后续更高版本仍可自动获取。
 
 ## 后续与限制
 
