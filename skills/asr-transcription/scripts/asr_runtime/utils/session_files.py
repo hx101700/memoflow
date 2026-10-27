@@ -1,4 +1,4 @@
-"""保存本机编辑会话的连接信息与持久交接回执。"""
+"""保存本机编辑会话的连接信息、交接回执与取消结果。"""
 
 import json
 import math
@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import TypedDict, cast
 
-from ..models import ConfirmationReceipt
+from ..models import ConfirmationReceipt, SessionTerminal
 from .environment import Runtime, SetupError
 from .files import write_json_atomic
 from .job_files import job_directory
@@ -80,3 +80,26 @@ def read_receipt(runtime: Runtime, session_id: str, *, require_committed: bool =
         return None
     except (OSError, ValueError) as exc:
         raise SetupError("无法读取会话交接回执，请检查工作目录中的会话记录。") from exc
+
+
+def write_cancellation(runtime: Runtime, session_id: str) -> None:
+    """保存本次编辑取消结果，供服务结束后核实。"""
+    directory = session_directory(runtime, session_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(directory / "cancelled.json", {"state": "cancelled", "receipt": None})
+
+
+def read_terminal(runtime: Runtime, session_id: str) -> SessionTerminal | None:
+    """读取已经持久保存的交接或取消结果。"""
+    receipt = read_receipt(runtime, session_id)
+    if receipt is not None:
+        return {"state": "handed_off", "receipt": receipt}
+    try:
+        value = json.loads((session_directory(runtime, session_id) / "cancelled.json").read_text(encoding="utf-8"))
+        if value != {"state": "cancelled", "receipt": None}:
+            raise ValueError("invalid cancellation")
+        return {"state": "cancelled", "receipt": None}
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        raise SetupError("无法读取会话取消结果，请检查工作目录中的会话记录。") from exc

@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--audio", type=Path, help="带入网页的录音绝对路径，可在页面更换")
     for name in ("confirm", "cancel"):
         command = commands.add_parser(name)
-        command.add_argument("--session", required=True, help="用户从预览页复制到对话中的编辑会话编号（session_id）")
+        command.add_argument("--session", required=True, help="本次编辑会话编号（session_id）；交接使用用户从预览页复制的编号")
     for name in ("transcribe", "export", "job-status"):
         command = commands.add_parser(name)
         command.add_argument("--job", required=True, help="编辑会话交接回执中的转写任务编号（job_id）")

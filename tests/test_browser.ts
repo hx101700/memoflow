@@ -669,7 +669,8 @@ for (const audioName of ["附件 recording.wav", "missing.wav"]) {
       else assert.equal(await page.locator(".audio-name").innerText(), audioName);
       const select = page.locator("#audio_id").getByRole("button", { name: initial.audio ? "Replace recording" : "Choose a recording", exact: true });
       await select.click();
-      await page.locator("#audio_id .el-tag--success").waitFor();
+      // 更换录音时旧的选中标记仍可见，等待新文件名实际显示。
+      await page.locator(".audio-name").filter({ hasText: /^sample\.wav$/ }).waitFor();
       assert.equal(await page.locator(".audio-name").innerText(), "sample.wav");
       assert.equal(await page.locator("#audio_id .field-error").count(), 0);
       assert.equal(paths.filter(route => route === "/api/select-audio").length, 1);

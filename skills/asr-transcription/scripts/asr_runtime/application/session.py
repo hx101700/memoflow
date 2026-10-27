@@ -25,7 +25,7 @@ from ..utils.files import FileError, check_file_unchanged, resolve_input
 from ..utils.hotwords import MAX_XLSX_BYTES
 from ..utils.i18n import localize
 from ..utils.job_files import job_directory, publish_config, result_path
-from ..utils.session_files import session_directory, write_receipt
+from ..utils.session_files import session_directory, write_cancellation, write_receipt
 from .inputs import import_hotwords, validate_audio
 from .rules import (
     AUDIO_SUFFIXES, ValidationError, validate_context, validate_hotword_rows, LANGUAGE_CODES, validate_options,
@@ -149,6 +149,7 @@ class Session:
             self._expire_if_due()
             if self._terminal:
                 return deepcopy(self._terminal)
+            write_cancellation(self.runtime, self.session_id)
             return deepcopy(self._finish("cancelled"))
 
     def _require_import_complete(self) -> None:

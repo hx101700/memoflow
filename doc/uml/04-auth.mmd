@@ -42,7 +42,12 @@ alt 使用指定API Key
         U->>C: 告知凭据配置完成
         C->>P: cancel --session 本次编辑会话ID
         P->>S: 受保护POST /api/cancel
+        S->>F: 状态锁内先保存最小cancelled.json
+        S-->>P: cancelled取消结果
+        P-->>C: 取消确认；响应丢失时读取同一结果
         S-->>W: ended：cancelled，结束编辑会话
+        C->>P: 等待原serve正常退出，回到空闲
+        Note over C,F: 已保存的Key保留，下一次转写新开页面
     else 确认并预览
         W->>S: POST /api/validate，凭据字段仅含auth_mode
         Note over U,S: 按图03完成预览及用户明确交接，才产生job_id

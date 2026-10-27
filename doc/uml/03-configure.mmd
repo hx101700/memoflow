@@ -106,10 +106,15 @@ end
 alt 交接前用户取消或会话到期
   Note over U,S: 此分支可发生于填写或预览期间，结束后不创建job
   alt 用户取消
-    U->>C: 取消本次编辑
+    U->>C: 取消本次编辑，或要求检查更新／安装新ZIP
     C->>H: cancel --session ID
+    Note over C,H: 使用本次活动页面的启动回执编号<br/>先调用cancel，不先停止serve
+    H->>F: read_terminal；无结果时读取connection
     H->>H: control_session发送受保护POST /api/cancel
     H->>S: cancel()
+    S->>F: 状态锁内原子保存cancelled.json
+    S-->>H: cancelled结果，再设置终态事件
+    H-->>C: 取消确认
   else 到达两小时截止时间
     H->>S: 单次Timer调用expire()
   end
@@ -123,7 +128,7 @@ else 用户明确确认有效预览
   U->>C: 发送复制的确认消息
   Note over U,C: 预览说明上传范围、北京地域及费用<br/>裸“继续”时要求复制消息，不代选会话
   C->>H: confirm --session 用户提供的ID
-  H->>F: read_receipt；未交接则read_connection
+  H->>F: read_terminal；无结果时read_connection
   H->>H: control_session发送受保护POST /api/confirm
   H->>S: confirm()
   critical Session状态锁
@@ -152,8 +157,13 @@ end
 H->>S: cleanup关闭状态并取消原生选择窗口
 H->>H: 基类server_close等待请求线程收尾
 H->>G: finish_session(runtime, session_id)
-G->>F: 保留已交接回执和任务；清理会话暂存及连接记录
+G->>F: 保留已交接回执、显式取消结果和任务<br/>清理会话暂存及连接记录
 G-->>H: 未完成项以cleanup_warning报告
+opt 用户取消或转去更新
+  C->>H: 等待原serve进程退出
+  Note over C,F: 取消响应丢失时按同一编号读取cancelled.json<br/>不重新发送操作；缺少记录时如实报告无法核实
+  Note over C,U: 只取消则保持空闲；要求更新则进入图09<br/>下一次转写创建新编辑会话
+end
 Note over C,F: 成功交接后进入图04、05的认证与转写<br/>相同confirm先读持久回执，服务结束也返回原任务
 Note over C,G: CLI的serve使用python_temporary_directory<br/>第三方Python库临时文件位于私有进程目录；正常退出清理
 Note over H,G: 强制结束可能不执行finally；下次serve按PID与截止时间回收

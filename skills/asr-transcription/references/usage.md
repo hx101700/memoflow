@@ -216,7 +216,9 @@ $jobId = '替换为交接回执中的转写任务编号'
 
 上传和轮询各使用一小时等待预算，整个 BL 进程最多等待2小时5分；这不是预计完成时间。获取上传凭证仍为15秒。超时后保留原任务和已生成文件，按[错误说明](errors.md#转写超时)核对已知结果，不能仅凭录音大小或通用超时文本判断失败阶段。
 
-取消尚未交接的页面使用 `cancel --session SESSION_ID`。它结束编辑会话，不能取消已经交接的云端任务。
+填写或预览期间，可以告诉 Codex“取消本次转写”或“检查并更新语音转写 Skill”。Codex 先用本次页面的编号执行 `cancel --session SESSION_ID`，取得取消结果并等待服务退出；要求更新时再进入更新流程。下一次转写会打开新的填写页面。
+
+取消结果在服务退出后仍可用同一编号读取；录音原文件和已保存凭据保留。此入口处理尚未交接的编辑会话，已交接的任务按实际记录说明，详见[取消与回执](errors.md#取消编辑与回执)。
 
 文件位于所选根目录的 `JOB_ID/json/transcription.json` 和 `JOB_ID/documents/transcription.{docx,xlsx,md}`。转写校对稿保留原文、时间戳和启用时的说话人编号，标题为“源文件名 录音转写”。Word、Excel 使用等线字体。
 
@@ -250,6 +252,7 @@ $jobId = '替换为交接回执中的转写任务编号'
 | BL 配置 | `WORKSPACE/.asr-transcription/.state/bailian/` |
 | 活动编辑会话连接信息 | `WORKSPACE/.asr-transcription/.state/sessions/SESSION_ID/connection.json` |
 | 成功交接回执 | 同一会话目录的 `receipt.json` |
+| 编辑取消结果 | 同一会话目录的 `cancelled.json`，仅记录取消状态 |
 | 转写任务配置与记录 | `WORKSPACE/.asr-transcription/.state/jobs/JOB_ID/` |
 | 默认输出 | `WORKSPACE/transcriptions/JOB_ID/` |
 

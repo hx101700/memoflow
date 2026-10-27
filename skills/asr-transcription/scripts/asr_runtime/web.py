@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlsplit
 from .utils.environment import Runtime, SetupError
 from .utils.hotwords import hotwords_template
 from .utils.i18n import language_scope, localize
-from .utils.session_files import read_connection, read_receipt, write_connection
+from .utils.session_files import read_connection, read_terminal, write_connection
 from .application.recovery import CleanupReport, finish_session, recover_workspace
 from .application.session import Session
 from .application.rules import ValidationError
@@ -270,36 +270,35 @@ def serve(runtime: Runtime, *, port: int = 0, open_browser: bool = True, audio: 
 
 def control_session(runtime: Runtime, session_id: str, action: Literal["confirm", "cancel"]) -> Mapping[str, object]:
     """按明确编辑会话编号请求交接或取消，并恢复已经持久保存的回执。"""
-    receipt = read_receipt(runtime, session_id)
-    if receipt is not None:
-        if action == "confirm":
-            return receipt
-        return {"state": "handed_off", "receipt": receipt}
-    connection = None
-    try:
-        connection_info = read_connection(runtime, session_id)
-        origin = f"http://127.0.0.1:{connection_info['port']}"
-        connection = http.client.HTTPConnection("127.0.0.1", connection_info["port"], timeout=15)
-        connection.request("POST", f"/api/{action}", body=b"{}", headers={
-            "Origin": origin, "Content-Type": "application/json", "X-ASR-Token": connection_info["token"],
-        })
-        response = connection.getresponse()
-        payload = json.loads(response.read().decode("utf-8"))
-        if response.status != 200 or not isinstance(payload, dict):
-            localized = payload.get("error") if isinstance(payload, dict) else None
-            message = localized.get("zh") if isinstance(localized, dict) else None
-            raise SetupError(message or "会话操作未完成，请检查当前配置页面。")
-        return payload
-    except (SetupError, OSError, http.client.HTTPException, ValueError) as exc:
-        # 交接已保存但HTTP响应丢失时，读取同一会话的回执即可恢复。
-        receipt = read_receipt(runtime, session_id)
-        if receipt is not None:
-            if action == "confirm":
-                return receipt
-            return {"state": "handed_off", "receipt": receipt}
-        if isinstance(exc, SetupError):
-            raise
-        raise SetupError("无法取得会话操作结果。请检查网页服务；重试确认时使用同一会话编号。") from exc
-    finally:
-        if connection is not None:
-            connection.close()
+    terminal = read_terminal(runtime, session_id)
+    if terminal is None:
+        connection = None
+        try:
+            connection_info = read_connection(runtime, session_id)
+            origin = f"http://127.0.0.1:{connection_info['port']}"
+            connection = http.client.HTTPConnection("127.0.0.1", connection_info["port"], timeout=15)
+            connection.request("POST", f"/api/{action}", body=b"{}", headers={
+                "Origin": origin, "Content-Type": "application/json", "X-ASR-Token": connection_info["token"],
+            })
+            response = connection.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            if response.status != 200 or not isinstance(payload, dict):
+                localized = payload.get("error") if isinstance(payload, dict) else None
+                message = localized.get("zh") if isinstance(localized, dict) else None
+                raise SetupError(message or "会话操作未完成，请检查当前配置页面。")
+            return payload
+        except (SetupError, OSError, http.client.HTTPException, ValueError) as exc:
+            # 已处理请求的HTTP响应可能丢失；只读取原结果，不重新发送操作。
+            terminal = read_terminal(runtime, session_id)
+            if terminal is None:
+                if isinstance(exc, SetupError):
+                    raise
+                raise SetupError("无法取得会话操作结果。请检查网页服务与同一会话的记录。") from exc
+        finally:
+            if connection is not None:
+                connection.close()
+    if action == "cancel":
+        return terminal
+    if terminal["receipt"] is not None:
+        return terminal["receipt"]
+    raise SetupError("此编辑会话已取消，请重新打开配置页。")

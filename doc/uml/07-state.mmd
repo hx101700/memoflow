@@ -10,8 +10,8 @@ Editing --> Preview : validate成功＋preview_ready登记
 Preview --> Editing : edit获准或confirm发现原文件变化 / 旧预览失效
 Editing --> Expired : 到期且尚未交接
 Preview --> Expired : 到期与确认共用状态锁
-Editing --> Cancelled : cancel
-Preview --> Cancelled : cancel
+Editing --> Cancelled : cancel / 先保存cancelled.json
+Preview --> Cancelled : cancel / 先保存cancelled.json
 Preview --> HandedOff : confirm / 创建唯一job_id并保存授权配置与回执
 HandedOff --> HandedOff : 重复confirm / 返回原回执
 note right of Preview
@@ -62,6 +62,10 @@ note left of Preparing
 end note
 
 note left of Cancelled
+  用户取消或转去更新：先cancel，再等serve退出
+  显式取消保存最小结果；重复cancel读取同一结果
+  旧预览无法交接
+  只取消或更新后保持空闲；新转写新建会话
   正常结束：关闭Session → 等待请求线程 → finish_session
   强制退出可能没有终态通知或finally
   下次serve按connection中的deadline与PID回收旧会话

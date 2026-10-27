@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from asr_runtime.__main__ import main
+from asr_runtime.application.recovery import recover_workspace
 from asr_runtime.application.session import Session
 from asr_runtime.utils.environment import SetupError
 from asr_runtime.utils.session_files import read_receipt, session_directory
@@ -117,13 +118,60 @@ class SessionControlTests(WebFixture):
         self.assertTrue(key.exists())
 
     def test_cancel_sends_terminal_event_without_creating_a_job(self):
-        """验证显式取消结束编辑服务并清理会话暂存。"""
+        """验证取消结束服务、清理连接，并保留可重复读取的取消结果。"""
+        self.ready()
         stream = self.event_stream()
         result = control_session(self.runtime, self.session.session_id, "cancel")
         self.assertEqual(result, {"state": "cancelled", "receipt": None})
         self.assertEqual(self.terminal_event(stream), result)
         self.thread.join(timeout=5)
+        self.assertFalse(self.thread.is_alive())
+        with patch("asr_runtime.web.http.client.HTTPConnection") as connect:
+            self.assertEqual(control_session(self.runtime, self.session.session_id, "cancel"), result)
+        connect.assert_not_called()
+        directory = session_directory(self.runtime, self.session.session_id)
+        self.assertEqual([path.name for path in directory.iterdir()], ["cancelled.json"])
+        self.assertEqual(json.loads((directory / "cancelled.json").read_text(encoding="utf-8")), result)
+        self.assertEqual(recover_workspace(self.runtime)["warnings"], [])
+        self.assertEqual(control_session(self.runtime, self.session.session_id, "cancel"), result)
         self.assertTrue(self.audio.exists())
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
+
+    def test_cancelled_preview_cannot_be_handed_off_after_service_exit(self):
+        """验证取消后的旧预览不能创建任务，也不会重新连接旧服务。"""
+        self.ready()
+        control_session(self.runtime, self.session.session_id, "cancel")
+        self.thread.join(timeout=5)
+        with patch("asr_runtime.web.http.client.HTTPConnection") as connect:
+            with self.assertRaisesRegex(SetupError, "已取消"):
+                control_session(self.runtime, self.session.session_id, "confirm")
+        connect.assert_not_called()
+        self.assertFalse(self.runtime.path(".state/jobs").exists())
+
+    def test_cancel_after_handoff_reports_original_job(self):
+        """验证已交接会话返回原任务，取消命令不会伪报撤回成功。"""
+        self.ready()
+        receipt = control_session(self.runtime, self.session.session_id, "confirm")
+        self.thread.join(timeout=5)
+        self.assertEqual(control_session(self.runtime, self.session.session_id, "cancel"),
+                         {"state": "handed_off", "receipt": receipt})
+        self.assertFalse((session_directory(self.runtime, self.session.session_id) / "cancelled.json").exists())
+
+    def test_stopped_service_alone_is_not_a_cancellation_receipt(self):
+        """验证没有取消记录的旧服务停止后，入口如实报告无法核实。"""
+        self.server.shutdown()
+        self.thread.join(timeout=5)
+        with self.assertRaisesRegex(SetupError, "连接信息不可用"):
+            control_session(self.runtime, self.session.session_id, "cancel")
+
+    def test_lost_cancel_response_recovers_the_same_result(self):
+        """验证取消已经生效但HTTP响应中断时仍能取得同一结果。"""
+        with patch("asr_runtime.web.http.client.HTTPConnection.getresponse", side_effect=http.client.RemoteDisconnected), \
+             patch("asr_runtime.web.http.client.HTTPConnection.request") as request:
+            request.side_effect = lambda *args, **kwargs: self.session.cancel()
+            result = control_session(self.runtime, self.session.session_id, "cancel")
+        self.assertEqual(result, {"state": "cancelled", "receipt": None})
+        self.assertEqual(request.call_count, 1)
         self.assertFalse(self.runtime.path(".state/jobs").exists())
 
     def test_lost_http_response_recovers_persisted_receipt(self):

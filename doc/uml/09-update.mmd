@@ -9,7 +9,13 @@ participant W as 本次工作目录
 participant H as web模块
 participant B as 宿主开链接工具
 U->>C: 请求转写，或明确检查／更新此Skill
-Note over C,W: 使用工作目录基础.tools/python，无需先修复venv<br/>已有页面、登录、转写继续原进程
+Note over C,W: 使用工作目录基础.tools/python，无需先修复venv<br/>已交接的登录、转写继续原进程，更新仍可暂缓
+opt 本次对话有尚未交接的填写或预览页面，用户转去更新
+    C->>H: cancel --session 本次活动页面编号
+    H-->>C: cancelled或expired结果
+    C->>H: 等待原serve进程结束，释放共享句柄
+    Note over C,H: 取消响应丢失时读取同一持久结果<br/>handed_off或结果无法核实时按实际状态处理
+end
 C->>U: 文字说明将检查更新
 C->>P: 基础Python -I -X utf8 scripts/update.py<br/>仅本次明确检查／更新时加--check-now；不传workspace
 P->>S: 检查发行清单

@@ -146,6 +146,13 @@ class InitialAudioTests(WebFixture):
             self.assertFalse(self.runtime.path(".state/jobs").exists())
             self.assertEqual(control_session(self.runtime, receipt["session_id"], "cancel")["state"], "cancelled")
             self.assertEqual(process.wait(timeout=15), 0)
+            repeated = subprocess.run(
+                [sys.executable, "-B", "-X", "utf8", str(SKILL_ROOT / "scripts/asr.py"),
+                 "--workspace", str(self.runtime.workspace), "cancel", "--session", receipt["session_id"]],
+                capture_output=True, text=True, encoding="utf-8", timeout=15,
+            )
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            self.assertEqual(json.loads(repeated.stdout), {"state": "cancelled", "receipt": None})
         finally:
             if process.poll() is None:
                 if receipt:

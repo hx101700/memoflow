@@ -11,7 +11,7 @@ from ..utils.job_files import document_directory, job_directory, read_config
 from ..utils.session_files import read_connection, read_receipt, session_directory
 
 IDENTIFIER = re.compile(r"[0-9a-f]{32}")
-JSON_TEMP = re.compile(r"(?:connection|receipt|status)\.json\.pid-(\d+)-[a-z0-9_]+\.tmp")
+JSON_TEMP = re.compile(r"(?:connection|receipt|cancelled|status)\.json\.pid-(\d+)-[a-z0-9_]+\.tmp")
 DOCUMENT_TEMP = re.compile(r"transcription\.partial-pid-(\d+)-[a-z0-9_]+\.(?:xlsx|docx|md)")
 PYTHON_TEMP = re.compile(r"python-(\d+)-[a-z0-9_]+")
 
@@ -53,7 +53,7 @@ def _remove_empty(directory: Path) -> None:
 
 
 def finish_session(runtime: Runtime, session_id: str) -> CleanupReport:
-    """在服务及请求结束后清理会话暂存，保留已交接回执。"""
+    """在服务及请求结束后清理会话暂存，保留交接或取消结果。"""
     report: CleanupReport = {"removed_items": 0, "warnings": []}
     try:
         directory = session_directory(runtime, session_id)
@@ -72,7 +72,7 @@ def finish_session(runtime: Runtime, session_id: str) -> CleanupReport:
                 _remove_empty(candidate)
 
         for path in entries:
-            if path.name in ("connection.json", "receipt.json"):
+            if path.name in ("connection.json", "receipt.json", "cancelled.json"):
                 continue
             if path.name == ".env" or re.fullmatch(r"\.tmp_[a-z0-9_]+", path.name) or JSON_TEMP.fullmatch(path.name):
                 _remove_file(path, report)
@@ -140,7 +140,7 @@ def recover_workspace(runtime: Runtime, *, now: float | None = None) -> CleanupR
         try:
             _clean_pid_files(directory, JSON_TEMP, report)
             if not (directory / "connection.json").exists():
-                if any(path.name != "receipt.json" for path in _entries(directory)):
+                if any(path.name not in ("receipt.json", "cancelled.json") for path in _entries(directory)):
                     report["warnings"].append(f"会话 {directory.name} 缺少清理依据，已保留未知文件。")
                 _remove_empty(directory)
                 continue

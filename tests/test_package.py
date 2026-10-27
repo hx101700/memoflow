@@ -11,6 +11,8 @@ import sys
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import update
+
 from scripts.build_zip import MANIFEST, UPDATE_LOCK, REPOSITORY_FILES, REQUIRED_FILES, SKILL_DIRECTORY, build_zip
 from asr_runtime.utils.environment import Runtime
 from tests.support import RuntimeTestCase, SKILL_ROOT
@@ -38,6 +40,38 @@ class PackageTests(RuntimeTestCase):
             self.assertIsNone(archive.testzip())
             archive.extractall(destination)
         return destination
+
+    def test_cancelled_page_releases_packaged_skill_for_update(self):
+        """验证实际发行页面取消并退出后，更新器取得同一安装的独占使用权。"""
+        installed = self.extract()
+        command = [sys.executable, "-B", "-X", "utf8", str(installed / "scripts/asr.py"),
+                   "--workspace", str(self.runtime.workspace)]
+        process = subprocess.Popen(command + ["serve", "--no-browser"], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            assert process.stdout is not None
+            listening = json.loads(process.stdout.readline())
+            self.assertEqual(listening["event"], "listening")
+            with patch.object(update, "_download") as download:
+                self.assertEqual(update.update_skill(installed, check_now=True)["status"], "deferred")
+            download.assert_not_called()
+            cancelled = subprocess.run(command + ["cancel", "--session", listening["session_id"]],
+                                       capture_output=True, text=True, encoding="utf-8", timeout=15)
+            self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
+            self.assertEqual(json.loads(cancelled.stdout), {"state": "cancelled", "receipt": None})
+            _, errors = process.communicate(timeout=15)
+            self.assertEqual(process.returncode, 0, errors)
+            version = json.loads((installed / "skill-manifest.json").read_bytes())["version"]
+            release = json.dumps({"tag_name": "v" + version, "draft": False, "prerelease": False,
+                                  "assets": []}).encode("utf-8")
+            with patch.object(update, "_download", return_value=release) as download:
+                self.assertEqual(update.update_skill(installed, check_now=True)["status"], "latest")
+            download.assert_called_once_with(update.LATEST_URL)
+            self.assertFalse(self.runtime.path(".state/jobs").exists())
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=15)
 
     def test_release_contains_runtime_and_current_repository_readmes(self):
         """验证运行资源和最新版仓库说明入包，开发文件与私有数据排除。"""

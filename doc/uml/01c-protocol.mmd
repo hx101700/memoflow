@@ -1,3 +1,17 @@
+---
+config:
+  theme: base
+  fontFamily: Arial, Microsoft YaHei, sans-serif
+  themeVariables:
+    primaryColor: '#f8fafc'
+    primaryTextColor: '#0f172a'
+    primaryBorderColor: '#94a3b8'
+    lineColor: '#94a3b8'
+    noteBkgColor: '#f1f5f9'
+    noteTextColor: '#0f172a'
+    noteBorderColor: '#94a3b8'
+    edgeLabelBackground: '#ffffff'
+---
 classDiagram
 direction LR
 class TranscriptionSettings {
@@ -74,7 +88,7 @@ ExecutionReport --> DeliveryReport : JSON成功后的文档结果
 note for Draft "application/session.py<br/>id为预览版本；form保存可恢复输入<br/>预览不含job_id，不在磁盘保存每次编辑<br/>preview_ready登记展示；edit使该版本失效"
 note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，交接时生成编号与输出路径<br/>配置和SHA发布一次，授权为True<br/>Key独立保存在运行目录.env，执行时读取"
 note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
-note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>没有heartbeat或云端状态字段"
+note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>显式取消结果保存至cancelled.json，响应丢失后可恢复<br/>没有heartbeat或云端状态字段"
 note for ExecutionReport "models.py<br/>result、error、record_error、delivery等为可选字段<br/>delivery.files各格式记录READY或FAILED、路径或错误<br/>documents_ready仅在COMPLETE时为true"
 
 note for SessionConnection "utils/session_files.py<br/>私有sessions/session_id/connection.json<br/>端口与令牌用于本机控制；PID与deadline用于残留回收<br/>结束清理后移除；正式交接回执仍保留"
