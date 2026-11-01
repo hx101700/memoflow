@@ -15,7 +15,7 @@
 | npm提示权限、磁盘、锁文件或未知错误 | 这些错误不会通过换源消失，安装器直接停止。保留bootstrap.log中的error.code与具体原因，处理本机问题；不删除依赖锁、关闭校验或反复重跑安装。 |
 | cache_cleanup_warning | 环境准备已成功，旧下载缓存未全部清理。根据返回的文件或npm退出码排查；需要再次清理时，用原工作目录基础Python执行bootstrap --cleanup-old-cache。当前版本缓存及业务数据保留。 |
 | 安装提示目录冲突 | 让 Codex 检查提示中的安装目录及已有文件。保留凭据和用户数据，确认残留内容后再决定修复方式。 |
-| 提示 BL 版本不匹配，当前要求 2.5.1 | 先结束使用当前工作目录 BL 的任务，核对并仅删除 `WORKSPACE/.asr-transcription/.tools/bailian`，再按[复用已有运行时](usage.md#复用已有运行时)用基础Python运行bootstrap。该目录存放BL安装文件；凭据在.env和.state/bailian，连同任务、结果及其它运行时一并保留。 |
+| 提示 BL 版本不匹配，当前要求 2.7.2 | 先结束使用当前工作目录 BL 的任务，核对并仅删除 `WORKSPACE/.asr-transcription/.tools/bailian`，再按[复用已有运行时](usage.md#复用已有运行时)用基础Python运行bootstrap。该目录存放BL安装文件；凭据在.env和.state/bailian，连同任务、结果及其它运行时一并保留。 |
 | 更换工作目录后环境不可用，或提示虚拟环境来自其他 Python | 旧版系统Python创建的venv或搬迁后的venv可能引用其他基础路径。先结束使用它的任务，仅清理当前工作目录的.asr-transcription/.venv，再按[复用已有运行时](usage.md#复用已有运行时)重建；保留API Key、BL配置、任务与结果。基础运行时本身缺失时使用完整版的PowerShell准备入口。 |
 | 转写页面没有出现 | 保留启动回执和同一serve进程，区分本机服务是否响应与浏览器是否显示，按下方“页面打开问题”处理。 |
 | 页面提示录音路径无法读取 | 在音频区域重新选择文件。对话附件须有用户或宿主明确提供的本机绝对路径；确认后在转写完成前保持文件可访问。 |
@@ -58,7 +58,7 @@
 
 ## 转写超时
 
-当前 Skill 使用官方 BL `2.5.1`，临时 OSS 上传原生遵循 `--timeout 3600`；获取上传凭证仍为15秒。上传与轮询各有一小时等待预算，整个 BL 进程最多等待7500秒（2小时5分），包含300秒余量。提交和单次查询也使用 BL timeout；结果下载没有独立 BL 下载时限。详见[超时依据](model.md#bl复用边界)。这些时限不保证网络或云端一定在期限内完成。
+当前 Skill 使用官方 BL `2.7.2`，临时 OSS 上传原生遵循 `--timeout 3600`；获取上传凭证仍为15秒。上传与轮询各有一小时等待预算，整个 BL 进程最多等待7500秒（2小时5分），包含300秒余量。提交和单次查询也使用 BL timeout；结果下载没有独立 BL 下载时限。详见[超时依据](model.md#bl复用边界)。这些时限不保证网络或云端一定在期限内完成。
 
 `Request timed out.` 是 BL 对多种请求超时或取消的统一说明，不能单凭录音大小认定上传失败；`Polling timed out.` 表示轮询总等待到期。保留任务回执与已生成文件，按实际记录说明已知结果；未知时维持 `cloud_outcome=unknown`，不清除执行占用或自动重传。提交和查询使用官方 core 的请求期限；通用超时仍需原始运行证据区分具体阶段和云端最终结果。
 
@@ -95,7 +95,7 @@
 | 控制台模式中已保存的模型API Key被明确拒绝 | 按用户的修复意图，用下方BL原生命令清空本工作目录default Profile的api_key，再运行现有login入口；也可由用户选择改用网页指定API Key。 |
 | 模型访问权限、地域、业务空间或额度问题 | 按官方错误说明处理对应配置或权限；重新登录或换API Key不一定能解决。 |
 
-BL 2.5.1发现已保存的模型API Key时，不会仅因重新控制台登录就请求另一份API Key。这一分支使用BL公开配置命令，不手工改写BL配置文件，也不清除控制台等其他凭据。以下沿用[运行准备](usage.md#运行准备)中的变量，仅在已确认需要更换控制台模式的模型API Key时执行：
+BL 2.7.2发现已保存的模型API Key时，不会仅因重新控制台登录就请求另一份API Key。这一分支使用BL公开配置命令，不手工改写BL配置文件，也不清除控制台等其他凭据。以下沿用[运行准备](usage.md#运行准备)中的变量，仅在已确认需要更换控制台模式的模型API Key时执行：
 
 ```powershell
 $blEntry = Join-Path $workspaceDir '.asr-transcription/.tools/bailian/node_modules/bailian-cli/dist/bailian.mjs'
@@ -152,13 +152,13 @@ try {
 | RUNNING | 正在执行 | 同上，不能等同本地RUNNING的细分阶段 |
 | SUCCEEDED | 顶层任务成功 | BL继续处理子项/下载；不代表三种成品已完成 |
 | FAILED | 云端任务失败 | BL停止，Python解释暴露的错误，不重提 |
-| CANCELED / UNKNOWN | 通用任务取消/不存在或未知 | 不承诺固定模型会返回；BL2.5.1识别路径未将它们作为完成条件，可能轮询到超时 |
+| CANCELED / UNKNOWN | 通用任务取消/不存在或未知 | 不承诺固定模型会返回；BL2.7.2识别路径未将它们作为完成条件，可能轮询到超时 |
 
 本项目没有公网回调服务、第二个轮询器或已验收的云端取消/恢复查询入口。终止本地等待不等于取消云端。未知状态不能解释成成功，但也不能声称Python能即时观察BL未暴露的状态。
 
 ### CLI与API错误
 
-- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
+- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
 - CLI退出码、HTTP状态和API code是独立字段，按原回执分别解释。
 - Python读取BL结构化stderr的error.api_code、message、request_id、http_status，将api_code映射为本地回执的code，脱敏后给用户；cli_exit_code取自进程退出码。原始stderr、cause、hint和完整响应不进入回执。
 - 未知code明确说明字典未收录，不猜余额、权限、音频损坏或套用其它模型含义。

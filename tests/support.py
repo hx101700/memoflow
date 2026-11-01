@@ -6,11 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from asr_runtime import BAILIAN_VERSION
 from asr_runtime.utils.environment import Runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = ROOT / "skills/asr-transcription"
-CONTRACT_WORKSPACE = Path(os.environ.get("MEMOFLOW_BL_CONTRACT_WORKSPACE", str(ROOT / ".runtime/bl-2.5.1-workspace")))
+CONTRACT_WORKSPACE = Path(os.environ.get("MEMOFLOW_BL_CONTRACT_WORKSPACE", str(ROOT / f".runtime/bl-{BAILIAN_VERSION}-workspace")))
 CONTRACT_BL_ENTRY = CONTRACT_WORKSPACE / ".asr-transcription/.tools/bailian/node_modules/bailian-cli/dist/bailian.mjs"
 
 

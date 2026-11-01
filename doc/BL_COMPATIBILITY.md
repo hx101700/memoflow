@@ -1,63 +1,47 @@
-# 百炼 CLI 2.5.1 适配与复用审查
+# 百炼 CLI 2.7.2 适配与复用审查
 
-核对日期：2026-10-27。本文逐项比较官方 **v2.4.0 → v2.5.1**，聚焦 MemoFlow 当前消费的语音识别、增强参数、上传、HTTP、登录与错误协议。MemoFlow v0.1.3固定官方2.5.1；已发布v0.1.2的2.4.0依赖及历史验收保持原有事实。
+核对日期：2026-11-01。比较官方 **2.5.1 → 2.7.2**，聚焦本项目实际消费的调用路径。本轮开发分支固定2.7.2，项目版本仍为0.1.3；已发布v0.1.3的2.5.1依赖及历史验收保留原有事实。上次比较见[4876193时的记录](https://github.com/hx101700/memoflow/blob/4876193/doc/BL_COMPATIBILITY.md)。
 
-## 官方版本与源码
+## 固定来源
 
-| 版本 | 官方源码 | 对照用途 |
+| 版本 | 官方源码提交 | 用途 |
 | --- | --- | --- |
-| v2.4.0 | [3638180f48b8fb1c7f99d5db91d3882d021710e5](https://github.com/modelstudioai/cli/tree/3638180f48b8fb1c7f99d5db91d3882d021710e5) | 升级前固定版本 |
-| v2.5.1 | [3c8031f4d994c30820eb4d145d9404ba4a0acd39](https://github.com/modelstudioai/cli/tree/3c8031f4d994c30820eb4d145d9404ba4a0acd39) | 当前实现与依赖依据 |
+| 2.5.1 | [3c8031f](https://github.com/modelstudioai/cli/tree/3c8031f4d994c30820eb4d145d9404ba4a0acd39) | 本次升级前版本 |
+| 2.7.2 | [e66e686](https://github.com/modelstudioai/cli/tree/e66e686fa54ff7dbd948509c41312c638ea8d935) | 本次目标版本 |
 
-官方[发布记录](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/CHANGELOG.md)用于定位变化；下列结论以两个固定提交的源码比较为准。源码缓存位于`.runtime/cli-2.4.0`和`.runtime/cli-2.5.1`，不进入发行包。
+[官方CHANGELOG](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/CHANGELOG.zh.md)描述中间版本的新增功能；下面按固定源码与实际调用方判断是否影响MemoFlow。npm清单和锁通过原生npm更新，CLI/core/commands/runtime均固定官方2.7.2。
 
-## 当前调用路径的比较
+## 版本差异与处理
 
-| 路径 | v2.4.0 → v2.5.1的实际变化 | MemoFlow处理 |
+| 消费路径 | 源码差异 | 本项目处理 |
 | --- | --- | --- |
-| `speech/recognize.ts`与`client/asr-routes.ts` | 文件内容一致：固定模型仍走异步`file_urls`路径；即时热词、上下文、语言、说话人数与`--out`映射不变 | 继续复用完整识别入口，不增加新的API调用或异步恢复入口 |
-| `speech/vocabulary-input.ts` | 文件内容一致：即时热词只解码JSON、确认对象形状与权重为有限数值 | 本机表格仍负责模型约束、重复行和单元格定位；不把CLI基础校验当成完整模型校验 |
-| `buildAsrContextMessages()` | 所在`asr-routes.ts`一致：将原文包装为一条`input_text`，不执行400字符限制 | 保留预览前的非空、400个Unicode字符与可传输字符检查 |
-| `files/upload.ts`与`client/http.ts` | 文件内容一致；`Client.uploadFile()`调用链也未改变 | 直接复用官方上传和HTTP期限，不恢复本地core修订或上传适配 |
-| `auth/login-console.ts` | 先注册完成事件及15分钟计时器，再异步打开浏览器；空等明确返回TIMEOUT；结束却未保存凭据返回GENERAL；回调限制Origin、支持本地网络预检、要求`access_token`，并防止重复保存及关闭残留连接 | 正常登录仍由BL打开系统默认浏览器、管理回调和保存；Python继续等待原进程并解释非零结果 |
-| `auth/login.ts` | 新增可选`--no-browser`与`--token-stdin`；限制其与登录模式、站点、地域的组合。OpenAPI登录先验证生成的控制台token再保存 | 当前仍调用`auth login --console --console-site domestic`；不因新增可选入口改变浏览器选择或增加token导入流程 |
-| `auth/status.ts`、`auth/resolver.ts`与`auth/store.ts` | 文件内容一致：状态由本机凭据生成，模型Key与控制台token仍是不同凭据域 | 登录后继续调用公开状态命令，检查`api_key`存在；`authenticated=true`和登录退出0均不能单独证明ASR模型凭据存在或在线有效 |
-| `auth/refresh-token.ts`与`Client.console()` | 按实际控制台地域、站点和switch agent刷新；透传已存`security_token`；校验非空生成结果；重放原控制台请求成功后才写入新token，并更新Client内存凭据 | 交给官方实现；当前ASR使用模型API Key及`requestJson()`，不经过此控制台刷新分支，不据此增加识别自动重试或模型Key刷新 |
-| `shared/local-server.ts` | 文件内容一致：Windows仍通过完整URL引用、`cmd /d /v:off /s /c`与`windowsVerbatimArguments`打开系统默认处理程序 | 保持官方打开方式，不新增浏览器预加载、Python链接转交或浏览器指定 |
-| `runtime/args.ts`与`errors/codes.ts` | 文件内容一致：未知参数、重复标量、缺值与无效数值校验不变；退出码集合不变 | 保留参数数组、单个`--context=原文`参数及官方结构化错误协议；错误字典的版本与源码依据同步更新 |
+| speech/recognize.ts | 新增auto/MCP分支；具体模型的原REST参数、轮询和转写JSON形状保持，最终下载改用httpTransport | 继续显式传固定Qwen模型，复用完整命令；不新增模型路由或轮询 |
+| client/asr-routes.ts、speech/vocabulary-input.ts | 两版内容一致 | 热词、上下文、语言和说话人映射保持；本地表格诊断仍有独立消费者 |
+| files/upload.ts、Client.uploadFile | 上传policy根据当前base URL选端点；支持北京/新加坡，官方Token Plan和不支持地域由CLI拒绝；policy失败透传HTTP/API码/request ID | 固定北京URL继续生效；直接使用官方上传及结构化错误，删除测试中的北京policy URL重写 |
+| client/transport.ts、http.ts | Node使用包内undici.fetch；改进代理/dispatcher及Node26兼容；嵌套业务错误、非JSON错误正文和request ID透传更完整 | 无需本地HTTP客户端；测试改为拦截真实Undici入口，并限制网络到本机服务 |
+| auth/login、login-console、status、store、refresh-token、shared/local-server | 两版内容一致 | 官方浏览器授权、回调、凭据保存和原登录进程等待保持 |
+| auth/login-api-key.ts | 修正MaaS工作空间Key验证，保留网络和服务错误 | 当前网页仅保存.env；控制台回调直接persistApiKey，不经过这套在线Key校验，不能宣称该改动替代本机Key保存 |
+| auth/resolver、config show及runtime middleware | 增加Key/base URL来源诊断；来源告警只在非quiet时输出 | 本项目显式北京URL配合env/config Key是预期组合，已有quiet即可；无需把Key移入参数 |
+| runtime/args.ts与准备机制 | 新增--introspect及部分命令prepare机制；recognize没有prepare/risk声明 | 无需第二次业务确认；继续现有参数数组与会话交接 |
+| errors/codes.ts、runtime/error-handler | 新增INTERRUPTED=130枚举，重构统一错误规范化；base/api错误类型不变 | 字典补130，保留现有末尾根JSON解析及脱敏；不把中断解释为云端取消 |
+| 后台版本检查 | NO_UPDATE_NOTIFIER仍有效，DO_NOT_TRACK仍控制遥测 | 继续由项目锁维护版本，业务和开发探针共用原环境设置 |
 
-原生登录会先向stderr写进度与登录URL，失败时由[runtime/error-handler.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/error-handler.ts)追加错误JSON。本机超时合约确认原有整段json.loads会丢失这条官方说明，现读取末尾根JSON对象后沿用原脱敏处理；没有新增错误协议或登录器。
+逐文件对照覆盖20个当前消费文件；登录相关文件和基础错误类型的一致性通过内容比较核对，变化文件逐段阅读。源码缓存与比较清单在.runtime，发行包不包含它们；结果不以缓存存在替代官方提交身份。
 
-固定2.5.1源码：[recognize.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/speech/recognize.ts)、[vocabulary-input.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/speech/vocabulary-input.ts)、[asr-routes.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/asr-routes.ts)、[upload.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/files/upload.ts)、[http.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/http.ts)、[login-console.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/login-console.ts)、[login.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/login.ts)、[status.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/auth/status.ts)、[refresh-token.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/auth/refresh-token.ts)、[client.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/client/client.ts)、[local-server.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/commands/src/commands/shared/local-server.ts)、[args.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/runtime/src/args.ts)、[codes.ts](https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/errors/codes.ts)。
+## 新功能能否替代现有能力
 
-## 原生能力与本机消费者
+- **auto模型路由**：识别命令仅在model精确为auto时进入MCP，现有显式固定模型已排除该分支。该分支拒绝语言、说话人数、热词、上下文等参数，仅接受公网HTTP(S)媒体URL，out保存string数组；与当前本地录音、固定模型、增强和转写JSON契约不同。无需新增本地禁止逻辑。
+- **ParseX解析/抽取**：提供另一套文档/音视频解析及按Schema抽取接口，支持Markdown结果。它没有替代当前指定模型、即时词典和Word/Excel/Markdown校对稿契约；可作为第二阶段参考资料处理的候选，当前不接入。
+- **--introspect**：提供命令元信息，可辅助开发核对参数；不执行模型专属词表规则，也不提供网页单元格错误定位。
+- **临时上传与错误透传**：已经直接复用新版官方实现，是本轮实际获得的能力改进。生产代码没有需要删除的自写上传器、刷新器或浏览器适配；删除的是已被官方base URL行为取代的测试重写。
+- **本机规则与交付**：CLI仍只校验词典基础形状和有限权重数值，没有本产品的行级诊断、词条/超级词上限、上下文长度、Windows完整命令预检或三格式排版。继续由现有用例负责。
 
-本次对照`utils/bailian.py`、`utils/auth.py`、`application/rules.py`及其`Session.validate()`预览消费者。在这些边界内，未发现可直接删除且不影响当前消费者的独立重复实现；仍有相同基础规则在界面预检和CLI执行入口分别检查，但职责和回执不同。
+主要源码：[recognize](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/commands/src/commands/speech/recognize.ts)、[auto约束](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/commands/src/commands/shared/aigc-mcp.ts)、[ParseX](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/commands/src/commands/parsex/parse-submit.ts)、[上传](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/files/upload.ts)、[HTTP](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/client/http.ts)、[transport](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/client/transport.ts)、[错误码](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/errors/codes.ts)。
 
-| 官方已提供的能力 | 当前项目中的对应职责 | 结论 |
-| --- | --- | --- |
-| 上传、识别提交、轮询、结果下载及原始JSON写入 | `recognition_arguments()`映射已确认配置，`run_recognition()`启动一次BL | 已复用；不维护另一套云端请求或轮询实现 |
-| 系统浏览器打开、授权state、回调、凭据保存及登录超时 | `login_console()`检查桌面执行条件、等待原BL进程，并映射本地模型Key状态 | 已复用；先前core修订、Node预加载和Python链接转交已移除。本地`IsTokenRestricted`检查处理启动权限，不替代官方浏览器打开 |
-| 控制台token刷新与本地凭据解析 | `console_status()`读取BL的公开JSON；Key模式从固定`.env`注入子进程环境 | 已复用；Python没有控制台刷新器，也不将控制台token当作模型Key |
-| `auth login --api-key`在线验证并写入BL配置 | `auth.py`保存网页提供的Key到工作目录`.env`，仅检查空值/空白，不在线验证 | 保存位置、凭据生命周期和界面状态有明确消费者；不能替换为另一种会在线请求并写BL配置的登录操作 |
-| 即时热词JSON形状与数值类型检查 | `rules.py`在上传前校验表格形状、Excel错误、词条长度、权重集合、2000条/50个超级词、重复组，并返回行/单元格错误 | 基础类型校验有交集；完整模型规则与界面定位未由CLI提供，应保留 |
-| `--speaker-count`依赖`--diarization`及数字参数解析 | `validate_options()`在预览前返回对应字段错误，并限定整数2–100与本产品语言选项 | 依赖规则有交集，但本地预览有消费者；CLI未提供相同范围与字段回执 |
-| 原文上下文封装、CLI参数解析 | `validate_context()`给出长度/字符位置；`check_command_length()`在发布任务前按真实Node命令计算Windows限制 | 官方没有等价的表单诊断或任务发布前长度检查，保留当前实现 |
-| 结构化错误和退出码 | `explain_cli_error()`读取官方错误，隐藏Key/URL/增强原文，再映射本机任务错误回执 | 本地隐私与任务记录仍需此转换，不按通用错误推断云端是否已受理 |
-| JSON和终端文本输出 | 本机媒体探测/单声道副本、结果结构检查及Excel/Word/Markdown校对稿生成 | 具有独立产品消费者；官方识别命令没有替代本项目的成品交付与会话授权协议 |
+## 仍保留的边界
 
-2.5.0新增/迁移的Memory、Workspace端点和dsh集成，以及2.5.1新增的调用者归属声明，均不改变当前ASR消费者。当前不因此接入个性化记忆、Agent编排或新增遥测；仍通过`DO_NOT_TRACK=1`关闭遥测。
+固定模型、北京、临时OSS、每任务一次执行与三格式交付保持。上传policy仍为15秒，文件仍整份读入内存；上传及轮询各使用项目传入的3600秒，JSON请求期限覆盖响应头和正文。最终转写JSON改用httpTransport.fetch，仍未设置独立BL下载期限；这不等于底层传输完全没有期限。Python整体等待上限保持7500秒。
 
-## 保持的限制与执行策略
+2.7.2的控制台登录仍使用BL原生15分钟会话；在线模型Key有效性由实际识别调用判断。130仅描述进程中断，固定识别路径没有新增可靠的云端取消/恢复入口。--vocabulary仍只接受JSON文本，Windows命令长度检查仍有消费者。
 
-- 固定模型仍为`qwen-audio-3.1-asr-flash-filetrans`，北京地域、单文件、即时热词与上下文同时使用、说话人区分及输出结构保持。语音帮助仍提到Qwen 3.0，3.1能力依据模型官方API，不据帮助文字排除该模型。
-- 取得临时上传凭证仍固定15秒；OSS上传仍整文件读入内存。项目传`--timeout 3600`，上传和识别轮询各使用3600秒预算；提交及每次状态请求也使用该timeout。最终转写JSON下载仍为原生`fetch()`，没有独立BL下载期限。
-- Python整个识别进程上限仍为7500秒；该等待上限不是云端处理承诺。登录继续使用BL原生15分钟会话，Python不另设登录总时限。
-- `--vocabulary`仍只收JSON文本，未提供即时词典文件参数；Windows完整命令长度限制仍需要在交接前检查。
-- 完整模式未稳定提供可恢复的云端`task_id`；退出0仍须检查实际JSON。每任务一次尝试，失败或结果未知不自动重试；官方控制台凭据刷新中的一次原请求重放不扩展为ASR重试。
-
-## 当前安装与验证边界
-
-`scripts/bailian/package.json`及锁文件固定官方CLI、core、commands、runtime 2.5.1。工作目录检测到其他版本时停止并提示，仅重新准备其中的`.asr-transcription/.tools/bailian`；Python、Node、凭据、任务及结果位于独立位置，继续保留。具体操作见[使用指南](../skills/asr-transcription/references/usage.md)与[错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)。
-
-`NO_UPDATE_NOTIFIER=1`继续关闭官方后台版本查询，固定版本由项目更新维护。实际安装、命令及本机合约验证结果独立记录在[ACCEPTANCE](ACCEPTANCE.md)；源码比较不能代替真实用户桌面、浏览器本地网络权限、线上授权及云端录音识别验收。2.5.1对真实环境的改进效果仍须现场验证，不将2.4.0历史结果视为本次结果。
+新工作目录实际安装、本机合约与完整回归结果见[ACCEPTANCE](ACCEPTANCE.md)。本机模拟不代表真实浏览器授权或云端识别验收。本轮只更新dev，不替换已发布v0.1.3的附件或用户已安装副本。

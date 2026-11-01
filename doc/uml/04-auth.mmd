@@ -73,7 +73,7 @@ else 使用控制台配置
         C->>P: 首次调用即申请正常桌面权限<br/>Codex支持时使用require_escalated<br/>Skill/scripts/asr.py --workspace 用户目录 login
         P->>K: login_console(runtime)
         K->>K: environment.check_login_execution_context()<br/>受限令牌在启动BL前返回错误
-        K->>B: 官方BL 2.5.1：bl auth login --console
+        K->>B: 官方BL 2.7.2：bl auth login --console
         B->>B: 建立授权回调，先注册完成事件及原生计时器
         B->>A: 官方openInBrowser()打开完整URL<br/>Windows使用cmd引用与windowsVerbatimArguments
         U->>A: 完成登录授权

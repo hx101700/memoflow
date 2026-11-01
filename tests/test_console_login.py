@@ -58,11 +58,16 @@ class NativeLoginContractTests(RuntimeTestCase):
 const fs = require("node:fs");
 const http = require("node:http");
 const cp = require("node:child_process");
+const undici = require("node:module").createRequire(process.argv[1])("undici");
+const dispatcher = new undici.MockAgent();
+dispatcher.disableNetConnect();
+undici.setGlobalDispatcher(dispatcher);
 const evidence = { invocations: [], blocked_external_requests: 0 };
-const save = () => fs.writeFileSync(process.env.LOGIN_EVIDENCE, JSON.stringify(evidence));
+const evidencePath = require("node:path").join(__dirname, "login-evidence.json");
+const save = () => fs.writeFileSync(evidencePath, JSON.stringify(evidence));
 
 // 屏蔽云端网络，保证本例只使用官方授权流程的本机回调。
-globalThis.fetch = async () => {
+undici.fetch = async () => {
   evidence.blocked_external_requests += 1;
   save();
   throw Error("External request blocked by the login contract fixture.");
@@ -103,7 +108,6 @@ require("node:module").syncBuiltinESMExports();
         argv = bl_command(contract_runtime(), arguments)
         argv[1:1] = ["--require", str(fixture)]
         env = bailian_environment(self.runtime, "console")
-        env["LOGIN_EVIDENCE"] = str(evidence)
         result = subprocess.run(
             argv, cwd=self.runtime.workspace, env=env, stdin=subprocess.DEVNULL,
             capture_output=True, text=True, encoding="utf-8", timeout=20,
@@ -132,14 +136,17 @@ require("node:module").syncBuiltinESMExports();
         self.assertEqual(credentials["access_token"], "fixture-console-token")
 
         def installed_command(_runtime, arguments):
-            """使用专用安装的官方 BL 查询当前测试工作区。"""
-            return bl_command(contract_runtime(), arguments)
+            """查询当前测试工作区，并为状态查询进程保留同一网络阻断。"""
+            command = bl_command(contract_runtime(), arguments)
+            command[1:1] = ["--require", str(fixture)]
+            return command
 
         with patch("asr_runtime.utils.bailian.bl_command", side_effect=installed_command):
             status = console_status(self.runtime)
         self.assertTrue(status["configured"])
         self.assertTrue(status["console_configured"])
         self.assertFalse(status["verified_online"])
+        self.assertEqual(json.loads(evidence.read_text(encoding="utf-8"))["blocked_external_requests"], 0)
 
     def test_official_login_timeout_has_parseable_error_after_progress(self):
         """验证原生登录空等返回超时，并能从进度后的JSON读取官方说明。"""
@@ -147,11 +154,15 @@ require("node:module").syncBuiltinESMExports();
         fixture = self.runtime.path("login-timeout-fixture.cjs")
         fixture.write_text(r'''
 const cp = require("node:child_process");
+const undici = require("node:module").createRequire(process.argv[1])("undici");
+const dispatcher = new undici.MockAgent();
+dispatcher.disableNetConnect();
+undici.setGlobalDispatcher(dispatcher);
 const originalSetTimeout = globalThis.setTimeout;
 // 仅缩短本机夹具中的官方15分钟登录计时器。
 globalThis.setTimeout = (callback, delay, ...args) =>
   originalSetTimeout(callback, delay === 900000 ? 50 : delay, ...args);
-globalThis.fetch = async () => { throw Error("External request blocked by login fixture."); };
+undici.fetch = async () => { throw Error("External request blocked by login fixture."); };
 cp.execFile = (_file, _args, _options, callback) => {
   queueMicrotask(() => callback(null, "", ""));
   return {};

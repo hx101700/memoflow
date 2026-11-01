@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-10-27",
-  "cli_version": "2.5.1",
-  "cli_source": "https://github.com/modelstudioai/cli/blob/3c8031f4d994c30820eb4d145d9404ba4a0acd39/packages/core/src/errors/codes.ts",
+  "verified_at": "2026-11-01",
+  "cli_version": "2.7.2",
+  "cli_source": "https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/errors/codes.ts",
   "api_source": "https://www.alibabacloud.com/help/zh/model-studio/error-code",
   "cli_exit_codes": {
     "0": {"name": "SUCCESS", "meaning": "BL进程正常结束，仍需检查业务产物。"},
@@ -12,7 +12,8 @@
     "5": {"name": "TIMEOUT", "meaning": "BL请求或等待超时，云端结果可能尚未确定。"},
     "6": {"name": "NETWORK", "meaning": "BL网络类别错误，不能据此认定云端没有受理任务。"},
     "7": {"name": "CONFIRMATION_REQUIRED", "meaning": "BL命令要求确认。"},
-    "10": {"name": "CONTENT_FILTER", "meaning": "BL内容过滤类别错误。"}
+    "10": {"name": "CONTENT_FILTER", "meaning": "BL内容过滤类别错误。"},
+    "130": {"name": "INTERRUPTED", "meaning": "BL进程被中断；不能据此确认云端任务是否停止或完成。"}
   },
   "api_codes": {
     "InvalidParameter": {"meaning": "参数不符合要求，请按具体错误信息检查本模型参数。"},

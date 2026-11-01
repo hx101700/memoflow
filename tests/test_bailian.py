@@ -265,6 +265,17 @@ class BailianTests(RuntimeTestCase):
         self.assertIn("未收录", report["explanation"])
         self.assertIsNone(report["source_url"])
 
+    def test_interrupted_cli_exit_preserves_uncertain_cloud_status(self):
+        """验证官方中断退出码已有说明，不将中断解释为云端取消成功。"""
+        report = explain_cli_error(130, "\nInterrupted. Exiting.\n", [])
+        self.assertEqual(report["cli_exit_code"], 130)
+        self.assertIn("中断", report["explanation"])
+        self.assertIn("云端", report["explanation"])
+        self.assertNotIn("未收录", report["explanation"])
+        self.assertTrue(report["source_url"].endswith("/packages/core/src/errors/codes.ts"))
+        self.assertIsNone(report["http_status"])
+        self.assertIsNone(report["code"])
+
     def test_malformed_stderr_is_not_forwarded(self):
         """验证异常标准错误返回固定解析说明。"""
         for payload in ("raw private stderr", "null", "[]", '{"error": []}',

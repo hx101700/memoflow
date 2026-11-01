@@ -504,9 +504,13 @@ class EnvironmentTests(RuntimeTestCase):
         fixture = self.runtime.path("probe-network.cjs")
         fixture.write_text(
             "const fs = require('node:fs');\n"
+            "const undici = require('node:module').createRequire(process.argv[1])('undici');\n"
+            "const dispatcher = new undici.MockAgent();\n"
+            "dispatcher.disableNetConnect();\n"
+            "undici.setGlobalDispatcher(dispatcher);\n"
             f"const evidence = {json.dumps(str(evidence))};\n"
             "// 记录全部请求尝试并拒绝联网，避免quiet掩盖后台版本查询。\n"
-            "globalThis.fetch = async () => {\n"
+            "undici.fetch = async () => {\n"
             "  fs.appendFileSync(evidence, 'blocked\\n');\n"
             "  throw Error('External request blocked by the probe contract fixture.');\n"
             "};\n", encoding="utf-8",
