@@ -12,7 +12,7 @@
 | [UML](UML.md) | 对象、时序、状态和可复现图稿 | 调用或协议变化时同步源码与图片 |
 | [ISSUES](ISSUES.md) | 尚未解决的问题、证据与影响 | 发现问题或处理状态变化时改 |
 | [REVIEW](REVIEW.md) | 最近一次审查的范围、发现与处理结果 | 审查时更新，不累积另一套长期规约 |
-| [BL_COMPATIBILITY](BL_COMPATIBILITY.md) | 固定 BL 升级的源码差异和复用依据 | 调整 BL 版本或边界时读写 |
+| [BL_COMPATIBILITY](BL_COMPATIBILITY.md) | BL完整更新清单、对MemoFlow的影响、处理决定与证据 | 每次升级覆盖完整版本区间，涉及实现的变化再作源码核对与验证 |
 | [DEVLOG](DEVLOG.md) | 按日期保留重要变更及当时决定 | 重要进展追加，保留历史事实 |
 | [ACCEPTANCE](ACCEPTANCE.md) | 按日期保留实际检查、前提及未覆盖范围 | 验证完成后追加；历史结果不代表本次通过 |
 

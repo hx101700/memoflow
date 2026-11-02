@@ -42,6 +42,13 @@ Source, configuration, and observed behavior take precedence over prose. Correct
 - The page saves API Keys to the workspace's fixed `.env`; execution reads them there. Keys, tokens, signed URLs, real recordings, transcript text, and runtime logs stay out of Git, release packages, and chat.
 - Windows installation, login, and native dialogs require normal network/interactive-desktop permissions. Use the tool permission mechanism and report actual restrictions. Keep global environments unchanged, avoid enumerating or terminating unrelated processes, and keep cleanup within its defined scope.
 
+## Bailian CLI upgrades
+
+- For every upgrade, record the complete official Release/CHANGELOG changes between the currently pinned version and the target, including intermediate releases and features outside the current ASR workflow. Pin the source versions and commits.
+- For each change, explain its effect on MemoFlow, the related functionality, and the decision: direct impact, replacement for an existing implementation, candidate for a later capability, currently no impact, or unresolved. Give reasons for no impact rather than omitting unused features from the record.
+- When a change affects current code, dependencies, parameters, authentication, output, or execution, inspect local callers and the relevant upstream source. Prefer new native capabilities, check for redundant implementations or obsolete patches that can be removed, and verify according to the actual impact. Reuse established conclusions without repeating reviews or tests when there is no relevant new change or evidence.
+- Keep the complete record in [BL_COMPATIBILITY](doc/BL_COMPATIBILITY.md): upstream changes, impact assessments, decisions and evidence, necessary code adjustments, and verification scope. STATUS, DEVLOG, and Release notes reference the appropriate summaries; historical records retain the facts established at the time.
+
 ## Changes and verification
 
 - Read callers and callees; establish the trigger and impact before fixing a problem. Use the smallest reliable verification and relevant regression checks. Search locates code; complete implementation and behavior support conclusions.
