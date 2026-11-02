@@ -1,6 +1,6 @@
 {
   "name": "asr-transcription-bailian-runtime",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "dependencies": {
     "bailian-cli": "2.7.2"

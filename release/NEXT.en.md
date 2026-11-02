@@ -6,7 +6,9 @@ Keep “What's new”, “Downloads”, and “Installation and updates” in ea
 - Cover first installation, ZIP upgrades, and automatic updates. Identify earlier versions with links, the current version, and which subsequent higher formal versions users can obtain.
 - The update entry point starts with v0.1.2. Users of v0.1.0/v0.1.1 first update using a ZIP. Future notes retain this boundary and use the standard automatic-update wording below.
 - Use “this release” only for the version being published. Explain the choice of Codex updates or a new ZIP, and keep development acceptance records out of release notes.
-- Use this update wording: “If you have [v0.1.2](https://github.com/hx101700/memoflow/releases/tag/v0.1.2) installed, ask Codex to ‘check for updates to the transcription Skill and install them’ to upgrade automatically to __RELEASE_TAG__ (this release). Future formal releases higher than __RELEASE_TAG__ can also be obtained this way.”
+- Use this update wording: “If you have [v0.1.2](https://github.com/hx101700/memoflow/releases/tag/v0.1.2) or a later version installed, ask Codex to ‘check for updates to the transcription Skill and install them’ to upgrade automatically to __RELEASE_TAG__ (this release). Future formal releases can also be obtained this way.”
+
+Use this network note: “When using MemoFlow on a network in mainland China, we recommend configuring reliable GitHub access so updates can be checked and downloaded smoothly.”
 
 Replace `__RELEASE_TAG__` in the download links below with the formal version tag when publishing.
 
