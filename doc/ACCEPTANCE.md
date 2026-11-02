@@ -8,6 +8,23 @@
 
 版本同步后运行test_package与test_skill_update：42项通过，0跳过，20.141秒（.runtime/release-014-tests.log）；25份Markdown本地链接及git diff --check通过。正式包将在合并后的master构建，清单、源码和README字节、版本与原始运行时摘要及发布回读随后登记。既有v0.1.0至v0.1.3标签和附件保留。
 
+### v0.1.4正式发布与公开更新
+
+发布完成：标签v0.1.4对应a1c77bb391287bb15f5fe9e8e7702b650fc03952，Release ID430960523，latest指向v0.1.4。正文与用户确认的release/NOTES.md一致，双语通过该标签链接切换；已移除单独联网提醒，并按确认稿保留国内网络建议。旧v0.1.0至v0.1.3的Release ID和附件摘要与发布前相同。
+
+从合并后的master构建双包，CRC、固定清单、manifest版本、源码和README字节、BL2.7.2及官方运行时摘要通过。GitHub附件均为uploaded，大小和SHA-256与本地一致。
+
+| 文件 | 文件数 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| dist/release-v0.1.4/asr-transcription.zip | 54 | 70386310 | `8acadd96bb2475f370eb17800333c46dc8909804ee05e64f669a0c77c335c3aa` |
+| dist/release-v0.1.4/asr-transcription-lite.zip | 52 | 367716 | `061a214353423a119c1bf926def39d8548925069990cd26b0cc2230bbe3692c1` |
+
+发布后将与旧公开摘要一致的v0.1.3轻量包解压到隔离目录，运行其原更新器访问公开GitHub，实际返回updated/installed_version=0.1.4。受管运行文件与新包逐字一致；发行清单由更新器按键排序重写，JSON结构与新包一致。首次验收脚本将清单也按字节比较而失败，确认仅键顺序差异后改为结构比较；没有修改生产代码、重新下载或忽略内容差异。
+
+同一副本再次运行新更新器返回checked_today；新版入口复用已准备的BL2.7.2测试工作目录，doctor issues为空。这验证公开文件更新与入口，不是旧BL环境的冷迁移或真实云端识别。本次公开验收产生一次轻量包下载，用户已安装Skill未修改。
+
+发布回执为.runtime/release-0.1.4-publish.json，双包核对为release-0.1.4-package-check.json，公开升级回执为release-014-live-update.json。用户补问的2.7.0/2.6.2影响范围已在BL_COMPATIBILITY单列说明，沿用已有累计源码比较与验证结果，没有重复跑业务测试。
+
 ## 2026-11-01 官方BL2.7.2兼容
 
 本轮起点4876193，只更新dev，项目版本沿用0.1.3；不发布Release、不合并master、不替换用户安装。官方2.7.2源码固定e66e686fa54ff7dbd948509c41312c638ea8d935，与2.5.1对照当前消费的20个文件并阅读新增transport、auto与ParseX入口；具体能力替代和冲突结论见[BL_COMPATIBILITY](BL_COMPATIBILITY.md)。

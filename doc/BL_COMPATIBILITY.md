@@ -11,6 +11,17 @@
 
 [官方CHANGELOG](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/CHANGELOG.zh.md)描述中间版本的新增功能；下面按固定源码与实际调用方判断是否影响MemoFlow。npm清单和锁通过原生npm更新，CLI/core/commands/runtime均固定官方2.7.2。
 
+## 中间版本的适用范围
+
+本次比较覆盖2.5.1→2.7.2的累计源码差异，不只阅读2.7.2的新增项。两个中间版本的范围明确如下：
+
+| 版本 | 相关变化 | 对当前流程的判断 |
+| --- | --- | --- |
+| [2.7.0](https://github.com/modelstudioai/cli/releases/tag/v2.7.0) | ParseX解析/字段抽取、Key与Base URL来源诊断、MaaS工作空间Key登录及验证错误修复 | ParseX作为后续资料处理候选；来源诊断与现有固定北京配置不冲突。网页Key保存.env、控制台回调保存Key不经过auth login --api-key在线验证，不能把该修复称作当前网页的新校验能力 |
+| [2.6.2](https://github.com/modelstudioai/cli/releases/tag/v2.6.2) | alert/monitor/log默认JSON的破坏性变更，以及这些命令的工作空间身份、日志解析/计数、过滤和dry-run修复 | 当前项目不调用这三组业务命令。已有识别、登录、状态查询显式使用--output json，转写交付读取--out文件；没有依赖受影响的文本输出或日志计数，因此不新增适配层 |
+
+2.6.2的默认输出与工作空间逻辑集中在`commands/shared/telemetry.ts`的defineTelemetryCommand及关联命令中，属于百炼监控/日志业务，和CLI使用统计开关DO_NOT_TRACK、GitHub附件下载计数分别是不同机制。这里是源码适用范围核对；本机回归覆盖项目实际调用链，不声称验收了上游全部新增功能。
+
 ## 版本差异与处理
 
 | 消费路径 | 源码差异 | 本项目处理 |
