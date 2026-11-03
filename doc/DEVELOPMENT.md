@@ -59,6 +59,8 @@ skills/asr-transcription/          # Skill 安装资源，业务运行时只读
 
 `Runtime(workspace, skill_root)` 区分用户工作目录与 Skill 资源。`resource()` 读安装资源，`path()` 定位私有运行文件，`output_root` 给出默认输出根，`check_output_path()` 保护 Skill 资源。私有运行目录与 Skill 目录互不包含。CLI 使用脚本绝对路径并显式传入同一 `--workspace`；凭据、环境、录音和任务不写回 Skill。
 
+`child_environment()` 复制父进程环境，保留用户代理、证书及普通系统设置，由 BL、pip 和 npm 原生解释。仅清除会覆盖工作区选择的百炼凭据／端点／工作空间、Node/Python 外部加载配置，以及 pip/npm 的外部安装目标；随后指定私有运行时、配置、缓存和临时路径。API Key 模式再从本工作目录 `.env` 注入密钥，控制台模式读取该工作目录的 BL 配置。函数不修改父进程环境，也不改写系统网络设置。
+
 `SKILL.md` 的 name、description 和正文为技能入口。`agents/openai.yaml` 是可选展示元数据，scripts、references、assets 分别存放可执行工具、按需资料及模板。根 README 面向使用者，AGENTS 面向源码维护者；安装包的 README 直接取自仓库根。
 
 现行用户文案统一使用“说话人区分”（speaker diarization）、“上下文增强”（context enhancement）、“API Key”和“百炼 CLI（BL）”（Bailian CLI）。前端“精度增强”（Recognition enhancements）栏目包含热词与上下文增强。网页编辑会话使用 `session_id`，交接后转写任务使用 `job_id`；第一阶段成品称“转写校对稿”（transcript drafts），第二阶段称“个性化纪要生成”（personalized minutes generation）。官方名称、协议字段和标识按原样保留；“说话人分离”作为官方术语对照。
@@ -76,7 +78,7 @@ Python 模块路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，�
 | `application/inputs.py` / `rules.py` | 读取输入事实、统一应用模型规则；rules 无 I/O |
 | `application/transcription.py` | 一次执行、状态查询和重新导出 |
 | `application/delivery.py` | 三种 writer 的顺序调用与交付汇总 |
-| `utils/environment.py` / `auth.py` | Runtime、隔离进程环境和运行凭据 |
+| `utils/environment.py` / `auth.py` | Runtime、工作区进程环境和运行凭据 |
 | `utils/installation.py` | Python/npm 固定来源测速、安装进度与结构化输出、子进程回收 |
 | `utils/bailian.py` | 公开 CLI 参数映射、BL 进程和脱敏错误 |
 | `utils/files.py` / `job_files.py` / `session_files.py` | 文件摘要与原子替换、任务协议、会话连接与交接回执 |

@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-03 子进程环境继承修复
+
+起点 fd0f6d5，版本沿用0.1.4，本轮仅提交并推送dev。旧代码先运行新增环境继承测试，`HTTP_PROXY` 读取为None，确认缺陷；修复后继承代理、证书和普通设置，工作区凭据、运行时加载与依赖安装位置仍独立。
+
+- 4项针对性测试通过。真实官方BL2.7.2由 `bailian_environment()` 启动，本机代理收到一次到虚构 `.invalid:443` 的CONNECT后返回407，CLI失败退出；未上传录音或访问百炼。此项证明代理设置传到官方网络栈，不代表用户现场网络已恢复。
+- 在正常Windows权限下运行 `.venv/Scripts/python.exe -X utf8 -m unittest tests.test_environment tests.test_auth tests.test_bailian tests.test_installation tests.test_bootstrap tests.test_bl_upload tests.test_console_login -q`：121项通过，0跳过，28.380秒。安装换源及登录使用测试夹具；不是再次下载完整包或真实授权。首次受限环境执行103项时，目录联接及进程树回收因权限失败，按既有环境前提重跑上述范围，未增加业务补丁。
+- `.venv/Scripts/python.exe -X utf8 -m mypy`：33个源文件通过；`scripts/check_docs.py`：25份Markdown、171个本地链接通过；`git diff --check`通过。
+- 已核对Skill步骤及安装／认证／转写UML，本次只调整子进程环境内容，调用、参数与状态协议保持，未重绘图稿。前端、正式ZIP、用户安装和历史Release保持；未执行用户失败任务或真实云端识别。
+
 ## 2026-11-02 v0.1.4发布准备
 
 用户审核并确认发布说明，要求推送。中英文正文采用确认稿：自动更新说明覆盖v0.1.2及更高版本，移除单独联网提醒，加入国内网络访问GitHub的建议；后续发布约定同步。

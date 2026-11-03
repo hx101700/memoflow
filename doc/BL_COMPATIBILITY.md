@@ -56,3 +56,11 @@
 2.7.2的控制台登录仍使用BL原生15分钟会话；在线模型Key有效性由实际识别调用判断。130仅描述进程中断，固定识别路径没有新增可靠的云端取消/恢复入口。--vocabulary仍只接受JSON文本，Windows命令长度检查仍有消费者。
 
 新工作目录实际安装、本机合约与完整回归结果见[ACCEPTANCE](ACCEPTANCE.md)。本机模拟不代表真实浏览器授权或云端识别验收。v0.1.4发布状态见STATUS；保留v0.1.3附件，用户已安装副本通过版本更新获取。
+
+## 2026-11-03 网络环境衔接补查
+
+用户提供的两次 v0.1.4 / BL 2.7.2 失败记录均含 `UND_ERR_CONNECT_TIMEOUT` 和 `10000ms`。BL 使用的 Undici 6.29.1 默认连接期限为10秒，HTTPS到 `secureConnect` 才清除计时；`--timeout 3600` 未覆盖该连接期限。记录只有 IP 和端口，无法区分上传、提交、轮询或结果下载，也不能确认云端受理情况。
+
+官方 [runtime/proxy.ts](https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/runtime/src/proxy.ts) 已使用 `EnvHttpProxyAgent` 读取 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`；MemoFlow 的旧白名单却丢弃了这三个变量。受控本机检查已复现此衔接缺口，用户是否依赖这些变量仍未知。本轮 dev 改为继承环境并覆盖工作区自管设置，复用官方代理实现；连接时限与失败不重传规则保持。原生 BL 经本机代理收到拒绝响应的回归用于核对真实调用链，验证范围见 ACCEPTANCE。
+
+连接时限依据：[Undici 6.29.1 connect.js](https://github.com/nodejs/undici/blob/v6.29.1/lib/core/connect.js)。上次审查覆盖传输层变化，但遗漏了父子进程环境传递，本节补充该证据，不改写当时验证事实。

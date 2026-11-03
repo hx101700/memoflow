@@ -199,10 +199,17 @@ def python_temporary_directory(runtime: Runtime) -> Iterator[None]:
 
 
 def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dict[str, str]:
-    """构造子进程环境，并选择工作区凭据或独立检查配置。"""
-    allowed = {"PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "PROCESSOR_ARCHITECTURE"}
-    env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    inherited_path = os.environ.get("PATH", "")
+    """继承用户环境，并应用工作区的凭据、运行时和安装路径设置。"""
+    env = os.environ.copy()
+    # 凭据由当前工作区选择；私有运行时和安装目录保持独立，网络设置交给原生工具。
+    for key in (
+        "DASHSCOPE_API_KEY", "DASHSCOPE_BASE_URL", "BAILIAN_WORKSPACE_ID",
+        "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_SECURITY_TOKEN",
+        "NODE_OPTIONS", "NODE_PATH", "PYTHONHOME", "PYTHONPATH", "NPM_TOKEN",
+        "PIP_TARGET", "PIP_PREFIX", "PIP_ROOT", "PIP_USER", "NPM_CONFIG_GLOBAL",
+    ):
+        env.pop(key, None)
+    inherited_path = env.get("PATH", "")
     temp = str(runtime.path(".runtime/tmp"))
     env.update({
         "PATH": os.pathsep.join(filter(None, (str(runtime.node_entry.parent), inherited_path))),

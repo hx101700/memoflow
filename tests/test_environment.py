@@ -7,11 +7,14 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import unittest
 import venv
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 
-from asr_runtime import BAILIAN_VERSION
+from asr_runtime import BAILIAN_VERSION, MODEL
+from asr_runtime.utils.auth import bailian_environment
 from asr_runtime.application.bootstrap import bootstrap
 from asr_runtime.utils.environment import Runtime, SetupError, child_environment, check_node, check_python, find_node, installed_python_versions, locked_python_versions, run_process
 from asr_runtime.utils.bailian import bl_command, verify_bl_installation
@@ -193,11 +196,18 @@ class EnvironmentTests(RuntimeTestCase):
             self.runtime.path("../outside")
 
     def test_child_does_not_inherit_credentials_or_node_injection(self):
-        """验证子进程环境按白名单隔离凭据和注入项。"""
+        """验证工作区凭据和运行时加载配置独立于父进程。"""
         private = {
             "DASHSCOPE_API_KEY": "synthetic-key",
             "DASHSCOPE_BASE_URL": "https://example.invalid",
+            "BAILIAN_WORKSPACE_ID": "another-workspace",
+            "ALIBABA_CLOUD_ACCESS_KEY_ID": "synthetic-id",
+            "ALIBABA_CLOUD_ACCESS_KEY_SECRET": "synthetic-secret",
+            "ALIBABA_CLOUD_SECURITY_TOKEN": "synthetic-token",
             "NODE_OPTIONS": "--require unwanted.js",
+            "NODE_PATH": "outside-node-modules",
+            "PYTHONHOME": "outside-python",
+            "PYTHONPATH": "outside-python-packages",
             "NPM_TOKEN": "synthetic-token",
             "NPM_CONFIG_USERCONFIG": "outside.npmrc",
         }
@@ -207,6 +217,90 @@ class EnvironmentTests(RuntimeTestCase):
             self.assertNotIn(name, env)
         self.assertTrue(env["NPM_CONFIG_USERCONFIG"].startswith(str(self.runtime.root)))
         self.assertEqual(env["DO_NOT_TRACK"], "1")
+
+    def test_child_inherits_network_and_user_environment(self):
+        """验证普通环境、代理及证书设置原样传递，父进程保持不变。"""
+        inherited = {
+            "HTTP_PROXY": "http://127.0.0.1:18080",
+            "HTTPS_PROXY": "http://127.0.0.1:18081",
+            "NO_PROXY": "localhost,127.0.0.1",
+            "NODE_EXTRA_CA_CERTS": "company-ca.pem",
+            "SSL_CERT_FILE": "company-ca.pem",
+            "REQUESTS_CA_BUNDLE": "company-ca.pem",
+            "PIP_CERT": "company-ca.pem",
+            "NPM_CONFIG_CAFILE": "company-ca.pem",
+            "USERPROFILE": "user-profile",
+            "LANG": "zh_CN.UTF-8",
+            "MEMOFLOW_TEST_USER_SETTING": "user-value",
+        }
+        with patch.dict(os.environ, inherited):
+            original = dict(os.environ)
+            env = child_environment(self.runtime)
+            self.assertEqual(dict(os.environ), original)
+        for name, value in inherited.items():
+            self.assertEqual(env.get(name), value, name)
+
+    def test_child_keeps_installation_in_workspace(self):
+        """验证继承环境时安装目标、配置、缓存和临时目录仍由工作区指定。"""
+        redirected = {
+            "PIP_TARGET": "outside-packages", "PIP_PREFIX": "outside-prefix",
+            "PIP_ROOT": "outside-root", "PIP_USER": "1", "NPM_CONFIG_GLOBAL": "true",
+        }
+        managed = {
+            "BAILIAN_CONFIG_DIR": ".state/bailian",
+            "NPM_CONFIG_USERCONFIG": ".runtime/npm-user.npmrc",
+            "NPM_CONFIG_GLOBALCONFIG": ".runtime/npm-global.npmrc",
+            "NPM_CONFIG_CACHE": ".runtime/npm-cache",
+            "NPM_CONFIG_PREFIX": ".tools/bailian", "TEMP": ".runtime/tmp",
+        }
+        with patch.dict(os.environ, {**redirected, **dict.fromkeys(managed, "outside")}):
+            env = child_environment(self.runtime)
+        for name in redirected:
+            self.assertNotIn(name, env)
+        for name, relative in managed.items():
+            self.assertEqual(env[name], str(self.runtime.path(relative)))
+        self.assertEqual(env["PATH"].split(os.pathsep)[0], str(self.runtime.node_entry.parent))
+
+    @unittest.skipUnless(CONTRACT_BL_ENTRY.is_file(), "需要固定版本的本机BL合约环境")
+    def test_bl_uses_inherited_proxy(self):
+        """验证真实BL通过继承的代理连接本机夹具并接收拒绝响应。"""
+        connections = []
+
+        class ProxyHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                """保持本机HTTP夹具静默。"""
+
+            def do_CONNECT(self):
+                """记录连接目标并在本机拒绝建立隧道。"""
+                connections.append(self.path)
+                self.send_response(407)
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+
+        with ThreadingHTTPServer(("127.0.0.1", 0), ProxyHandler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                self.runtime.prepare()
+                self.runtime.path(".env").write_text("DASHSCOPE_API_KEY=synthetic-key\n", encoding="utf-8")
+                proxy = f"http://127.0.0.1:{server.server_port}"
+                with patch.dict(os.environ, {"HTTP_PROXY": proxy, "HTTPS_PROXY": proxy, "NO_PROXY": ""}):
+                    env = bailian_environment(self.runtime, "api_key")
+                result = subprocess.run(
+                    [str(contract_runtime().node_entry), str(CONTRACT_BL_ENTRY), "speech", "recognize",
+                     "--model", MODEL, "--url", SYNTHETIC_AUDIO_URL,
+                     "--base-url", "https://memoflow-proxy-test.invalid", "--async",
+                     "--timeout", "2", "--output", "json", "--quiet"],
+                    cwd=self.runtime.workspace, env=env, capture_output=True, text=True,
+                    encoding="utf-8", timeout=15, shell=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(connections, ["memoflow-proxy-test.invalid:443"])
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
 
     def test_probe_does_not_share_login_directory(self):
         """验证探针与登录状态使用独立目录。"""
