@@ -9,9 +9,18 @@
 - 图03按原共享主题重绘并查看，尺寸4278×9284、142个文字节点，文字边界检查通过；其他图稿逐段对照实现，保持既有风格。
 - `.runtime/release-015-upgrade`从本地保存的正式v0.1.4完整包安装Python/Node、venv和实际BL2.7.2；只复用完整wheel，没有复制用户数据。随后加载原包内更新器，用模拟GitHub元数据及最终0.1.5轻量包完成一次替换。旧回执不含说明字段，符合Skill按安装版本查Release的实际边界；此项不是公开GitHub下载测试。
 - 新bootstrap准确报告旧BL不符；按现有说明仅删除该隔离目录内的BL安装，再bootstrap升级为2.8.4并清理6项旧npm缓存。合成凭据、任务、结果及venv配置摘要保持；从升级包实际启动页面返回0.1.5，取消后原服务退出0。证据在`.runtime/release-015-upgrade/evidence.json`。
-- 最终双包位于`dist/release-v0.1.5`：轻量52文件、369152字节，完整54文件、70387746字节。CRC、固定清单、源文件/README字节、版本、BL锁及运行时归档摘要通过；包摘要记录在`.runtime/release-0.1.5-package-check.json`。
+- 发布前候选包：轻量52文件、369152字节，完整54文件、70387746字节。CRC、固定清单、源文件/README字节、版本、BL锁及运行时归档摘要通过。合并master后Git按换行设置检出文件，规范化内容与已验收候选完全相同，按最终工作树重建双包，见下表。
 
-本轮未执行真实云端识别或人工Office逐页检查；此前11月3日真实录音结果保留历史范围。GitHub现有v0.1.0至v0.1.4元数据和资产摘要已保存，发布后回读将在本节补充。
+本轮未执行真实云端识别或人工Office逐页检查；此前11月3日真实录音结果保留历史范围。
+
+### 发布回读
+
+v0.1.5已发布为latest，Release ID438675672，标签对应bf5970eacf1bbea54a2ee5b707a0ada53655c92a。正文与本次双语说明一致，两个附件均为uploaded，大小/SHA-256与本地匹配；旧v0.1.0至v0.1.4的Release ID及附件摘要保持。最终包在`dist/release-v0.1.5`，回执为`.runtime/release-0.1.5-publish.json`。
+
+| 文件 | 文件数 | 字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| asr-transcription-lite.zip | 52 | 369252 | `333fbcb3e8a8a9bf88ef7b032098e2cadaf81c282d0854f7619e1f61fd0c766f` |
+| asr-transcription.zip | 54 | 70387846 | `58c92bd794e0abe6bf87ceff5440453b26a49b8dd2c7bde66056c35592feea17` |
 
 ## 2026-11-09 成功更新后的Release说明
 
