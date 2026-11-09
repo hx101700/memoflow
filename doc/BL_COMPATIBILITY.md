@@ -1,6 +1,6 @@
 # 百炼 CLI 2.8.4 适配与复用审查
 
-核对日期：2026-11-08。本轮比较官方2.7.2→2.8.4，在dev适配，项目版本仍为0.1.4，正式Release保持。上次审查与11月3日网络环境修复见[7034dc0时的记录](https://github.com/hx101700/memoflow/blob/7034dc0/doc/BL_COMPATIBILITY.md)。
+核对日期：2026-11-08。本轮比较官方2.7.2→2.8.4，用于MemoFlow v0.1.5；正式发布状态见STATUS。上次审查与11月3日网络环境修复见[7034dc0时的记录](https://github.com/hx101700/memoflow/blob/7034dc0/doc/BL_COMPATIBILITY.md)。
 
 ## 固定来源及完整性
 

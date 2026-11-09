@@ -47,7 +47,8 @@ loop 填写、检查与返回修改
     end
     W->>H: POST /api/validate
     H->>S: validate(payload)
-    S->>Q: 增强内容规则、媒体探测与SHA、输出位置
+    S->>Q: 增强内容规则、媒体探测与SHA
+    S->>S: output_directory()校验输出位置
     alt 输入有问题
         H-->>W: 双语字段／单元格诊断；恢复填写
     else 检查通过
