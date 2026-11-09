@@ -31,7 +31,7 @@ else 存在发行清单
         alt 安装状态不明或覆盖未完成
             P->>P: failed，repair_required=true
         else 今天已检查，且未传check-now
-            P->>P: checked_today，返回last_status
+            P->>P: checked_today，返回last_status<br/>移除更新说明字段
         else 需要检查
             P->>S: 先写今天日期与checking
             alt 首次记录写入失败
@@ -55,7 +55,7 @@ else 存在发行清单
                         P->>S: 替换受管文件，删除旧清单独有文件
                         alt 覆盖完成
                             P->>S: 最后发布新manifest
-                            P->>P: updated，installed_version为新版
+                            P->>P: updated，installed_version为新版<br/>附该版本release_url和release_notes
                         else 覆盖失败
                             P->>S: 从内存恢复原文件，移除新增文件及目录
                             P->>P: failed，按恢复结果设置repair_required
@@ -81,6 +81,13 @@ else 安装可继续
         C->>S: 重新读取SKILL.md
         C->>E: 基础Python执行bootstrap --cleanup-old-cache
         E->>W: 准备新版依赖，成功后清理旧下载缓存
+        opt 环境准备成功
+            opt 旧更新器回执缺少说明字段
+                C->>S: 读取已安装manifest版本
+                C->>G: 读取对应版本Release说明
+            end
+            C->>U: 按Release简述变化并附链接<br/>进度消息后继续原请求
+        end
     end
     alt 只检查／更新
         Note over C,U: 完成处理后保持空闲

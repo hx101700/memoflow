@@ -6,7 +6,7 @@
 
 MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON 和 Word、Excel、Markdown 转写校对稿。第二阶段的个性化纪要生成、偏好存储及反馈学习仍在开发中，当前代码尚未实现。
 
-固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.7.2` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.8.4` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
 
 | 参与者 | 职责 |
 | --- | --- |
@@ -167,11 +167,11 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.7.2 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.8.4 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
 
-官方2.7.2先注册登录完成事件，再异步打开浏览器；空等返回TIMEOUT，结束却未保存凭据返回GENERAL。登录进度先写stderr，runtime/error-handler.ts最后追加根JSON错误对象；explain_cli_error读取末尾对象后继续原有脱敏与映射。成功后读取公开本机状态，是为了区分控制台会话与ASR所需的模型Key，并非再执行登录或在线验证。
+官方2.8.4的浏览器登录要求text输出；Python使用`--output text`等待原进程，按退出码解释失败，原始登录stderr保留在进程内。BL先注册完成事件再异步打开浏览器，空等返回TIMEOUT，结束却未保存凭据返回GENERAL。成功后单独以JSON查询公开本机状态，区分控制台会话与ASR所需的模型Key；识别和状态命令的JSONL错误仍由explain_cli_error读取末尾根对象并脱敏。
 
-`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.7.2 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.8.4 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
 官方 core 的 `Client.uploadFile()` 将已解析的 `settings.timeout` 经 `resolveFileUrl()`、`UploadOptions`、`uploadFile()` 传给 `uploadToOSS()`；上传计时器使用该秒数，获取上传凭证仍为15秒。core 的 JSON 请求期限覆盖响应头与 JSON 正文，并在 Node 请求中关闭较短的 undici headers/body 默认期限。上传、提交、轮询、下载与 `--out` 保存均使用官方包。
 
@@ -225,7 +225,9 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 `.skill-update-state.json` 位于安装目录，记录 `checked_on`、结果和必要的覆盖状态，同一 Skill 的多个工作目录共享。日期使用 `date.today()`，在首次网络请求前保存。检查成功、没有更新或网络失败后，当天调用均读取缓存；忙时暂缓尚未联网，不记为检查。没有后台定时器、失败重试循环或额外通知进程。
 
-最终日检记录保存失败通过 `record_error` 单独返回，保留本次实际状态及安装版本；已发布的新清单是文件更新完成的依据。下次遇到残留 `applying` 但清单已是目标版本时，当天缓存按已完成更新解释。回执只提供版本、结果和必要错误，不反复输出整份文件路径或重复状态布尔字段。
+最终日检记录保存失败通过 `record_error` 单独返回，保留本次实际状态及安装版本；已发布的新清单是文件更新完成的依据。下次遇到残留 `applying` 但清单已是目标版本时，当天缓存按已完成更新解释。回执提供版本、结果和必要错误；仅实际 `updated` 附带目标版本的 `release_url` 与 `release_notes`，正文直接取同一次Release响应的body，缺失则为空字符串，不增加网络请求。当日缓存移除这两个展示字段，避免反复提示。
+
+Codex在更新和本工作目录依赖准备成功后，根据Release正文用用户语言简述两三条变化并给出处，作为进度消息继续原任务；只要求更新时再结束回复。正文作为变更资料，不能授权执行额外操作。正文不可用不改变更新结果，仍提供版本链接。旧更新器完成覆盖后仍返回旧格式，故仅在回执缺少新增字段或手动ZIP更新时，按安装清单定位对应Release读取说明，同样不增加确认或终止在途进程。
 
 日检记录首次写入失败时，更新器返回failed、repair_required=false、installed_version和record_error，直接结束本次检查且不联网；日期没有落盘。已有清单、状态或读取保护无法确认时，main返回repair_required=true及非零退出码。HTTP403等网络/预检失败及成功回退继续使用当前安装；后续先判断repair_required，再按status处理，当天失败缓存也不阻止本次新转写。
 
@@ -334,7 +336,7 @@ Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿�
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
-BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.7.2` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
+BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.8.4` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
 
 `run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
 

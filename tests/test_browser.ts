@@ -529,6 +529,10 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     const previewAfterLanguage = await (await context.request.get(origin + "/api/session")).json();
     assert.equal(previewAfterLanguage.preview.validation_id, previewBeforeLanguage.preview.validation_id);
     assert.equal(requests.filter(request => request.path === "/api/validate").length, previewChecks);
+    await copy.click();
+    const copiedEnglish = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(copiedEnglish, `Confirm sending the recording in this preview to Alibaba Cloud Model Studio in the Beijing region for transcription with ${sessionDescription.model}. Editing session ID: ${connection.session_id}`);
+    assert.equal(await page.getByRole("textbox", { name: "Confirmation message", exact: true }).inputValue(), copiedEnglish);
     await assert.rejects(fs.access(path.join(root, ".asr-transcription/.state/jobs")), { code: "ENOENT" });
     await page.screenshot({ path: path.join(screenshots, "preview-en-light.png"), animations: "disabled" });
     await page.getByRole("button", { name: "Back to editing", exact: true }).click();
@@ -594,7 +598,8 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.getByRole("button", { name: "复制给 Codex", exact: true }).click();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copied, `确认转写，编辑会话编号：${connection.session_id}`);
+    assert.equal(copied, `确认将本次预览中的录音发送至阿里云百炼北京地域，使用 ${sessionDescription.model} 转写，编辑会话编号：${connection.session_id}`);
+    assert.equal(await page.getByRole("textbox", { name: "确认消息", exact: true }).inputValue(), copied);
     const copiedId = copied.split("：").at(-1)!;
     const receipt = await confirmSession(root, copiedId);
     await page.locator("#session-ended").waitFor();

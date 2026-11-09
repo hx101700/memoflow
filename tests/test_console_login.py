@@ -104,7 +104,7 @@ cp.execFile = (file, args, options, callback) => {
 require("node:module").syncBuiltinESMExports();
 ''', encoding="utf-8")
         arguments = ["auth", "login", "--console", "--console-site", "domestic",
-                     "--config", "default", "--output", "json"]
+                     "--config", "default", "--output", "text"]
         argv = bl_command(contract_runtime(), arguments)
         argv[1:1] = ["--require", str(fixture)]
         env = bailian_environment(self.runtime, "console")
@@ -148,8 +148,8 @@ require("node:module").syncBuiltinESMExports();
         self.assertFalse(status["verified_online"])
         self.assertEqual(json.loads(evidence.read_text(encoding="utf-8"))["blocked_external_requests"], 0)
 
-    def test_official_login_timeout_has_parseable_error_after_progress(self):
-        """验证原生登录空等返回超时，并能从进度后的JSON读取官方说明。"""
+    def test_official_text_login_timeout_uses_exit_code(self):
+        """验证文本登录超时按退出码解释，授权链接保留在进程内部。"""
         self.runtime.prepare()
         fixture = self.runtime.path("login-timeout-fixture.cjs")
         fixture.write_text(r'''
@@ -170,14 +170,14 @@ cp.execFile = (_file, _args, _options, callback) => {
 require("node:module").syncBuiltinESMExports();
 ''', encoding="utf-8")
         argv = bl_command(contract_runtime(), ["auth", "login", "--console", "--console-site", "domestic",
-                                               "--config", "default", "--output", "json"])
+                                               "--config", "default", "--output", "text"])
         argv[1:1] = ["--require", str(fixture)]
         result = subprocess.run(argv, cwd=self.runtime.workspace, env=bailian_environment(self.runtime, "console"),
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
                                 timeout=20, shell=False, creationflags=subprocess.CREATE_NO_WINDOW)
         self.assertEqual(result.returncode, 5, result.stderr)
         report = explain_cli_error(result.returncode, result.stderr, [])
-        message = report["message"]
-        self.assertTrue("timed out" in message or "登录超时" in message, report)
+        self.assertEqual(report["cli_exit_code"], 5)
+        self.assertIn("超时", report["message"])
         self.assertNotIn("console-login?", json.dumps(report))
         self.assertFalse(self.runtime.path(".state/bailian/config.json").exists())

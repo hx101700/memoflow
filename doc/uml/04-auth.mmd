@@ -73,7 +73,7 @@ else 使用控制台配置
         C->>P: 首次调用即申请正常桌面权限<br/>Codex支持时使用require_escalated<br/>Skill/scripts/asr.py --workspace 用户目录 login
         P->>K: login_console(runtime)
         K->>K: environment.check_login_execution_context()<br/>受限令牌在启动BL前返回错误
-        K->>B: 官方BL 2.7.2：bl auth login --console
+        K->>B: 官方BL 2.8.4：bl auth login --console --output text
         B->>B: 建立授权回调，先注册完成事件及原生计时器
         B->>A: 官方openInBrowser()打开完整URL<br/>Windows使用cmd引用与windowsVerbatimArguments
         U->>A: 完成登录授权
@@ -87,10 +87,10 @@ else 使用控制台配置
             K-->>P: configured、console_configured
             P-->>C: 登录及本地状态回执
         else 原生登录超时或失败
-            B-->>K: 非零退出；stderr进度后追加错误JSON
+            B-->>K: 非零退出；stderr提供文本错误
             Note over B,K: 原生空等返回TIMEOUT（5）；结束却未保存凭据返回GENERAL（1）
             break BL非零退出
-                K->>K: explain_cli_error读取末尾根JSON并脱敏
+                K->>K: explain_cli_error按官方退出码解释登录错误
                 K-->>P: BailianFailure及官方说明
                 P-->>C: 停止并说明登录失败，保留原任务
             end

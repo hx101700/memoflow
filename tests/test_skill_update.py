@@ -120,6 +120,7 @@ class SkillUpdateTests(unittest.TestCase):
             first = update.update_skill(self.skill)
             second = update.update_skill(self.skill)
         self.assertEqual(first["status"], "latest")
+        self.assertNotIn("release_notes", first)
         self.assertTrue(first["is_latest"])
         self.assertEqual(second["status"], "checked_today")
         self.assertEqual(second["last_status"], "latest")
@@ -370,6 +371,48 @@ class SkillUpdateTests(unittest.TestCase):
         self.assertEqual(cached["status"], "checked_today")
         self.assertEqual(download.call_count, 2)
 
+    def test_success_returns_matching_release_notes_only_once(self):
+        """验证实际更新成功返回同版本发布说明，日内缓存保持静默。"""
+        package, _ = self.package()
+        release = self.release(package=package)
+        notes = "### 更新内容\n\n- 支持新版本百炼 CLI。\n- 完善录音确认消息。"
+        release["body"] = notes
+        with patch.object(update, "_download", side_effect=[self.encode(release), package]) as download:
+            report = update.update_skill(self.skill)
+            cached = update.update_skill(self.skill)
+        self.assertEqual(report["status"], "updated")
+        self.assertEqual(report["release_notes"], notes)
+        self.assertEqual(report["release_url"], "https://github.com/hx101700/memoflow/releases/tag/v0.1.2")
+        self.assertEqual(cached["status"], "checked_today")
+        self.assertNotIn("release_notes", cached)
+        self.assertNotIn("release_url", cached)
+        self.assertEqual(download.call_count, 2)
+
+    def test_missing_release_body_does_not_block_success(self):
+        """验证发布正文为空时仍完成更新并提供对应版本链接。"""
+        package, _ = self.package()
+        release = self.release(package=package)
+        release["body"] = None
+        with patch.object(update, "_download", side_effect=[self.encode(release), package]):
+            code, report = self.main_report()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["status"], "updated")
+        self.assertEqual(report["release_notes"], "")
+        self.assertTrue(report["release_url"].endswith("/v0.1.2"))
+
+    def test_failed_download_does_not_report_release_changes(self):
+        """验证发布说明已取得但包下载失败时仍只报告更新失败。"""
+        package, _ = self.package()
+        release = self.release(package=package)
+        release["body"] = "### 更新内容\n- 尚未安装的功能。"
+        with patch.object(update, "_download", side_effect=[self.encode(release), URLError("offline")]):
+            code, report = self.main_report()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["status"], "failed")
+        self.assertNotIn("release_notes", report)
+        self.assertNotIn("release_url", report)
+        self.assert_original_files()
+
     def test_final_record_failure_preserves_actual_success_and_daily_cache(self):
         """验证最终日检记录保存失败仍报告真实安装版本，后续从完成清单读取成功结果。"""
         package, files = self.package()
@@ -546,7 +589,10 @@ class SkillUpdateTests(unittest.TestCase):
                 processes.append(process)
                 self.assertEqual(process.stdout.readline().strip(), "ready")
             with patch.object(update, "_download") as download:
-                self.assertEqual(update.update_skill(self.skill)["status"], "deferred")
+                report = update.update_skill(self.skill)
+                self.assertEqual(report["status"], "deferred")
+                self.assertNotIn("release_notes", report)
+                self.assertTrue(all(process.poll() is None for process in processes))
             download.assert_not_called()
             self.assertFalse((self.skill / update.STATE).exists())
         finally:

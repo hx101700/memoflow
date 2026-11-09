@@ -204,6 +204,7 @@ def child_environment(runtime: Runtime, *, isolated_config: bool = False) -> dic
     # 凭据由当前工作区选择；私有运行时和安装目录保持独立，网络设置交给原生工具。
     for key in (
         "DASHSCOPE_API_KEY", "DASHSCOPE_BASE_URL", "BAILIAN_WORKSPACE_ID",
+        "BAILIAN_ACCESS_KEY_ID", "BAILIAN_ACCESS_KEY_SECRET", "BAILIAN_SECURITY_TOKEN",
         "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_SECRET", "ALIBABA_CLOUD_SECURITY_TOKEN",
         "NODE_OPTIONS", "NODE_PATH", "PYTHONHOME", "PYTHONPATH", "NPM_TOKEN",
         "PIP_TARGET", "PIP_PREFIX", "PIP_ROOT", "PIP_USER", "NPM_CONFIG_GLOBAL",

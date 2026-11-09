@@ -111,13 +111,16 @@ class BailianContractTests(RuntimeTestCase):
         )
         return result, output
 
-    def test_full_cli_flow_saves_json_without_exposing_task_id(self):
-        """验证完整CLI流程保存JSON并检查公开输出。"""
+    def test_full_cli_flow_keeps_saved_transcript_separate_from_stdout(self):
+        """验证新版标准输出包含任务信息，保存文件保持原始转写结构。"""
         result, output = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         transcript = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(transcript["transcripts"][0]["text"], "本地模拟转写")
-        self.assertNotIn("local-test-task", result.stdout)
+        result_body = json.loads(result.stdout)
+        self.assertEqual(result_body["output"]["task_id"], "local-test-task")
+        self.assertEqual(result_body["transcriptions"], [transcript])
+        self.assertNotIn("transcriptions", transcript)
         self.assertEqual([call[0] for call in self.calls], ["POST", "GET", "GET"])
         submitted = self.calls[0][2]
         self.assertEqual(submitted["model"], MODEL)
@@ -167,7 +170,7 @@ class BailianContractTests(RuntimeTestCase):
         result, output = self.invoke("subtask_failed")
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(output.read_text(encoding="utf-8")), [])
-        self.assertIn("[FAILED]", result.stdout)
+        self.assertEqual(json.loads(result.stdout)["output"]["results"][0]["subtask_status"], "FAILED")
         self.assertEqual(len(self.calls), 2)
 
     def test_canceled_task_times_out_without_resubmission(self):

@@ -400,7 +400,8 @@ test("预览中的语言切换保持同一只读快照和已登记版本", async
   assert.equal(page.model.preview?.id, "preview-with-warning");
   assert.equal(localize(page.model.preview!.summary.warnings[0], "en"), "Channels will be merged before transcription.");
   assert.equal(page.calls.length, count);
-  assert.equal(page.t("confirmationMessage", { id: "session-one" }), "Confirm transcription. Editing session ID: session-one");
+  assert.equal(page.t("confirmationMessage", { id: "session-one", model: "qwen-audio-3.1-asr-flash-filetrans" }),
+    "Confirm sending the recording in this preview to Alibaba Cloud Model Studio in the Beijing region for transcription with qwen-audio-3.1-asr-flash-filetrans. Editing session ID: session-one");
 });
 
 test("修改热词与上下文和切换语言只更新本地输入，最终点击一次检查", async () => {

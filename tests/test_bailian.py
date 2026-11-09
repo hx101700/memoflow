@@ -277,7 +277,7 @@ class BailianTests(RuntimeTestCase):
         self.assertIsNone(report["code"])
 
     def test_malformed_stderr_is_not_forwarded(self):
-        """验证异常标准错误返回固定解析说明。"""
+        """验证非结构化标准错误按退出码解释。"""
         for payload in ("raw private stderr", "null", "[]", '{"error": []}',
                         '{"error":{"api_code":[],"request_id":{},"http_status":true,"message":{}}}'):
             with self.subTest(payload=payload):
@@ -285,7 +285,7 @@ class BailianTests(RuntimeTestCase):
                 self.assertIsNone(report["code"])
                 self.assertIsNone(report["request_id"])
                 self.assertIsNone(report["http_status"])
-                self.assertIn("未提供可解析", report["message"])
+                self.assertEqual(report["message"], report["explanation"])
 
     def test_redaction_covers_private_values_urls_tokens_and_all_visible_error_fields(self):
         """验证私有输入、URL和令牌在错误字段中隐藏。"""
@@ -353,7 +353,7 @@ class BailianTests(RuntimeTestCase):
         self.assertEqual(self.popen.call_count, 2)
         first, second = self.popen.call_args_list
         self.assertEqual(first.args[0][2:], ("auth", "login", "--console", "--console-site", "domestic",
-                                             "--config", "default", "--output", "json", "--quiet"))
+                                             "--config", "default", "--output", "text", "--quiet"))
         self.assertNotIn("--base-url", first.args[0])
         self.assertEqual(second.args[0][2:4], ("auth", "status"))
         self.assertNotIn("DASHSCOPE_API_KEY", first.kwargs["env"])

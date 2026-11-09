@@ -203,7 +203,10 @@ class BailianUploadContractTests(RuntimeTestCase):
     def assert_upload_timeout(self, result, output, evidence):
         """核对上传中止、结构化超时与未进入识别提交的事实。"""
         self.assertEqual(result.returncode, 5, result.stderr)
-        self.assertEqual(json.loads(result.stderr)["error"]["message"], "Request timed out.")
+        diagnostics = [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
+        self.assertIn("warning", diagnostics[0])
+        report = explain_cli_error(result.returncode, result.stderr, [])
+        self.assertEqual(report["message"], "Request timed out.")
         self.assertEqual(self.calls, ["policy", "upload"])
         self.assertGreater(self.upload_bytes, self.audio.stat().st_size)
         self.assertTrue(evidence["upload_aborted"])

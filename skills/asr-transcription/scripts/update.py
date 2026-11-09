@@ -51,6 +51,8 @@ class UpdateReport(TypedDict, total=False):
     repair_required: bool
     record_error: str
     message: str
+    release_url: str
+    release_notes: str
 
 
 def _json(data: bytes) -> dict[str, object]:
@@ -231,6 +233,9 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
         if not check_now and state.get("checked_on") == today:
             cached = state.get("report")
             report = cast(UpdateReport, dict(cached)) if isinstance(cached, dict) else UpdateReport(is_latest=None)
+            # 当天缓存只复用版本判断，更新说明随实际成功更新返回一次。
+            report.pop("release_url", None)
+            report.pop("release_notes", None)
             last_status = str(state.get("status"))
             if last_status == "applying":
                 # 新清单已发布，说明文件更新完成，仅最终日检记录尚未写入。
@@ -312,6 +317,9 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
                     modified.append(MANIFEST)
                 report.update({"status": "updated", "installed_version": latest, "is_latest": True,
                                "message": "Skill 已更新，请重新读取 SKILL.md 并按当前说明准备工作目录环境。"})
+                report["release_url"] = f"https://github.com/{REPOSITORY}/releases/tag/{tag}"
+                notes = release.get("body")
+                report["release_notes"] = notes.strip() if isinstance(notes, str) else ""
         except (OSError, ValueError, KeyError, BadZipFile, UpdateError) as error:
             message = f"更新请求失败（HTTP {error.code}）。" if isinstance(error, HTTPError) else (
                 "更新网络连接失败。" if isinstance(error, URLError) else str(error)

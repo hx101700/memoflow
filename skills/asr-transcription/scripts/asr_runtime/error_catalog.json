@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-11-01",
-  "cli_version": "2.7.2",
-  "cli_source": "https://github.com/modelstudioai/cli/blob/e66e686fa54ff7dbd948509c41312c638ea8d935/packages/core/src/errors/codes.ts",
+  "verified_at": "2026-11-08",
+  "cli_version": "2.8.4",
+  "cli_source": "https://github.com/modelstudioai/cli/blob/cadc301d078f0fd1f2c56f7bf94f32c55bbb055d/packages/core/src/errors/codes.ts",
   "api_source": "https://www.alibabacloud.com/help/zh/model-studio/error-code",
   "cli_exit_codes": {
     "0": {"name": "SUCCESS", "meaning": "BL进程正常结束，仍需检查业务产物。"},

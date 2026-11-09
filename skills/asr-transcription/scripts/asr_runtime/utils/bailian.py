@@ -150,7 +150,7 @@ def explain_cli_error(returncode: int, stderr: str, private_values: list[str]) -
     """解析BL结构化错误，并附上脱敏信息与官方错误说明。"""
     catalog = cast(_ErrorCatalog, json.loads((Path(__file__).parent.parent / "error_catalog.json").read_text(encoding="utf-8")))
     try:
-        # 官方登录先写进度，error-handler最后以独立根JSON对象输出结构化错误。
+        # JSON模式的诊断逐行输出，末尾根对象是本次命令的终结错误。
         error = json.loads(stderr[stderr.rfind("\n{") + 1:])["error"]
         if not isinstance(error, dict):
             error = {}
@@ -179,7 +179,7 @@ def explain_cli_error(returncode: int, stderr: str, private_values: list[str]) -
         "source": "cli", "cli_exit_code": returncode, "http_status": http_status,
         "code": redact_message(api_code, private_values) if api_code else None,
         "request_id": redact_message(request_id, private_values) if request_id else None,
-        "message": redact_message(message, private_values) if isinstance(message, str) else "CLI未提供可解析的结构化错误信息。",
+        "message": redact_message(message, private_values) if isinstance(message, str) else explanation,
         "explanation": explanation, "source_url": source,
     }
 
@@ -249,7 +249,7 @@ def login_console(runtime: Runtime) -> dict[str, str | bool]:
     check_login_execution_context()
     runtime.prepare()
     command = prepare_command(runtime, ["auth", "login", "--console", "--console-site", "domestic",
-                                        "--config", "default", "--output", "json"], "console")
+                                        "--config", "default", "--output", "text"], "console")
     print(json.dumps({"status": "WAITING_FOR_LOGIN", "message": "请在系统默认浏览器完成百炼授权，完成后回到Codex发送“已完成”。"}, ensure_ascii=False), flush=True)
     _run_bl(runtime, command, [], timeout=None)
     # 登录成功可能只保存控制台会话；本地状态确认转写所需的模型API Key是否存在。

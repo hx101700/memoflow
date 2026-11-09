@@ -58,7 +58,9 @@ const locale = computed(() => language.value === "en" ? en : zhCn);
 const terminal = computed(() => ["handed_off", "expired", "cancelled"].includes(model.phase));
 const configuring = computed(() => ["editing", "validating"].includes(model.phase));
 const step = computed(() => model.preview ? 1 : 0);
-const confirmationText = computed(() => t("confirmationMessage", { id: model.session?.session_id ?? "" }));
+const confirmationText = computed(() => t("confirmationMessage", {
+  model: model.session?.model ?? "", id: model.session?.session_id ?? "",
+}));
 const contextLength = computed(() => Array.from(form.context).length);
 const errorText = computed(() => error.value?.describe(language.value) ?? "");
 const outputKinds: DirectoryKind[] = ["json", "document"];
@@ -155,7 +157,7 @@ onUnmounted(actions.dispose);
             <ElCard class="handoff-panel" shadow="never">
               <p>{{ t('uploadDisclosure') }}</p>
               <p class="helper">{{ t('reviewHelp') }}</p>
-              <ElInput :model-value="confirmationText" readonly :aria-label="t('confirmationLabel')" class="confirmation-text" />
+              <ElInput :model-value="confirmationText" type="textarea" :autosize="{ minRows: 3 }" readonly :aria-label="t('confirmationLabel')" class="confirmation-text" />
               <p class="helper">{{ t('expiryHelp') }}</p>
             </ElCard>
           </section>
