@@ -265,6 +265,28 @@ class BailianTests(RuntimeTestCase):
         self.assertIn("未收录", report["explanation"])
         self.assertIsNone(report["source_url"])
 
+    def test_quota_rate_and_auth_errors_do_not_infer_billing_exhaustion(self):
+        """验证多义配额、限流和权限错误保留事实，不诊断成余额耗尽。"""
+        for code, status in (("Throttling.AllocationQuota", 429), ("insufficient_quota", 429),
+                             ("Throttling.RateQuota", 429), ("Throttling.Concurrency", 429),
+                             ("AccessDenied", 403), ("InvalidApiKey", 401)):
+            with self.subTest(code=code):
+                report = explain_cli_error(1, json.dumps({"error": {
+                    "api_code": code, "http_status": status, "message": "Ambiguous service response.",
+                }}), [])
+                self.assertEqual(report["code"], code)
+                self.assertNotIn("请在百炼", report["explanation"])
+                self.assertNotIn("充值", report["explanation"])
+                self.assertNotIn("免费额度已用尽", report["explanation"])
+
+    def test_message_only_billing_failure_does_not_invent_api_code(self):
+        """验证异步失败只带消息时保留服务原文，供Skill按依据解释。"""
+        message = "Task failed: The free tier of the model has been exhausted."
+        report = explain_cli_error(1, json.dumps({"error": {"message": message}}), [])
+        self.assertEqual(report["message"], message)
+        self.assertIsNone(report["code"])
+        self.assertIsNone(report["http_status"])
+
     def test_interrupted_cli_exit_preserves_uncertain_cloud_status(self):
         """验证官方中断退出码已有说明，不将中断解释为云端取消成功。"""
         report = explain_cli_error(130, "\nInterrupted. Exiting.\n", [])

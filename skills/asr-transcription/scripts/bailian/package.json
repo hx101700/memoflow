@@ -3,6 +3,6 @@
   "version": "0.1.5",
   "private": true,
   "dependencies": {
-    "bailian-cli": "2.8.4"
+    "bailian-cli": "2.10.1"
   }
 }

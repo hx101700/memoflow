@@ -1,5 +1,29 @@
 # 验证记录
 
+## 2026-11-15 固定模型额度与计费失败提示
+
+用户要求仅针对Qwen-Audio-3.1-ASR-Flash-Filetrans补齐免费/付费额度提示，并将本功能和BL2.10.1适配推送dev；版本仍为0.1.5，本轮不发布或更换用户安装。
+
+- 核对官方模型详情/价格表、错误码和预算管理，确认免费额度与按量调用、账号/业务空间/API Key预算的实际边界。复用现有错误字典和解释函数，没有新增状态、网络请求、模糊分类器或计费操作。
+- 补齐AllocationQuota.FreeTierOnly、Arrearage、BudgetLimitExceeded的原因与下一步；PrepaidBillOverdue/PostpaidBillOverdue只解释本次实际账单/商品回显。Throttling.AllocationQuota/insufficient_quota保持中性，Skill不因403/429或CLI退出码认定欠费。
+- `.venv/Scripts/python.exe -X utf8 -m unittest tests.test_bailian tests.test_bl_contract tests.test_transcription -q`：74项通过，0跳过，43.461秒；随后新增真实BL顶层FAILED仅传额度消息的针对测试通过（1项，1.162秒）。日志`.runtime/bl-latest-20261115/billing-tests.log`。
+- 本机HTTP夹具由真实BL2.10.1调用，覆盖五种服务错误、查询阶段预算拒绝、原job_id与error持久保存、cloud_outcome仍未知、无结果文件、重复同任务不新增请求。消息无错误码时仍为空，限流/权限/多义配额均未误报为欠费。并未故意消耗云端额度或修改真实计费设置。
+- 严格mypy33文件、Skill格式、文档链接和05图渲染通过；图仅补充现有错误解释边界，未增加生命周期。15项打包测试通过（16.660秒）。新的候选双包在`dist/review-bl2.10.1-billing-20261115`，固定清单、源码/README逐字一致、CRC、额度字典、BL版本及运行时摘要通过。
+
+覆盖限于BL提供的具体错误码或明确服务消息。子项失败被BL转为空结果且没有可见错误时，仍报告记录不足；本轮没有改造stdout捕获链，也不能宣称固定模型会返回通用目录中每一种错误。
+
+## 2026-11-15 官方BL2.10.1兼容
+
+起点14cc7fe，用户要求跟进modelstudioai/cli最新正式版。本次在本地dev修改，MemoFlow版本仍0.1.5，未提交、推送、发布或替换用户安装。官方latest指向2026-11-13发布的v2.10.1，固定提交98ceadc00e00bd5043f266ba3781268e6b83b12f。
+
+- 完整核对2.8.5/2.8.6/2.9.0/2.10.0/2.10.1的官方Release与中英CHANGELOG；21条顶层变更细分为26行影响表。主流程29个消费源码文件与官方tar.gz成员逐字一致；解压时仅CLAUDE.md链接在Windows创建失败，所需源码完整。取舍和源码差异统一在[BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
+- npm原生更新四个BL包到2.10.1，连带解析bare-buffer3.7.2、bare-path3.1.3、bare-url2.5.7；Undici仍6.29.1。新工作目录`.runtime/bl-2.10.1-workspace`只复用已核对运行时归档和完整wheel，重新解压Python3.12.10/Node24.21.0、创建venv和安装BL；bootstrap返回installed/version2.10.1，doctor issues为空。
+- 运行`.venv/Scripts/python.exe -X utf8 -m unittest tests.test_bailian tests.test_console_login tests.test_bl_contract tests.test_bl_upload tests.test_environment tests.test_bootstrap tests.test_skill_update tests.test_package -q`：152项通过，0跳过，58.930秒。日志在`.runtime/bl-latest-20261115/tests.log`，包括实际官方CLI配合本机服务的参数、结果、JSONL错误、模拟浏览器回调及代理测试。
+- 严格mypy33个源文件、官方Skill格式及文档链接检查通过；04-auth和05-transcribe按原主题重新渲染，文字边界检查通过，尺寸分别5685×8721及4910×7052。它们只更新固定CLI版本，没有调用/状态变化。
+- 双候选包在`dist/review-bl2.10.1-20261115`：轻量52文件、369184字节；完整54文件、70387778字节。CRC、固定清单、源文件及README逐字一致、四个BL版本和运行时归档摘要通过；摘要保留`.runtime/bl-latest-20261115/package-check.json`。开发资料、UML、测试、凭据和录音均在包外。
+
+运行代码只修改BL版本常量，现有业务契约通过。不新增推测性防御、参数兼容层或网络重试；前端与文档排版未变，不重复相同回归。没有真实用户登录/云端识别，不能把源码相同和本机合约通过称为新版云端验收，现场网络可达性问题仍保持原结论。
+
 ## 2026-11-09 v0.1.5发布复核
 
 用户确认版本为v0.1.5，授权审查后正式发布。起点ddb99c9；三路只读审查加主流程核对覆盖安装/更新、会话/转写/回收、前端/交付及11份UML，具体发现与保留理由见[REVIEW](REVIEW.md)。修正图03的输出目录检查归属和DEVELOPMENT的旧版本文字，没有增加运行补丁或删除有业务消费者的步骤。

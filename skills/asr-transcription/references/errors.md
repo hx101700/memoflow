@@ -15,7 +15,7 @@
 | npm提示权限、磁盘、锁文件或未知错误 | 这些错误不会通过换源消失，安装器直接停止。保留bootstrap.log中的error.code与具体原因，处理本机问题；不删除依赖锁、关闭校验或反复重跑安装。 |
 | cache_cleanup_warning | 环境准备已成功，旧下载缓存未全部清理。根据返回的文件或npm退出码排查；需要再次清理时，用原工作目录基础Python执行bootstrap --cleanup-old-cache。当前版本缓存及业务数据保留。 |
 | 安装提示目录冲突 | 让 Codex 检查提示中的安装目录及已有文件。保留凭据和用户数据，确认残留内容后再决定修复方式。 |
-| 提示 BL 版本不匹配，当前要求 2.8.4 | 先结束使用当前工作目录 BL 的任务，核对并仅删除 `WORKSPACE/.asr-transcription/.tools/bailian`，再按[复用已有运行时](usage.md#复用已有运行时)用基础Python运行bootstrap。该目录存放BL安装文件；凭据在.env和.state/bailian，连同任务、结果及其它运行时一并保留。 |
+| 提示 BL 版本不匹配，当前要求 2.10.1 | 先结束使用当前工作目录 BL 的任务，核对并仅删除 `WORKSPACE/.asr-transcription/.tools/bailian`，再按[复用已有运行时](usage.md#复用已有运行时)用基础Python运行bootstrap。该目录存放BL安装文件；凭据在.env和.state/bailian，连同任务、结果及其它运行时一并保留。 |
 | 更换工作目录后环境不可用，或提示虚拟环境来自其他 Python | 旧版系统Python创建的venv或搬迁后的venv可能引用其他基础路径。先结束使用它的任务，仅清理当前工作目录的.asr-transcription/.venv，再按[复用已有运行时](usage.md#复用已有运行时)重建；保留API Key、BL配置、任务与结果。基础运行时本身缺失时使用完整版的PowerShell准备入口。 |
 | 转写页面没有出现 | 保留启动回执和同一serve进程，区分本机服务是否响应与浏览器是否显示，按下方“页面打开问题”处理。 |
 | 页面提示录音路径无法读取 | 在音频区域重新选择文件。对话附件须有用户或宿主明确提供的本机绝对路径；确认后在转写完成前保持文件可访问。 |
@@ -58,11 +58,33 @@
 
 ## 转写超时
 
-当前 Skill 使用官方 BL `2.8.4`，临时 OSS 上传原生遵循 `--timeout 3600`；获取上传凭证仍为15秒。上传与轮询各有一小时等待预算，整个 BL 进程最多等待7500秒（2小时5分），包含300秒余量。提交和单次查询也使用 BL timeout；结果下载没有独立 BL 下载时限。详见[超时依据](model.md#bl复用边界)。这些时限不保证网络或云端一定在期限内完成。
+当前 Skill 使用官方 BL `2.10.1`，临时 OSS 上传原生遵循 `--timeout 3600`；获取上传凭证仍为15秒。上传与轮询各有一小时等待预算，整个 BL 进程最多等待7500秒（2小时5分），包含300秒余量。提交和单次查询也使用 BL timeout；结果下载没有独立 BL 下载时限。详见[超时依据](model.md#bl复用边界)。这些时限不保证网络或云端一定在期限内完成。
 
 `Request timed out.` 是 BL 对多种请求超时或取消的统一说明，不能单凭录音大小认定上传失败；`Polling timed out.` 表示轮询总等待到期。保留任务回执与已生成文件，按实际记录说明已知结果；未知时维持 `cloud_outcome=unknown`，不清除执行占用或自动重传。提交和查询使用官方 core 的请求期限；通用超时仍需原始运行证据区分具体阶段和云端最终结果。
 
-`UND_ERR_CONNECT_TIMEOUT` 表示建立连接超时；BL 2.8.4 的 Undici 默认连接期限为10秒，与上述请求和轮询预算分别计时。记录错误目标、耗时和请求编号，按实际证据排查网络。子进程继承用户已有的代理和证书环境；BL 原生读取 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`。网络配置与凭据由各自入口管理，连接超时本身不能证明 API Key 失效。
+`UND_ERR_CONNECT_TIMEOUT` 表示建立连接超时；BL 2.10.1 的 Undici 默认连接期限为10秒，与上述请求和轮询预算分别计时。记录错误目标、耗时和请求编号，按实际证据排查网络。子进程继承用户已有的代理和证书环境；BL 原生读取 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`。网络配置与凭据由各自入口管理，连接超时本身不能证明 API Key 失效。
+
+## 额度与计费提示
+
+适用于当前固定模型 `qwen-audio-3.1-asr-flash-filetrans`、北京地域的请求失败。以本次 BL 回执中的服务错误码与消息为依据，使用已有 `error.explanation` 向用户解释；免费额度、账务、预算与限流分别处理。
+
+| 明确返回的错误码 | 告知用户的原因与下一步 |
+| --- | --- |
+| `AllocationQuota.FreeTierOnly` | 当前模型免费额度已用尽，服务按免费额度限制停止调用。前往[免费额度说明与控制台入口](https://help.aliyun.com/zh/model-studio/new-free-quota)核对本模型及“免费额度用完即停”；需要付费继续时由用户决定调整，未实名认证者先认证。 |
+| `Arrearage` | 当前模型凭据所属阿里云账号欠费，调用被拒绝。前往[费用与成本](https://usercenter2.aliyun.com/)核对账单并处理；若余额正常，检查凭据所属账号或联系阿里云支持，充值后等待状态生效。 |
+| `BudgetLimitExceeded` | 达到已启用自动停用的预算上限。前往[预算管理](https://help.aliyun.com/zh/model-studio/budget-management)核对账号、业务空间和当前API Key，由用户决定是否调整。仅靠此码不能确定触发的是哪一个维度。 |
+| `PrepaidBillOverdue` | 若本次服务实际返回此码，按“业务空间预付费账单到期”解释，引导核对对应账单与服务；不泛称账户余额不足。 |
+| `PostpaidBillOverdue` | 若本次服务实际返回此码，按“模型推理商品已失效”解释，引导核对服务状态并联系阿里云支持。 |
+
+后两项为官方通用模型服务账单错误，只解释实际回显，不承诺固定ASR一定会返回。官方原因见[错误码](https://help.aliyun.com/zh/model-studio/error-code-start)。本模型支持免费额度和按量付费；未开启免费额度用完即停时，用尽免费额度后可能转为付费成功调用，不能把成功结果解读成免费。[模型计费依据](https://help.aliyun.com/zh/model-studio/model-pricing)
+
+若 `error.code` 为空，但消息明确包含官方的免费额度耗尽、账户欠费或预算用尽说明，可引用消息解释，并注明“服务未提供具体错误码”。例如 `Task failed: The free tier of the model has been exhausted.` 能说明免费额度问题，但不能补造错误码、HTTP状态、剩余额度或云端任务结果。
+
+`Throttling.AllocationQuota` / `insufficient_quota` 有多种含义，必须结合消息判断；仅出现这些码、HTTP 403/429、`AccessDenied`、限流或网络超时，不能认定付费余额不足。Coding Plan/Token Plan额度、ParseX的AccountOverdue及RAG的QUOTA_EXCEEDED不套用到本模型。本流程两种认证方式最终都使用模型Key，重新登录不重置额度，预算可能绑定当前Key。
+
+向用户说明“当前模型的请求被拒绝＋具体原因＋处理入口”，附本地任务编号和实际提供的错误码／请求编号。按回执说明是否已有文件，保留原任务；`cloud_outcome=unknown` 时保留未知，不承诺未计费。账务或计费开关由用户处理；用户明确要求再次转写后走新的网页确认任务，不自动重传或清除旧占用。此提示只在失败后运行，不增加额度预查、余额估算或每次上传前的确认。
+
+BL异步顶层失败可能只传消息；若子项失败被BL写成空结果且没有错误回执，当前无法据此识别计费原因，应说明现有记录不足，不能将空JSON猜成额度不足。
 
 ## 页面打开问题
 
@@ -97,7 +119,7 @@
 | 控制台模式中已保存的模型API Key被明确拒绝 | 按用户的修复意图，用下方BL原生命令清空本工作目录default Profile的api_key，再运行现有login入口；也可由用户选择改用网页指定API Key。 |
 | 模型访问权限、地域、业务空间或额度问题 | 按官方错误说明处理对应配置或权限；重新登录或换API Key不一定能解决。 |
 
-BL 2.8.4发现已保存的模型API Key时，不会仅因重新控制台登录就请求另一份API Key。这一分支使用BL公开配置命令，不手工改写BL配置文件，也不清除控制台等其他凭据。以下沿用[运行准备](usage.md#运行准备)中的变量，仅在已确认需要更换控制台模式的模型API Key时执行：
+BL 2.10.1发现已保存的模型API Key时，不会仅因重新控制台登录就请求另一份API Key。这一分支使用BL公开配置命令，不手工改写BL配置文件，也不清除控制台等其他凭据。以下沿用[运行准备](usage.md#运行准备)中的变量，仅在已确认需要更换控制台模式的模型API Key时执行：
 
 ```powershell
 $blEntry = Join-Path $workspaceDir '.asr-transcription/.tools/bailian/node_modules/bailian-cli/dist/bailian.mjs'
@@ -154,13 +176,13 @@ try {
 | RUNNING | 正在执行 | 同上，不能等同本地RUNNING的细分阶段 |
 | SUCCEEDED | 顶层任务成功 | BL继续处理子项/下载；不代表三种成品已完成 |
 | FAILED | 云端任务失败 | BL停止，Python解释暴露的错误，不重提 |
-| CANCELED / UNKNOWN | 通用任务取消/不存在或未知 | 不承诺固定模型会返回；BL2.8.4识别路径未将它们作为完成条件，可能轮询到超时 |
+| CANCELED / UNKNOWN | 通用任务取消/不存在或未知 | 不承诺固定模型会返回；BL2.10.1识别路径未将它们作为完成条件，可能轮询到超时 |
 
 本项目没有公网回调服务、第二个轮询器或已验收的云端取消/恢复查询入口。终止本地等待不等于取消云端。未知状态不能解释成成功，但也不能声称Python能即时观察BL未暴露的状态。
 
 ### CLI与API错误
 
-- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/cadc301d078f0fd1f2c56f7bf94f32c55bbb055d/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
+- 官方退出码见[CLI定义](https://github.com/modelstudioai/cli/blob/98ceadc00e00bd5043f266ba3781268e6b83b12f/packages/core/src/errors/codes.ts)，API解释见[百炼错误码](https://www.alibabacloud.com/help/zh/model-studio/error-code)，具体映射在error_catalog.json。
 - CLI退出码、HTTP状态和API code是独立字段，按原回执分别解释。
 - 识别和状态查询使用JSON输出；Python读取BL末尾JSONL错误的error.api_code、message、request_id、http_status，将api_code映射为本地回执的code，脱敏后给用户；cli_exit_code取自进程退出码。浏览器登录使用text输出，失败按官方退出码解释；该路径没有结构化API字段。原始stderr、cause、hint和完整响应不进入回执。
 - 未知code明确说明字典未收录，不猜余额、权限、音频损坏或套用其它模型含义。

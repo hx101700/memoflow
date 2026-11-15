@@ -29,6 +29,8 @@ class BailianContractTests(RuntimeTestCase):
         super().setUp()
         self.calls = []
         self.mode = "success"
+        self.service_error = None
+        self.task_message = "synthetic task status"
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -50,7 +52,10 @@ class BailianContractTests(RuntimeTestCase):
                 owner.authorization = self.headers.get("Authorization")
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 owner.calls.append(("POST", self.path, body))
-                if owner.mode in ("submit_401", "submit_500"):
+                if owner.mode == "submit_billing_error":
+                    status, error = owner.service_error
+                    self.reply(status, error)
+                elif owner.mode in ("submit_401", "submit_500"):
                     self.reply(int(owner.mode[-3:]), {"code": "TestFailure", "message": "synthetic failure"})
                 else:
                     self.reply(200, {"output": {"task_id": "local-test-task", "task_status": "PENDING"}})
@@ -58,6 +63,10 @@ class BailianContractTests(RuntimeTestCase):
             def do_GET(self):
                 """模拟任务查询状态及转写结果下载。"""
                 owner.calls.append(("GET", self.path, None))
+                if owner.mode == "query_billing_error":
+                    status, error = owner.service_error
+                    self.reply(status, error)
+                    return
                 if self.path == "/result.json":
                     self.reply(200, {"transcripts": [{"text": "本地模拟转写", "sentences": [{
                         "text": "本地模拟转写", "begin_time": 0, "end_time": 1000, "speaker_id": 0,
@@ -74,7 +83,7 @@ class BailianContractTests(RuntimeTestCase):
                     "message": "synthetic subtask failure",
                 }
                 self.reply(200, {"output": {"task_id": "local-test-task", "task_status": status,
-                    "message": "synthetic task status", "results": [result]}})
+                    "message": owner.task_message, "results": [result]}})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
@@ -291,6 +300,56 @@ class BailianContractTests(RuntimeTestCase):
         parameters = self.calls[0][2]["parameters"]
         self.assertEqual(parameters["language_hints"], ["zh"])
         self.assertEqual(parameters["speaker_count"], 3)
+
+    def test_billing_rejections_keep_task_and_explain_without_resubmitting(self):
+        """验证真实BL透传免费/付费限制，任务保存原因且重复执行不重传。"""
+        cases = (
+            (403, "AllocationQuota.FreeTierOnly", "The free tier of the model has been exhausted.", "免费额度"),
+            (400, "Arrearage", "Access denied, please make sure your account is in good standing.", "欠费"),
+            (429, "BudgetLimitExceeded", "The budget configured in Budget Management has been exhausted.", "预算"),
+            (429, "PrepaidBillOverdue", "The prepaid bill is overdue.", "预付费账单"),
+            (429, "PostpaidBillOverdue", "The postpaid bill is overdue.", "模型推理商品"),
+        )
+        for status, code, message, reason in cases:
+            with self.subTest(code=code):
+                self.calls.clear()
+                self.service_error = (status, {"code": code, "message": message, "request_id": "billing-fixture"})
+                report = self.invoke_saved_job("submit_billing_error")
+                self.assertEqual(report["status"], "STOPPED")
+                self.assertFalse(report["documents_ready"])
+                self.assertEqual(report["cloud_outcome"], "unknown")
+                self.assertEqual(report["error"]["cli_exit_code"], 1)
+                self.assertEqual(report["error"]["http_status"], status)
+                self.assertEqual(report["error"]["code"], code)
+                self.assertEqual(report["error"]["message"], message)
+                self.assertEqual(report["error"]["request_id"], "billing-fixture")
+                self.assertIn(reason, report["error"]["explanation"])
+                self.assertNotIn("未收录", report["error"]["explanation"])
+                self.assertEqual([call[0] for call in self.calls], ["POST"])
+                saved = job_status(self.runtime, report["job_id"])
+                self.assertEqual(saved["error"], report["error"])
+                self.assertFalse(Path(report["json_path"]).exists())
+
+    def test_billing_error_during_polling_preserves_unknown_cloud_outcome(self):
+        """验证提交后查询被预算限制拒绝时保留云端未知，不重复提交或查询。"""
+        self.service_error = (429, {"code": "BudgetLimitExceeded", "message": "Budget exhausted.",
+                                    "request_id": "query-billing-fixture"})
+        report = self.invoke_saved_job("query_billing_error")
+        self.assertEqual(report["status"], "STOPPED")
+        self.assertEqual(report["cloud_outcome"], "unknown")
+        self.assertEqual(report["error"]["code"], "BudgetLimitExceeded")
+        self.assertIn("API Key", report["error"]["explanation"])
+        self.assertEqual([call[0] for call in self.calls], ["POST", "GET"])
+
+    def test_failed_task_preserves_billing_message_without_fabricating_code(self):
+        """验证云端任务仅返回额度消息时，真实BL与本地记录保留其可见范围。"""
+        self.task_message = "The free tier of the model has been exhausted."
+        report = self.invoke_saved_job("task_failed")
+        self.assertEqual(report["status"], "STOPPED")
+        self.assertEqual(report["error"]["message"], "Task failed: " + self.task_message)
+        self.assertIsNone(report["error"]["code"])
+        self.assertEqual(report["cloud_outcome"], "unknown")
+        self.assertEqual([call[0] for call in self.calls], ["POST", "GET"])
 
     def test_saved_config_rejects_cli_zero_exit_with_no_transcript(self):
         """验证CLI空结果返回停止状态。"""

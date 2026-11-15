@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-11-08",
-  "cli_version": "2.8.4",
-  "cli_source": "https://github.com/modelstudioai/cli/blob/cadc301d078f0fd1f2c56f7bf94f32c55bbb055d/packages/core/src/errors/codes.ts",
+  "verified_at": "2026-11-15",
+  "cli_version": "2.10.1",
+  "cli_source": "https://github.com/modelstudioai/cli/blob/98ceadc00e00bd5043f266ba3781268e6b83b12f/packages/core/src/errors/codes.ts",
   "api_source": "https://www.alibabacloud.com/help/zh/model-studio/error-code",
   "cli_exit_codes": {
     "0": {"name": "SUCCESS", "meaning": "BL进程正常结束，仍需检查业务产物。"},
@@ -26,7 +26,28 @@
     "Throttling": {"meaning": "请求频率受限，已停止自动推进。"},
     "Throttling.RateQuota": {"meaning": "请求频率受限，已停止自动推进。"},
     "Throttling.Concurrency": {"meaning": "并发受限，请检查同账号的其他任务。"},
-    "BudgetLimitExceeded": {"meaning": "预算触发停止调用，请检查预算设置。"},
+    "AllocationQuota.FreeTierOnly": {
+      "meaning": "当前转写模型的免费额度已用尽，服务按免费额度限制停止调用。请在百炼控制台查看本模型的免费额度及“免费额度用完即停”设置；如需按量付费继续，由用户确认并调整设置，未完成实名认证的账号需先完成认证。",
+      "source_url": "https://help.aliyun.com/zh/model-studio/error-code-start"
+    },
+    "Arrearage": {
+      "meaning": "本次模型凭据所属的阿里云账号存在欠费，调用被拒绝。请在“费用与成本”查看并处理欠费；若显示余额正常，请核对凭据所属账号或联系阿里云支持。充值后的账务状态可能需要等待更新。",
+      "source_url": "https://help.aliyun.com/zh/model-studio/error-code-start"
+    },
+    "BudgetLimitExceeded": {
+      "meaning": "本次调用触及已启用“达预算即停”的预算上限。请在百炼“预算管理”核对账号、业务空间及当前API Key的预算，由用户决定是否调整；账户有余额也可能触发此限制。",
+      "source_url": "https://help.aliyun.com/zh/model-studio/budget-management"
+    },
+    "PrepaidBillOverdue": {
+      "meaning": "服务返回业务空间预付费账单到期。请在阿里云“费用与成本”核对对应账单及服务状态，按实际账单处理或联系阿里云支持。",
+      "source_url": "https://help.aliyun.com/zh/model-studio/error-code-start"
+    },
+    "PostpaidBillOverdue": {
+      "meaning": "服务返回模型推理商品已失效。请核对当前账号的百炼服务及账单状态，联系阿里云支持确认恢复方式。",
+      "source_url": "https://help.aliyun.com/zh/model-studio/error-code-start"
+    },
+    "Throttling.AllocationQuota": {"meaning": "服务返回配额或限流限制，需结合原始错误消息确认具体原因；仅凭此错误码不能认定免费额度耗尽或账号欠费。"},
+    "insufficient_quota": {"meaning": "服务返回配额或限流限制，需结合原始错误消息确认具体原因；仅凭此错误码不能认定免费额度耗尽或账号欠费。"},
     "InternalError": {"meaning": "服务内部错误，保留请求ID以便排查。"},
     "InternalError.FileUpload": {"meaning": "文件上传失败，请结合具体错误信息排查。"},
     "ServiceUnavailable": {"meaning": "服务暂不可用或容量不足，已停止自动推进。"},

@@ -89,6 +89,7 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 - 用户明确要求重导时，提示先另存人工修改，再运行一次 `export --job JOB_ID`。读取原 JSON，在固定目录覆盖三种文档，等待同一导出结束。
 - `JSON_READY` 表示 JSON 可用；`documents_ready=true` 且 `delivery.status=COMPLETE` 才表示三种文档全部保存。用 `json_path` 和 `delivery.files` 中 `READY` 项的路径交付，请用户校对。
 - 转写／导出失败或结果未知时停止对应阶段，保留文件，按[错误与状态](references/errors.md)解释。每任务一次执行，不清占用或自动重传。记录、清理警告按原命令的主结果处理。
+- 当前模型因免费额度、欠费或预算限制被拒绝时，按[额度与计费提示](references/errors.md#额度与计费提示)说明原因、处理入口和原任务编号，优先引用回执的 `error.code`、`explanation` 与实际消息。用户处理后，由其明确发起新的转写；保留原任务和云端结果状态，不自动调整计费设置、换模型、换Key或重传。
 
 ## 跨回复衔接
 
