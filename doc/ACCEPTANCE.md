@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-16 v0.1.6新录音衔接重发完成
+
+按用户明确授权，master/dev快进至修正代码9aa88befb45f615be9ad3005f71d8d0ca3e77901；仅对v0.1.6使用原标签对象fadd18e77439a99d8e81066eb87091bca570b216的精确租约更新。沿用Release446669327先转草稿后替换两个附件，再恢复正式公开及latest。Release正文保持已确认版本，远端两附件大小和SHA-256匹配下方重发准备记录；其他六个历史Release的ID和附件摘要逐项回读保持。
+
+实际发布回执保存在.runtime/release-0.1.6-reissue-publish.json。此次仅重发已验证的Skill指引与说明修正，Python业务和更新器保持；未替换用户安装或重新执行云端识别。标签固定在9aa88be，后续文档提交只补充发布记录。
+
 ## 2026-11-16 v0.1.6新录音衔接重发准备
 
 用户明确授权同步master与重发同一v0.1.6，Release正文保持原确认版本。`unittest tests.test_package -q` 15项通过，19.810秒，包含旧服务占用释放、更新检查与新附件开页回归。双包dist/release-v0.1.6-reissue按固定清单逐文件核对源码、README、manifest及官方运行时，CRC通过；轻量包55文件/411046字节、SHA-256为8764c3f5ca96da8032242a64dfefc3f3cb5736a1096d6c3daf4ae9ee78896096；完整版57文件/70429640字节、SHA-256为8ecddfaafc25d5aa4ec4d5fd14aa86f550846f699e1d0c2be62690b24151dfb2。
