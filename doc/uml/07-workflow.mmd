@@ -4,7 +4,11 @@ participant C as Codex＋Skill
 participant M as MemoFlow本机工具
 participant B as 百炼CLI／云端ASR
 U->>C: 提供录音并请求转写
-C->>M: 准备环境，启动配置页
+opt 当前对话还有尚未交接的旧配置页
+    C->>M: cancel --session 旧页面编号，等待原serve退出
+    M-->>C: 旧编辑已结束
+end
+C->>M: 检查更新、准备环境并启动配置页（图09）
 M-->>C: listening：session_id与URL
 C-->>U: 打开页面，请用户填写
 U->>M: 选择录音、填写设置并核对预览

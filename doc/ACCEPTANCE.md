@@ -1,5 +1,17 @@
 # 验证记录
 
+## 2026-11-16 v0.1.6新录音衔接重发准备
+
+用户明确授权同步master与重发同一v0.1.6，Release正文保持原确认版本。`unittest tests.test_package -q` 15项通过，19.810秒，包含旧服务占用释放、更新检查与新附件开页回归。双包dist/release-v0.1.6-reissue按固定清单逐文件核对源码、README、manifest及官方运行时，CRC通过；轻量包55文件/411046字节、SHA-256为8764c3f5ca96da8032242a64dfefc3f3cb5736a1096d6c3daf4ae9ee78896096；完整版57文件/70429640字节、SHA-256为8ecddfaafc25d5aa4ec4d5fd14aa86f550846f699e1d0c2be62690b24151dfb2。
+
+预检确认目标Release446669327及原标签对象fadd18e77439a99d8e81066eb87091bca570b216，保存七个公开Release的ID、正文与附件摘要供重发后比对。公开API预检遇到限流后使用既有GitHub登录完成，只影响发布工具，不修改Skill更新器。实际标签、附件替换与远端核对结果随后记录。
+
+## 2026-11-16 新附件与旧配置页的更新衔接
+
+修正范围为Skill及相关说明，不修改Python业务或更新锁。扩展现有`tests.test_package.PackageTests.test_cancelled_page_releases_packaged_skill_for_update`，真实启动已打包serve后验证deferred未联网且未写日检；取消并等待进程退出，更新检查成功后用中文空格路径带入新录音，再读取HTTP页面状态确认editing、正确audio、preview为空且没有job。用例通过，6.331秒，未请求云端。
+
+独立评估者仅读修改后的SKILL.md，对三个场景作命令顺序推演：旧配置页后新附件、原预览只回复继续、其他目录占用导致deferred。新附件两种情形均进入开页，原预览确认等待用户编号；这是行为推演，不替代真实Codex会话执行。Skill格式有效，25份文档177个链接与差异检查通过；03/07/09经共享入口渲染。正式v0.1.6、远端及用户安装未改变。
+
 ## 2026-11-16 v0.1.6正式发布与公开升级
 
 用户明确授权合并master并发布新版本。master/dev已快进到137ab3f9cdacde695d636b047a203f922a956b40，新增标签v0.1.6指向该提交。GitHub Release446669327公开且latest为v0.1.6，正文与本地release/NOTES.md一致；两附件大小及SHA-256均与下方发布准备记录一致。六个历史Release的ID和附件摘要回读保持，未删除或重发旧版本。

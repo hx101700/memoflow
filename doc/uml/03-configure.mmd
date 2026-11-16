@@ -68,8 +68,8 @@ loop 填写、检查与返回修改
 end
 alt 交接前取消或到期
     Note over U,S: 可在填写或预览期间发生，不创建job
-    alt 用户取消或要求更新
-        U->>C: 取消本次编辑，或检查更新／安装新ZIP
+    alt 用户取消、明确转写新录音或要求更新
+        U->>C: 取消、转写新录音，或检查更新／安装新ZIP
         C->>H: cancel --session 本次启动回执编号
         H->>F: read_terminal；无结果时read_connection
         H->>H: control_session发送受保护POST /api/cancel

@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 from unittest.mock import patch
+from urllib.request import HTTPCookieProcessor, build_opener
+import wave
 from zipfile import ZipFile
 
 import update
@@ -42,7 +44,7 @@ class PackageTests(RuntimeTestCase):
         return destination
 
     def test_cancelled_page_releases_packaged_skill_for_update(self):
-        """验证实际发行页面取消并退出后，更新器取得同一安装的独占使用权。"""
+        """验证旧配置页退出后可检查更新，再带入新录音进入填写阶段。"""
         installed = self.extract()
         command = [sys.executable, "-B", "-X", "utf8", str(installed / "scripts/asr.py"),
                    "--workspace", str(self.runtime.workspace)]
@@ -55,6 +57,7 @@ class PackageTests(RuntimeTestCase):
             with patch.object(update, "_download") as download:
                 self.assertEqual(update.update_skill(installed, check_now=True)["status"], "deferred")
             download.assert_not_called()
+            self.assertFalse((installed / update.STATE).exists())
             cancelled = subprocess.run(command + ["cancel", "--session", listening["session_id"]],
                                        capture_output=True, text=True, encoding="utf-8", timeout=15)
             self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
@@ -67,7 +70,33 @@ class PackageTests(RuntimeTestCase):
             with patch.object(update, "_download", return_value=release) as download:
                 self.assertEqual(update.update_skill(installed, check_now=True)["status"], "latest")
             download.assert_called_once_with(update.LATEST_URL)
+
+            recording = self.runtime.workspace / "新的录音 中文 空格.wav"
+            with wave.open(str(recording), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(8000)
+                audio.writeframes(b"\0\0" * 800)
+            process = subprocess.Popen(command + ["serve", "--no-browser", "--audio", str(recording)],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+            assert process.stdout is not None
+            new_page = json.loads(process.stdout.readline())
+            self.assertEqual(new_page["event"], "listening")
+            self.assertNotEqual(new_page["session_id"], listening["session_id"])
+            browser = build_opener(HTTPCookieProcessor())
+            with browser.open(new_page["url"], timeout=10) as response:
+                self.assertEqual(response.status, 200)
+            with browser.open(new_page["url"].rstrip("/") + "/api/session", timeout=10) as response:
+                session = json.load(response)
+            self.assertEqual(session["phase"], "editing")
+            self.assertEqual(session["audio"]["path"], str(recording))
+            self.assertIsNone(session["preview"])
             self.assertFalse(self.runtime.path(".state/jobs").exists())
+            cancelled = subprocess.run(command + ["cancel", "--session", new_page["session_id"]],
+                                       capture_output=True, text=True, encoding="utf-8", timeout=15)
+            self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
+            _, errors = process.communicate(timeout=15)
+            self.assertEqual(process.returncode, 0, errors)
         finally:
             if process.poll() is None:
                 process.kill()
