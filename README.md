@@ -44,13 +44,13 @@ flowchart TD
     B --> C("网页配置与预览")
     C --> D("用户确认并反馈给 Codex")
     D --> E("获得原始结果与校对稿")
-    E --> F("用户校对、提出重点<br/>和格式要求")
-    E -. "按需开启" .-> R("回听校对<br/>逐句回听与修改<br/>导出校验稿")
+    E --> F("用户提出重点<br/>和格式要求")
+    E -. "按需开启" .-> R("回听校对")
     R --> F
     G("已有带格式的<br/>参考文档") --> H("个性化纪要生成 Skill<br/>【开发中】")
     F --> H
     H --> I("获得符合用户习惯的<br/>指定格式纪要")
-    I -. "继续反馈" .-> H
+    I -. "持续反馈" .-> H
 
     classDef default fill:transparent,stroke:#8b949e,stroke-width:1px,filter:none;
     classDef active fill:#0969da,stroke:#0969da,color:#ffffff;
@@ -98,7 +98,11 @@ Codex 使用语音转写 Skill 前会检查正式版本，每天最多自动检�
 
 Codex 会打开本机配置网页，请在网页中完成录音和识别设置，进入预览页后点击“复制给 Codex”，再将确认消息发回原对话。
 
-在转写设置中开启“转写后回听校对”，即可在转写完成后逐句回听、修改文字和说话人，再选择目录导出校验稿。也可以在转写完成后直接告诉 Codex：“我需要回听校对。”
+在转写设置中开启“转写后回听校对”，即可在转写完成后逐句回听、修改文字和说话人，再选择目录导出校验稿。也可以在转写完成后告诉 Codex：
+
+```text
+我需要回听校对。
+```
 
 <details>
 <summary>转写配置页（示意图）</summary>
@@ -124,7 +128,7 @@ Codex 会打开本机配置网页，请在网页中完成录音和识别设置�
 <details>
 <summary>回听校对页（示意图）</summary>
 
-![MemoFlow 回听校对：逐句回听、修改正文、区分改动与播放位置，并导出校验稿](https://raw.githubusercontent.com/hx101700/memoflow/dev/assets/screenshots/transcription-review.png)
+![MemoFlow 回听校对：逐句回听、修改正文、区分改动与播放位置，并导出校验稿](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-review.png)
 
 绿色标记已修改的内容，蓝色标记当前回听的句子。修改自动保存，也可以重置单句或跳转到下一处修改；校对后导出 Word、Excel 和 Markdown 校验稿。
 

@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-16 v0.1.6发布准备
+
+用户授权正式发布与master合并。版本通过npm同步为0.1.6，依赖项未改变；README包含最后确认的回听节点、持续反馈及可复制请求，Release采用已审阅的双语正文。
+
+`unittest tests.test_package tests.test_skill_update -q` 51项通过，24.637秒（.runtime/release-016-checks.log）；25份文档177个链接和差异检查通过。正式双包dist/release-v0.1.6逐文件比对源码、最新README、manifest与官方运行时，固定清单及ZIP CRC通过。轻量包55文件/410527字节，SHA-256为1e13118816f610c30a1e60d1080f6507010c61cd094d45bf8d8ae07d70279118；完整版57文件/70429121字节，SHA-256为0ec31cebb6dda91c7d3cb45bba7bc24be027c44fa0927cbf1b053b2b53b774ee。
+
+本次元数据/文档调整后的针对性验证不替代前文完整运行测试。没有重新调用云端ASR或替换用户安装。GitHub登录有效，六个历史Release和附件摘要已记录，目标v0.1.6尚未使用；发布及升级实测结果另行追加。
+
 ## 2026-11-16 README回听入口与图稿表达修正
 
 仅调整文档：双语README新增可选回听节点及转写后提出回听的说明；07/11按现有参与者时序风格重画，保留唯一共享主题与渲染入口。对照ReviewSession、useReview和delivery核对保存／导出关系，明确OUTCOME_UNKNOWN可能只存在于当次回执。

@@ -44,13 +44,13 @@ flowchart TD
     B --> C("Configure and preview<br/>in the web page")
     C --> D("User confirms and sends<br/>the message to Codex")
     D --> E("Receive the original result<br/>and transcript drafts")
-    E --> F("User reviews, adds priorities,<br/>and gives format requirements")
-    E -. "Optional" .-> R("Listen and review<br/>Replay and edit sentences<br/>Export reviewed documents")
+    E --> F("User adds priorities<br/>and format requirements")
+    E -. "Optional" .-> R("Listen and review")
     R --> F
     G("Existing formatted<br/>reference documents") --> H("Personalized minutes Skill<br/>In development")
     F --> H
     H --> I("Minutes in the user's<br/>requested format")
-    I -. "More feedback" .-> H
+    I -. "Ongoing feedback" .-> H
 
     classDef default fill:transparent,stroke:#8b949e,stroke-width:1px,filter:none;
     classDef active fill:#0969da,stroke:#0969da,color:#ffffff;
@@ -98,7 +98,11 @@ After installation, tell Codex:
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
-Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents. You can also tell Codex after transcription: “I'd like to listen to the recording and review the transcript.”
+Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents. You can also tell Codex after transcription:
+
+```text
+I'd like to listen to the recording and review the transcript.
+```
 
 <details>
 <summary>Transcription configuration (illustration)</summary>
@@ -124,7 +128,7 @@ Enable “Listen and review after transcription” to replay individual sentence
 <details>
 <summary>Listen and review (illustration)</summary>
 
-![MemoFlow transcript review: replay sentences, edit text, distinguish edits from the playback position, and export reviewed documents](https://raw.githubusercontent.com/hx101700/memoflow/dev/assets/screenshots/transcription-review.png)
+![MemoFlow transcript review: replay sentences, edit text, distinguish edits from the playback position, and export reviewed documents](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-review.png)
 
 Green marks edited text; blue marks the sentence being reviewed. Changes are saved automatically. Reset a sentence or jump to the next change, then export reviewed Word, Excel, and Markdown files.
 

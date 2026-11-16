@@ -2,7 +2,7 @@
 
 # MemoFlow v0.1.6
 
-This release adds listening and editing after transcription. Replay the recording as you correct the text and speaker labels, then export reviewed documents. Your saved edits are there when you return.
+This release adds **Listen and review** after transcription. Replay the recording as you correct the text and speaker labels, then export reviewed documents.
 
 ### What's changed
 
@@ -32,4 +32,4 @@ Updates reuse your working folder and preserve its runtimes, credentials, jobs, 
 
 When updating from a network in mainland China, use a connection that can reliably reach GitHub so version checks and downloads can complete.
 
-If you encounter a problem, please report it through [Issues](https://github.com/hx101700/memoflow/issues).
+If you encounter a problem, please report it through [Issues](https://github.com/hx101700/memoflow/issues). If MemoFlow helps you, consider giving the project a [star](https://github.com/hx101700/memoflow).
