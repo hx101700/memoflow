@@ -12,6 +12,12 @@ const python = path.join(repository, ".venv/Scripts/python.exe");
 const entry = path.join(repository, "skills/asr-transcription/scripts/asr.py");
 const screenshots = path.join(repository, ".runtime/ui-previews");
 
+// 根据摘要字段名取值，新增识别选项不会改变其他字段的定位。
+function summaryValue(summary: Locator, label: string): Locator {
+  return summary.locator("tr").filter({ hasText: label })
+    .locator(".el-descriptions__content");
+}
+
 // 调用实际代码入口，将复制的编辑会话编号交接为任务并解析回执。
 function confirmSession(workspace: string, sessionId: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -268,7 +274,7 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     assert.equal(await page.locator("#audio_id input[type=file]").count(), 0);
     assert.match(await page.locator(".audio-path").innerText(), /sample\.wav/);
     assert.match(await summary.locator(".el-descriptions__content").nth(0).innerText(), /^sample\.wav · 64.0 KB$/);
-    assert.equal(await summary.locator(".el-descriptions__content").nth(5).innerText(), "API Key");
+    assert.equal(await summaryValue(summary, "Authentication").innerText(), "API Key");
     assert.equal((await summary.innerText()).includes("fixture-ui-key-not-real"), false);
     const selectedAudio = page.locator("#audio_id").getByRole("button", { name: "Replace recording", exact: true });
     assert.equal(await selectedAudio.locator(".audio-name").innerText(), "sample.wav");
@@ -312,9 +318,9 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     await page.locator(`[id="${audioOptions}"]`).getByRole("option", { name: "English", exact: true }).click();
     assert.equal(await summary.locator(".el-descriptions__content").nth(1).innerText(), "English");
     await page.locator('label[for="diarization"]').click();
-    assert.equal(await summary.locator(".el-descriptions__content").nth(2).innerText(), "Off");
+    assert.equal(await summaryValue(summary, "Speaker diarization").innerText(), "Off");
     await page.locator('label[for="diarization"]').click();
-    assert.equal(await summary.locator(".el-descriptions__content").nth(2).innerText(), "On");
+    assert.equal(await summaryValue(summary, "Speaker diarization").innerText(), "On");
     assert.equal(requests.filter(request => request.path === "/api/validate").length, summaryRequests);
     assert.equal(await page.locator("#enhancement .el-card__header h2 + .section-caption").count(), 0);
     assert.match(await page.locator('.toggle-row').filter({ has: page.locator('label[for="diarization"]') }).locator("p").innerText(), /mono copy/);
@@ -340,7 +346,7 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     assert.equal((await download).suggestedFilename(), "hotwords-template.xlsx");
     const input = '--terms "Kubernetes"\nC:\\voice\\😀 context';
     await page.locator("#context-text").fill(input);
-    assert.equal(await summary.locator(".el-descriptions__content").nth(4).innerText(), `${Array.from(input).length} characters`);
+    assert.equal(await summaryValue(summary, "Context").innerText(), `${Array.from(input).length} characters`);
     await page.locator("#hotword_rows input[type=file]").setInputFiles(path.join(root, "fixtures/invalid.xlsx"));
     await page.locator("#hotword-issues").getByText(/This Excel file does not match the template/).waitFor();
     assert.equal(await page.locator("#hotword-issues .error-details").count(), 0);
@@ -365,7 +371,7 @@ test("Edge页面以显式编辑会话编号交接一个任务", { timeout: 120_0
     assert.equal(await page.locator(".hotword-error-row").count(), 0);
     await assertHotwordHeader(table);
     assert.equal(await page.locator("#hotword-1-weight").evaluate(element => getComputedStyle(element).textAlign), "center");
-    assert.equal(await summary.locator(".el-descriptions__content").nth(3).innerText(), "61 rows");
+    assert.equal(await summaryValue(summary, "Hotwords").innerText(), "61 rows");
     await page.evaluate(() => window.scrollTo(0, 600));
     const firstStickyTop = (await summary.boundingBox())!.y;
     await page.evaluate(() => window.scrollTo(0, 800));

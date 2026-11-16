@@ -12,8 +12,10 @@ from io import BytesIO, TextIOWrapper
 import json
 from pathlib import Path, PurePosixPath
 import re
+from ssl import SSLCertVerificationError
 import sys
 import tempfile
+from time import sleep
 from typing import TypedDict, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -260,8 +262,34 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
         originals: dict[str, bytes | None] = {}
         modified: list[str] = []
         created: list[Path] = []
+        retries_used = 0
+
+        def download(url: str) -> bytes:
+            """仅重试失败的网络步骤，发布资料与轻量包共用两次额外机会。"""
+            nonlocal retries_used
+            while True:
+                try:
+                    return _download(url)
+                except (OSError, UpdateError) as error:
+                    if isinstance(error, HTTPError):
+                        retryable = error.code in (408, 429) or 500 <= error.code < 600
+                    else:
+                        reason = error.reason if isinstance(error, URLError) else error
+                        retryable = (
+                            isinstance(error, (URLError, TimeoutError, ConnectionError))
+                            and not isinstance(reason, SSLCertVerificationError)
+                        ) or isinstance(error.__cause__, IncompleteRead)
+                    if not retryable or retries_used >= 2:
+                        raise
+                    retries_used += 1
+                    if isinstance(error, HTTPError):
+                        error.close()
+                    print(f"更新网络请求未完成，{retries_used}秒后进行第{retries_used}/2次重试。",
+                          file=sys.stderr, flush=True)
+                    sleep(retries_used)
+
         try:
-            release = _json(_download(LATEST_URL))
+            release = _json(download(LATEST_URL))
             tag = release.get("tag_name")
             if (not isinstance(tag, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", tag)
                     or release.get("draft") is not False or release.get("prerelease") is not False):
@@ -288,7 +316,7 @@ def update_skill(root: Path, *, check_now: bool = False) -> UpdateReport:
                     raise UpdateError("最新正式版尚未提供轻量安装包。")
                 print(f"发现新版 v{latest}，正在下载轻量包并更新 Skill（当前 v{current['version']}）。",
                       file=sys.stderr, flush=True)
-                data = _download(f"https://github.com/{REPOSITORY}/releases/download/{tag}/asr-transcription-lite.zip")
+                data = download(f"https://github.com/{REPOSITORY}/releases/download/{tag}/asr-transcription-lite.zip")
                 if len(data) != asset.get("size"):
                     raise UpdateError("轻量包下载不完整。")
                 digest = asset.get("digest")

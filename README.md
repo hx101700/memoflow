@@ -96,6 +96,8 @@ Codex 使用语音转写 Skill 前会检查正式版本，每天最多自动检�
 
 Codex 会打开本机配置网页，请在网页中完成录音和识别设置，进入预览页后点击“复制给 Codex”，再将确认消息发回原对话。
 
+在转写设置中开启“转写后回听校对”，即可在转写完成后逐句回听、修改文字和说话人，再选择目录导出校验稿。
+
 <details>
 <summary>转写配置页（示意图）</summary>
 
@@ -114,6 +116,15 @@ Codex 会打开本机配置网页，请在网页中完成录音和识别设置�
 <summary>交接结束页（示意图）</summary>
 
 ![交接结束页面显示转写任务编号和保存位置](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
+
+</details>
+
+<details>
+<summary>回听校对页（示意图）</summary>
+
+![MemoFlow 回听校对：逐句回听、修改正文、区分改动与播放位置，并导出校验稿](https://raw.githubusercontent.com/hx101700/memoflow/dev/assets/screenshots/transcription-review.png)
+
+绿色标记已修改的内容，蓝色标记当前回听的句子。修改自动保存，也可以重置单句或跳转到下一处修改；校对后导出 Word、Excel 和 Markdown 校验稿。
 
 </details>
 

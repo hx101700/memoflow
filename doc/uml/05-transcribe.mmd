@@ -8,7 +8,8 @@ participant B as BL外部进程
 participant A as 百炼／临时OSS
 participant D as delivery（函数模块）
 participant F as 原始JSON与成品
-Note over C,D: 成功主路径：用户已明确交接，输入有效且记录均写入成功；失败见07-state、08-failure<br/>各lifeline为函数模块或外部进程，未建立同名服务类
+participant H as review_web（函数模块）
+Note over C,D: 成功主路径：用户已明确交接，输入有效且记录均写入成功；职责总览见07-workflow，保存失败见08-failure<br/>各lifeline为函数模块或外部进程，未建立同名服务类
 Note over C,L: BL明确返回免费额度／欠费／预算或账单限制时，复用error_catalog解释<br/>Skill告知原因、处理入口与原job_id；保留原状态，不自动改计费或重传<br/>仅凭限流码、HTTP状态或空结果不能推断余额不足
 C->>T: --workspace 用户目录 transcribe --job ID
 Note over C,T: 告知已开始转写；等待同一进程直到文件交付或明确失败
@@ -81,7 +82,12 @@ else 本次取得执行占用
     D->>J: save_record(COMPLETE / PARTIAL / FAILED)
     D-->>T: delivery回执
     T->>T: _attach_delivery()计算documents_ready
-    T-->>C: JSON状态＋delivery＋已知文件位置
+    T-->>C: JSON状态＋delivery＋review_enabled＋已知文件位置
+end
+opt 返回JSON_READY、review_enabled为true且无record_error
+    C->>C: 先说明原稿的实际交付结果
+    C->>H: review --job 原ID；打开回听页面
+    Note over C,H: 有效JSON即可回听，原稿部分导出失败不阻止<br/>沿用原job_id，不再请求BL；回听与独立导出见图10
 end
 Note over B,F: 云端鉴权、临时上传、提交、轮询、下载和原JSON落盘属于BL<br/>CLI、core、commands、runtime均为官方2.10.1<br/>Python等待完整命令；失败停止，job占用保持，不自动重试<br/>通用超时不能证明失败阶段；时限不保证云端完成<br/>job_id是本机转写任务编号；Python未提供可靠task_id恢复入口
 Note over T,F: JSON：已选根 / job_id / json / transcription.json<br/>成品：已选根 / job_id / documents / transcription.xlsx、.docx、.md<br/>导出状态：工作目录 / .asr-transcription / .state / jobs / job_id / delivery / status.json<br/>json_path先记录目标位置，其存在本身不是JSON成功证明

@@ -1,5 +1,90 @@
 # 验证记录
 
+## 2026-11-16 本版更新重试、说话人滚动与发布预览
+
+用户授权实现本版计划并更新GitHub README，Release先预览。源码仍0.1.5，文案拟v0.1.6；本轮不发布标签、资产或替换用户安装。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| `unittest discover -s tests -t . -q` | 567项通过、193.142秒，日志.runtime/pre-release-20261116-python.log |
+| `npm run test:web`对应两测试文件 | 68项通过，日志.runtime/pre-release-20261116-web.log |
+| `npm run test:browser` | 5项通过，65.698秒，含原工单、附件、完整回听及说话人滚动；日志.runtime/pre-release-20261116-browser.log |
+| `mypy`、Vue类型、构建、Skill格式、文档链接 | 36源文件及相应检查通过，09图按原主题渲染通过 |
+| 更新重试专项 | 36项通过、无跳过；检查/下载共享预算、已有成功步骤复用、日检缓存、主动检查、HTTP/断流与非网络失败边界均覆盖 |
+| 说话人列表 | 21/22条目溢出、900→500px窗口、底部按钮保留、新增滚动焦点及刷新恢复通过 |
+| 草稿持久化专项 | 保存后重开、主动关闭、最后网页断开3项通过，0.794秒；确认draft保留且原JSON与原稿不变 |
+| 最终候选包 | dist/review-final-20261116双包55/57文件，版本0.1.5；逐项比对源码及最新双语README，完整清单和ZIP CRC通过 |
+| 最终图稿和链接 | 05/07/09/10/11按共享主题渲染；25份文档177个本地链接通过，git diff --check通过 |
+
+图片assets/screenshots/transcription-review.png为1440×1080实际网页截图，使用独立虚构周会数据、角色名及本机静音录音；展示绿色改动与蓝色播放位置。图片已视觉检查，不含密钥、签名URL、私人路径或真实录音内容。截图库正常页面状态通过production review服务提供，未调用ASR。
+
+首次截图期间，实际出现Windows ConnectionAbortedError/10053：浏览器跳转取消旧媒体请求，现有流式读取仅捕获BrokenPipe/Reset。将该既有处理扩大到ConnectionError家族，未引入重试或新状态。随后22项HTTP测试通过（新增三个连接关闭子例），相同截图操作复测后服务日志仅有启动回执，正常退出。此修正发生在567项全量之后，未重复全量。
+
+双语README新增折叠“回听校对页（示意图）”及简短说明，保留原图片与介绍。Release按用户六项内容准备预览，最后一项仅保留“修复问题并优化使用体验。”。旧正式Release、master及版本号保持；正式发布等待后续指示。
+
+## 2026-11-16 紧凑内层卡片与编辑稳定性
+
+逐句展示改用Element Plus ElCard的公开body-class与shadow参数。卡片8px间距，正文14px/1.7行距；阅读与编辑共用padding、字体、行高和换行规则。进入编辑使用暴露的原生textarea.focus({preventScroll:true})，并保留点击位置。顶部标题与右侧操作按垂直中心对齐。
+
+类型与构建通过。Edge完整回归1项通过、42.878秒（.runtime/review-cards-compact-browser.log），新增实际对比阅读/编辑文字区域x/y/宽高偏差在1～1.5px以内，以及标题/操作中心一致；原回听、修改、导出和恢复路径继续通过。正常示例46614在保存后刷新，已通过CUA查看卡片和紧凑布局。最后用户将卡片上下边距改为8px，重新构建；未为此尺寸微调重复完整浏览器测试。外层上下24px保持。
+
+## 2026-11-16 回听体验收尾与旧逻辑清理
+
+- 清理回听picker状态/取消方法/等待文案及对应HTTP接口；原转写配置页取消能力保留。Python test_review/test_review_web/test_review_lifecycle/test_path_picker共80项通过，完整mypy36文件通过。
+- 前端68项与Vue类型/构建通过。Edge回归1项通过、42.456秒，验证桌面基线/按钮等尺寸、点击文字光标、保存进度优先、导出期间暂停、系统取消结果、重选失败保留入口，以及原播放/修改导航/恢复流程。日志.runtime/review-ux-final-browser.log，合成截图run-zpLJg8。
+- 最后的圆角和32px留白仅重新构建并通过CUA读取真实页面核对：borderRadius=8px，上下padding=32px，两顶部按钮均约128×32px。留白放在滚动容器外。测试页面未改正文，原编辑页保持。
+- 用户确认原生目录窗口后，读取production演示任务的review/status.json为COMPLETE，xlsx/docx/md均READY且文件存在；没有输出私人保存路径或正文。此证据不替代Office视觉阅读或真实长录音识别质量。
+- 当前文档、Skill格式、旧引用及差异检查通过；01和10图按统一主题重绘。没有新增依赖或兼容实现。最新双候选包在dist/review-reading-20261116（55/57文件），运行文件/README逐字核对及CRC通过；未提交、推送或更换安装。
+
+## 2026-11-16 回听标题、时间标签与修改导航
+
+主标题改为“回听校对”，文件标签在“说话人名称”前；时钟时间标签使用14px文字，当前句字重700、文字色保持。操作按钮统一Element Plus默认32px。“下一处修改”放在跟随开关旁，按原句顺序循环定位，恢复原文的句子退出导航，定位时暂停音频并聚焦正文。
+
+Vue类型检查及构建通过。`tsx --test tests/test_review_browser.ts`最终回归1项通过、41.588秒，新增覆盖无改动禁用、2→4→2循环、重置后跳过、跳转暂停，以及当前时间字号/字重/颜色。原有拖动、保存、目录导出、关闭恢复回归继续通过。标题布局在1280px及390px截图核对；文件标签颜色的最后CSS优先级修正后重新构建，未为该样式重复全套测试。
+
+使用说明、开发说明及10时序图同步，10图按统一主题渲染通过，文档链接检查通过。双候选包按最新源码重建于dist/review-reading-20261116，固定文件和README逐字核对、CRC通过。用户当前仍在编辑，保留页面内容，未强制刷新、提交或发布。
+
+## 2026-11-16 回听阅读体验与播放器修订
+
+按试用反馈修改为完整段落阅读，添加单句重置/修改标记，统一提示区，导出时选择目录。移除六列表格、结束按钮、路径列表及连续播放开关；底部播放普通连续音频，行内回听句子片段。Cookie仍只认证，草稿持久保存在任务JSON。
+
+- `unittest tests.test_review tests.test_review_web tests.test_review_lifecycle tests.test_delivery tests.test_session tests.test_transcription -q`：123项通过，35.948秒。生命周期使用真实本机SSE连接并缩短宽限：覆盖最后关页、刷新、多页、认证和显式关闭；导出窗口替身覆盖选择/取消、原稿保留和版本冲突。
+- `mypy`：36源文件通过；前端/双语68项、Vue类型检查和构建通过。
+- `tsx --test tests/test_review_browser.ts`：最终完整Edge回归1项通过，38.31秒并正常退出；真实拖动到300/700秒、暂停高亮、跨句连续播放、跟随、保存/重置/语言切换、单提示、模拟目录选择/取消、刷新、最后标签关闭10秒退出和重新打开恢复均通过。末句用真实可见位置断言，等待浏览器content-visibility排版，不把占位文字当已呈现。
+- 试验发现第一版长录音夹具只写入1秒PCM，已修正为1000秒并加入duration前置断言；失败试验不计为播放器验收。重新生成演示job独立probe确认1000秒。测试数据为纯合成音频/文字，不含听悟私人正文。
+- 回听行重置按钮受相邻按钮margin规则影响，修改标记出现前后位置不同，已提高该布局规则的明确性，保持右对齐；只改样式并重新构建。
+- 01/01b/10/11图稿按统一主题渲染通过；25份文档179个本地链接、Skill格式通过。实际导出路径和正文不进入Git/ZIP。
+
+最终截图：`.runtime/review-browser-tests/run-oEfmM9/review-reading-light-1280.png`、`review-reading-dark-1280.png`、`review-reading-390.png`、`review-modified-and-current.png`。截图展示长正文、已修改与当前句两种反馈；按钮对齐的最后样式另以当前页面为准。
+
+候选包：`dist/review-reading-20261116`，轻量55文件/408192字节、完整57文件/70426786字节，版本0.1.5；固定运行文件与README逐字相同，ZIP CRC与运行时归档摘要核对通过。
+
+原生目录窗口：通过正常桌面权限启动production review后点击导出，已确认专属路径选择子进程启动，但CUA未发现窗口，已请用户确认。该项尚不能记为人工通过；已取消诊断选择，页面恢复可操作。旧演示页有用户未保存的输入和409提示，因此保留原页，另开新版。未做真实长语音识别/回听质量或Office逐页验收，未发布或替换用户安装。
+
+同日用户后续确认：“能看到，可以选择文件夹”。据此确认原生目录窗口的可见性和选择交互；此前CUA未列出窗口不足以认定窗口未打开。用户尚未反馈选择后的三格式文件生成结果，未将此回复扩大记为完整原生导出验收。
+
+## 2026-11-16 人工回听与表格校对候选
+
+实现范围：工单review_enabled、review/review-close入口、逐句范围播放、正文与说话人修改、独立草稿和reviewed三格式。界面按用户最新要求为六列表格、顶部文件名与保存/导出、底部播放器。只使用本机合成音频/JSON，未新增云端调用或更改正式版本。
+
+验证环境沿用仓库.venv及 `.runtime/bl-2.10.1-workspace` 的私有Node与固定BL；浏览器为本机Edge，进程合约采用正常Windows权限。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| `.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -t . -q` | 547项、266.157秒；546通过，唯一失败是结构测试的模块清单未登记review_web。清单与单向导入检查同步后，2项结构测试通过；未把首轮记为全绿 |
+| `unittest tests.test_transcription.TranscriptionTests.test_review_option_reaches_delivery_receipt_without_changing_bl_request tests.test_architecture -q` | 新增工单到成功回执集成用例和2项结构测试共3项通过；回听选项不进入BL参数，原稿完整交付，识别只调用一次 |
+| `unittest tests.test_review tests.test_review_web tests.test_delivery -q` | 57项通过，包括草稿恢复、保存冲突、输出版本、音频回退/范围、只读来源及关闭响应失败仍退出并可重开 |
+| `mypy`、`npm run check:web`、`npm run test:web`、`npm run build:web` | 36源文件、Vue类型、64前端用例与构建通过；Vite仍提示单包超过500kB，未为本轮增加拆包机制 |
+| `tsx --test tests/test_browser.ts` | 原工单3项通过，包含附件失效/刷新/语言切换、预览交接及2000热词；新增选项后摘要测试改按字段名定位 |
+| `tsx --test tests/test_review_browser.ts` | 最终1项通过、13.343秒：真实单句播放停止、千句虚拟表格、390px横滚和底栏、双语/主题、保存失败保留、刷新、说话人、导出与结束。测试清理修正了服务自然退出与taskkill竞态，正常退出0，没有force-exit |
+| Skill格式、文档链接、受影响UML | 格式与链接通过；10份图按现有渲染器与主题生成，文字边界检查通过 |
+
+回听测试发现单句结束后的timeupdate会将高亮移到下一句，已修复暂停保持原句。页面尺寸确定后才挂载表格，避免首屏使用零宽估算而行高不一致。关闭响应失败仍在finally中shutdown，保存内容可重新打开。
+
+最终截图：`.runtime/review-browser-tests/run-NFnCwg/review-table-1280.png`、`review-table-dark-1280.png`、`review-table-390.png`。演示服务使用 `.runtime/review-visual-20261116`；数据和导出稿均不进入发行包。新候选双包在 `dist/review-20261116`，清单55/57文件，固定运行文件及双语README按源码核对，运行时归档按既有摘要检查。未发布或替换用户安装。
+
+当前限制：未进行真实长录音端到端回听、原生重选窗口人工操作或Office视觉验收；本机模拟结果不能替代这些验收。用户尚需确认交互体验。
+
 ## 2026-11-15 固定模型额度与计费失败提示
 
 用户要求仅针对Qwen-Audio-3.1-ASR-Flash-Filetrans补齐免费/付费额度提示，并将本功能和BL2.10.1适配推送dev；版本仍为0.1.5，本轮不发布或更换用户安装。

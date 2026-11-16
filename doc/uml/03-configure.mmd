@@ -22,7 +22,7 @@ W->>H: 首页建立Cookie；GET /api/session与/api/events
 H->>S: description()
 H-->>W: 当前录音、预览、阶段与双语错误
 loop 填写、检查与返回修改
-    U->>W: 填写识别选项及增强内容
+    U->>W: 填写识别选项、增强内容及人工回听开关
     opt 选择或更换录音
         W->>H: POST /api/select-audio(picker_id)
         H->>S: select_audio(picker_id)
@@ -105,7 +105,7 @@ else 用户确认有效预览
             Note over C,W: 原录音变化或命令超长时保留preview<br/>经既有“返回修改”退出，再重新预览
         end
         S->>F: write_receipt()，再publish_config()发布配置与摘要
-        Note over S,F: config.json最后原子发布，是交接完成标记
+        Note over S,F: config.json最后原子发布，是交接完成标记<br/>review_enabled一并冻结，不发送给BL
         S->>S: _finish(handed_off)设置终态事件
     end
     par 原确认HTTP请求

@@ -6,6 +6,7 @@ participant J as job_files（函数模块）
 participant E as Runtime对象
 participant R as results（函数模块）
 participant D as delivery（函数模块）
+participant V as review（函数模块）
 participant W as documents（函数模块）
 participant F as 本机成品
 alt 用户明确要求重新导出
@@ -63,10 +64,14 @@ else 用户查看本地任务状态
         T->>J: read_delivery()
         J-->>T: None或固定delivery/status.json中的记录
         T->>T: 有交付记录时附加delivery及documents_ready
-        T-->>C: 本地执行状态及已有交付信息
+        T->>V: read_review_status(runtime, job_id)
+        V->>F: 读取review草稿版本及status.json
+        V-->>T: None或revision、delivery、export_revision
+        T-->>C: 本地执行、原稿交付及已有review信息
     end
 end
 Note over T,F: 自动交付与显式export复用同一export_documents()<br/>重导更新固定documents中的三个同名文件；失败格式保留已有成品<br/>读取范围为确认配置、执行记录和原JSON
 Note over C,J: 状态来自本机磁盘，既不查询云端，也不证明进程仍存活<br/>job-status读取固定delivery/status.json，不重新核验成品文件
+Note over C,V: export仅从原JSON重导原稿；人工校验稿由图10的页面入口导出<br/>回执review只返回版本与交付摘要，不含正文<br/>校验稿须看其delivery及export_revision，原documents_ready不能表示完成<br/>未保存的浏览器输入不在回执中
 Note over T,J: export要求磁盘JSON_READY及摘要<br/>当次回执不能替代已保存记录<br/>历史模型任务可本地查询或重导，不触发上传<br/>记录恢复入口尚未提供
 Note over C,F: scripts/asr_runtime/application/transcription.py::export_job、job_status、_deliver<br/>utils/job_files.py::read_execution、read_delivery、prepare_delivery、prepare_documents<br/>application/delivery.py::export_documents；utils/documents.py::publish_document

@@ -23,13 +23,13 @@ export interface SessionDescription {
   terminal: SessionEnd | null;
 }
 export interface Configuration {
-  auth_mode: "console" | "api_key"; audio_id: string | null; diarization_enabled: boolean;
+  review_enabled: boolean; auth_mode: "console" | "api_key"; audio_id: string | null; diarization_enabled: boolean;
   enhancement_mode: EnhancementMode; hotword_rows: HotwordRow[]; context: string;
   language_hint: string | null; speaker_count: number | null;
   json_directory: string; document_directory: string;
 }
 export interface FormValues {
-  useApiKey: boolean; diarizationEnabled: boolean; hotwordsEnabled: boolean; contextEnabled: boolean;
+  reviewEnabled: boolean; useApiKey: boolean; diarizationEnabled: boolean; hotwordsEnabled: boolean; contextEnabled: boolean;
   context: string; language: string; speaker: string; hotwordRows: EditorRow[];
 }
 export type CellValue = string | number | boolean | null;
@@ -78,4 +78,29 @@ export interface Api {
   request<K extends keyof Endpoints>(path: K, payload?: object, file?: File): Promise<Endpoints[K]>;
   template(): Promise<Blob>;
   listen(ended: (result: SessionEnd) => void, disconnected: () => void): () => void;
+}
+
+export interface ReviewSentence { index: number; begin_ms: number; end_ms: number; text: string; speaker_id: number | null; original_text: string; original_speaker_id: number | null }
+export interface ReviewSpeaker { id: number; name: string }
+export interface ReviewAudio { available: boolean; name: string; kind: "original" | "mono" | "preview" | null; error: LocalizedText | null }
+export interface ReviewDelivery {
+  status: "EXPORTING" | "COMPLETE" | "PARTIAL" | "FAILED" | "OUTCOME_UNKNOWN";
+  files?: Record<string, { status: "READY" | "FAILED"; path?: string; message?: string }>;
+  message: string;
+}
+export interface ReviewDocument {
+  job_id: string; skill_version: string | null; model: string; source_name: string; revision: number;
+  sentences: ReviewSentence[]; speakers: ReviewSpeaker[]; audio: ReviewAudio;
+  delivery: ReviewDelivery | null; export_revision: number | null; closed: boolean;
+}
+export interface ReviewEndpoints {
+  "/api/review": ReviewDocument;
+  "/api/review/save": { revision: number };
+  "/api/review/export": { cancelled: true } | { cancelled: false; delivery: ReviewDelivery; export_revision: number | null; revision: number };
+  "/api/review/select-audio": { cancelled: true } | { cancelled: false; revision: number; audio: ReviewAudio };
+  "/api/review/prepare-audio": { audio: ReviewAudio };
+}
+export interface ReviewApi {
+  presence(connected: () => void, disconnected: () => void): () => void;
+  request<K extends keyof ReviewEndpoints>(path: K, payload?: object): Promise<ReviewEndpoints[K]>;
 }

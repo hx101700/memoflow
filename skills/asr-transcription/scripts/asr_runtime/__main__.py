@@ -31,20 +31,28 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--port", type=int, default=0, help="本机网页端口，默认自动选择")
     serve_parser.add_argument("--no-browser", action="store_true", help="不自动打开系统浏览器")
     serve_parser.add_argument("--audio", type=Path, help="带入网页的录音绝对路径，可在页面更换")
+    review_parser = commands.add_parser("review", help="打开已完成任务的人工回听校验页面")
+    review_parser.add_argument("--job", required=True, help="已有转写任务编号")
+    review_parser.add_argument("--port", type=int, default=0)
+    review_parser.add_argument("--no-browser", action="store_true")
     for name in ("confirm", "cancel"):
         command = commands.add_parser(name)
         command.add_argument("--session", required=True, help="本次编辑会话编号（session_id）；交接使用用户从预览页复制的编号")
-    for name in ("transcribe", "export", "job-status"):
+    for name in ("transcribe", "export", "job-status", "review-close"):
         command = commands.add_parser(name)
         command.add_argument("--job", required=True, help="编辑会话交接回执中的转写任务编号（job_id）")
     args = parser.parse_args(argv)
     report: Mapping[str, object]
     try:
         runtime = Runtime(args.workspace, Path(__file__).resolve().parents[2])
-        with python_temporary_directory(runtime) if args.command in ("serve", "transcribe", "export") else nullcontext():
+        with python_temporary_directory(runtime) if args.command in ("serve", "review", "transcribe", "export") else nullcontext():
             if args.command == "serve":
                 from .web import serve
                 serve(runtime, port=args.port, open_browser=not args.no_browser, audio=args.audio)
+                return 0
+            if args.command == "review":
+                from .review_web import serve_review
+                serve_review(runtime, args.job, port=args.port, open_browser=not args.no_browser)
                 return 0
             if args.command in ("confirm", "cancel"):
                 from .web import control_session
@@ -58,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "job-status":
                 from .application.transcription import job_status
                 report = job_status(runtime, args.job)
+            elif args.command == "review-close":
+                from .review_web import control_review
+                report = control_review(runtime, args.job)
             elif args.command == "bootstrap":
                 report = bootstrap(runtime, cleanup_old_cache=args.cleanup_old_cache)
             else:

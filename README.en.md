@@ -96,6 +96,8 @@ After installation, tell Codex:
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
+Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents.
+
 <details>
 <summary>Transcription configuration (illustration)</summary>
 
@@ -114,6 +116,15 @@ Codex opens the local configuration page. Choose the recording and recognition s
 <summary>After handing the task to Codex (illustration)</summary>
 
 ![The handoff page shows the transcription task ID and save locations](https://raw.githubusercontent.com/hx101700/memoflow/master/assets/screenshots/transcription-handoff.png)
+
+</details>
+
+<details>
+<summary>Listen and review (illustration)</summary>
+
+![MemoFlow transcript review: replay sentences, edit text, distinguish edits from the playback position, and export reviewed documents](https://raw.githubusercontent.com/hx101700/memoflow/dev/assets/screenshots/transcription-review.png)
+
+Green marks edited text; blue marks the sentence being reviewed. Changes are saved automatically. Reset a sentence or jump to the next change, then export reviewed Word, Excel, and Markdown files.
 
 </details>
 

@@ -121,6 +121,7 @@ class TranscriptionSettings(TypedDict):
     diarization_enabled: bool
     recognition_options: RecognitionOptions
     enhancement: EnhancementConfig
+    review_enabled: NotRequired[bool]
 
 
 class JobConfig(TranscriptionSettings):
@@ -157,6 +158,31 @@ class SessionTerminal(TypedDict):
 
     state: SessionEndState
     receipt: ConfirmationReceipt | None
+
+
+class ReviewSentence(TypedDict):
+    """保存一句可编辑正文及说话人归属，时间和顺序来自原JSON。"""
+
+    index: int
+    text: str
+    speaker_id: int | None
+
+
+class ReviewSpeaker(TypedDict):
+    """保存说话人编号及人工姓名，空姓名沿用默认编号标签。"""
+
+    id: int
+    name: str
+
+
+class ReviewDraft(TypedDict):
+    """保存与原JSON绑定的校对改动及重新选择的录音路径。"""
+
+    revision: int
+    source_sha256: str
+    sentences: list[ReviewSentence]
+    speakers: list[ReviewSpeaker]
+    audio_path: str | None
 
 
 class ResultSummary(TypedDict):
@@ -202,6 +228,7 @@ class DeliveryReport(TypedDict):
     job_id: NotRequired[str]
     files: NotRequired[dict[str, DocumentReport]]
     error_type: NotRequired[str]
+    export_revision: NotRequired[int]
 
 
 class ExecutionReport(TypedDict):
@@ -222,6 +249,8 @@ class ExecutionReport(TypedDict):
     record_error: NotRequired[ErrorReport]
     delivery: NotRequired[DeliveryReport]
     documents_ready: NotRequired[bool]
+    review_enabled: NotRequired[bool]
+    review: NotRequired[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -243,6 +272,7 @@ class Sentence:
     end_ms: int
     speaker_id: int | None
     text: str
+    speaker_name: str | None = None
 
 
 @dataclass(frozen=True)

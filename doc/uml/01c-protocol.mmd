@@ -9,6 +9,7 @@ class TranscriptionSettings {
   +bool diarization_enabled
   +RecognitionOptions recognition_options
   +EnhancementConfig enhancement
+  +bool review_enabled
 }
 class Draft {
   <<TypedDict>>
@@ -61,12 +62,23 @@ class ExecutionReport {
   +ErrorReport record_error
   +DeliveryReport delivery
   +bool documents_ready
+  +bool review_enabled
+  +dict review
 }
 class DeliveryReport {
   <<TypedDict>>
   +Literal status
   +str message
   +dict files
+  +int export_revision
+}
+class ReviewDraft {
+  <<TypedDict>>
+  +int revision
+  +str source_sha256
+  +list sentences
+  +list speakers
+  +str_or_None audio_path
 }
 TranscriptionSettings <|-- JobConfig
 Draft --> TranscriptionSettings : 已校验输入
@@ -74,10 +86,14 @@ JobConfig ..> ConfirmationReceipt : 交接回执
 SessionTerminal --> ConfirmationReceipt : handed_off包含任务回执
 JobConfig ..> ExecutionReport : 仅一次执行
 ExecutionReport --> DeliveryReport : JSON成功后的文档结果
+JobConfig ..> ReviewDraft : 原JSON摘要绑定本机校对
+ReviewDraft ..> DeliveryReport : 校验稿另记export_revision
 note for Draft "application/session.py<br/>id为预览版本；form保存可恢复输入<br/>预览不含job_id，不在磁盘保存每次编辑<br/>preview_ready登记展示；edit使该版本失效"
-note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，交接时生成编号与输出路径<br/>配置和SHA发布一次，授权为True<br/>Key独立保存在运行目录.env，执行时读取"
+note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，交接时生成编号与输出路径<br/>配置和SHA发布一次，授权为True<br/>review_enabled为可选字段，旧任务缺失按false；不进入BL参数<br/>Key独立保存在运行目录.env，执行时读取"
 note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
 note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>显式取消结果保存至cancelled.json，响应丢失后可恢复<br/>没有heartbeat或云端状态字段"
-note for ExecutionReport "models.py；图中摘录交接与恢复的关键字段<br/>cloud_outcome为not_started、unknown或result_received<br/>result、error、record_error、delivery等为可选字段<br/>delivery.files各格式记录READY或FAILED、路径或错误<br/>documents_ready仅在COMPLETE时为true"
+note for ExecutionReport "models.py；图中摘录交接与恢复的关键字段<br/>cloud_outcome为not_started、unknown或result_received<br/>result、error、record_error、delivery、review等为可选字段<br/>原稿documents_ready仅在delivery.COMPLETE时为true<br/>job-status另附review的revision、delivery与export_revision"
+note for ReviewDraft "application/review.py；jobs/job_id/review/draft.json<br/>sentences仅保存原序号的正文与说话人改动<br/>speakers保存编号和姓名，audio_path仅记录重选路径<br/>先原子保存再更新内存revision；原JSON与配置保持"
+note for DeliveryReport "models.py；两类导出复用该协议<br/>原稿记录在delivery/status.json<br/>校验稿记录在review/status.json，另含可选export_revision<br/>各格式仍分别记录READY或FAILED"
 
 note for SessionConnection "utils/session_files.py<br/>私有sessions/session_id/connection.json<br/>端口与令牌用于本机控制；PID与deadline用于残留回收<br/>结束清理后移除；正式交接回执仍保留"

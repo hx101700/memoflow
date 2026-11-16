@@ -12,6 +12,7 @@ const rows = computed<[string, string][]>(() => {
   return [
     [t("audioFile"), audio ? `${audio.name} · ${fileSize(audio.size_bytes)}` : t("noAudio")],
     [t("audioLanguage"), form.language ? languageName(form.language, language) : t("automatic")],
+    [t("reviewEnabled"), t(form.reviewEnabled ? "enabled" : "disabled")],
     [t("diarization"), t(form.diarizationEnabled ? "enabled" : "disabled")],
     [t("hotwordsLabel"), form.hotwordsEnabled ? t("hotwordRows", { count: form.hotwordRows.length }) : t("disabled")],
     [t("contextLabel"), form.contextEnabled ? t("contextCount", { count: contextLength }) : t("disabled")],

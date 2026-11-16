@@ -8,11 +8,12 @@ from contextlib import redirect_stderr, redirect_stdout
 import json
 import os
 from pathlib import Path
+from ssl import SSLCertVerificationError
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 from urllib.error import HTTPError, URLError
 from zipfile import ZIP_STORED, ZipFile
 
@@ -45,6 +46,9 @@ class SkillUpdateTests(unittest.TestCase):
         (self.skill / update.LOCK).write_bytes(b"stable lock sentinel")
         self.installed_manifest = self.manifest("0.1.1", self.original_files)
         (self.skill / update.MANIFEST).write_bytes(self.encode(self.installed_manifest))
+        retry_sleep = patch.object(update, "sleep")
+        self.retry_sleep = retry_sleep.start()
+        self.addCleanup(retry_sleep.stop)
 
     def tearDown(self):
         """清理位于仓库测试根内的合成安装与工作目录。"""
@@ -129,7 +133,7 @@ class SkillUpdateTests(unittest.TestCase):
         self.assert_original_files()
 
     def test_network_failure_consumes_day_and_is_not_reported_as_latest(self):
-        """验证首次网络请求前保存日期，失败后当天保持未知结论。"""
+        """验证网络重试共用一次日检，耗尽后当天保持失败结论。"""
         def fail_download(_url):
             """在模拟网络失败前核对日期已经持久化。"""
             self.assertEqual(self.state()["checked_on"], date.today().isoformat())
@@ -145,8 +149,119 @@ class SkillUpdateTests(unittest.TestCase):
         self.assertEqual(second["status"], "checked_today")
         self.assertEqual(second["last_status"], "failed")
         self.assertIsNone(second["is_latest"])
-        download.assert_called_once()
+        self.assertEqual(download.call_count, 3)
+        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(2)])
         self.assert_original_files()
+
+    def test_release_and_package_share_two_retries_without_repeating_success(self) -> None:
+        """验证发布资料和轻量包共用两次重试，只登记一次检查日期。"""
+        package, _ = self.package()
+        package_url = f"https://github.com/{update.REPOSITORY}/releases/download/v0.1.2/asr-transcription-lite.zip"
+        responses = [URLError("temporary connection failure"), self.encode(self.release(package=package)),
+                     HTTPError(package_url, 503, "Unavailable", None, None), package]
+        write_json = update._write_json
+        check_dates: list[str] = []
+        progress = StringIO()
+
+        def record_check(path: Path, value: object) -> None:
+            """记录实际写入的日检起点，同时保留原子写入行为。"""
+            if path == self.skill / update.STATE and isinstance(value, dict) and value.get("status") == "checking":
+                check_dates.append(value["checked_on"])
+            write_json(path, value)
+
+        with patch.object(update, "_download", side_effect=responses) as download, \
+                patch.object(update, "_write_json", side_effect=record_check), redirect_stderr(progress):
+            report = update.update_skill(self.skill)
+        self.assertEqual(report["status"], "updated")
+        self.assertEqual(download.call_args_list, [call(update.LATEST_URL), call(update.LATEST_URL),
+                                                  call(package_url), call(package_url)])
+        self.assertEqual(check_dates, [date.today().isoformat()])
+        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(2)])
+        self.assertIn("第1/2次重试", progress.getvalue())
+        self.assertIn("第2/2次重试", progress.getvalue())
+        self.assertNotIn("第3/2次重试", progress.getvalue())
+
+    def test_release_retries_leave_no_extra_package_budget_and_cache_final_failure(self) -> None:
+        """验证发布资料耗尽重试后，轻量包失败不重查资料也不重新获得预算。"""
+        package, _ = self.package()
+        package_url = f"https://github.com/{update.REPOSITORY}/releases/download/v0.1.2/asr-transcription-lite.zip"
+        responses = [TimeoutError("connect timed out"), URLError("temporary network failure"),
+                     self.encode(self.release(package=package)), URLError("package disconnected")]
+        with patch.object(update, "_download", side_effect=responses) as download:
+            exit_code, report = self.main_report()
+            cached = update.update_skill(self.skill)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "failed")
+        self.assertFalse(report["repair_required"])
+        self.assertEqual(report["installed_version"], "0.1.1")
+        self.assertEqual(report["latest_version"], "0.1.2")
+        self.assertEqual(cached["last_status"], "failed")
+        self.assertEqual(download.call_args_list, [call(update.LATEST_URL)] * 3 + [call(package_url)])
+        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(2)])
+        self.assert_original_files()
+
+    def test_package_stream_failures_retry_only_package_and_keep_request_timeout(self) -> None:
+        """验证真实下载封装处理断流与连接重置，发布资料不被再次请求。"""
+        package, _ = self.package()
+        package_url = f"https://github.com/{update.REPOSITORY}/releases/download/v0.1.2/asr-transcription-lite.zip"
+        with patch.object(update, "urlopen") as open_url:
+            response = open_url.return_value.__enter__.return_value
+            response.read.side_effect = [self.encode(self.release(package=package)),
+                                         IncompleteRead(b"partial", 100), ConnectionResetError("reset"), package]
+            report = update.update_skill(self.skill)
+        self.assertEqual(report["status"], "updated")
+        self.assertEqual([entry.args[0].full_url for entry in open_url.call_args_list],
+                         [update.LATEST_URL, package_url, package_url, package_url])
+        self.assertTrue(all(entry.kwargs["timeout"] == 30 for entry in open_url.call_args_list))
+        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(2)])
+
+    def test_temporary_http_errors_retry_the_current_request(self) -> None:
+        """验证408、429和5xx允许重试，成功后正常返回当天版本结论。"""
+        for status in (408, 429, 500, 503, 599):
+            with self.subTest(status=status):
+                self.retry_sleep.reset_mock()
+                error = HTTPError(update.LATEST_URL, status, "temporary", None, None)
+                with patch.object(update, "_download", side_effect=[error, self.encode(self.release(version="0.1.1"))]) as download:
+                    report = update.update_skill(self.skill, check_now=True)
+                self.assertEqual(report["status"], "latest")
+                self.assertEqual(download.call_args_list, [call(update.LATEST_URL)] * 2)
+                self.retry_sleep.assert_called_once_with(1)
+
+    def test_nontransient_request_errors_do_not_retry(self) -> None:
+        """验证权限、不存在、证书及非网络错误不消耗额外请求。"""
+        errors = [HTTPError(update.LATEST_URL, status, "permanent", None, None)
+                  for status in (400, 401, 403, 404, 410)]
+        errors.extend([URLError(SSLCertVerificationError("invalid certificate")),
+                       PermissionError("local permission failure"), update.UpdateError("invalid update input")])
+        for error in errors:
+            with self.subTest(error=str(error)):
+                self.retry_sleep.reset_mock()
+                with patch.object(update, "_download", side_effect=error) as download:
+                    report = update.update_skill(self.skill, check_now=True)
+                self.assertEqual(report["status"], "failed")
+                self.assertFalse(report["repair_required"])
+                download.assert_called_once_with(update.LATEST_URL)
+                self.retry_sleep.assert_not_called()
+                self.assert_original_files()
+
+    def test_requested_check_starts_one_new_budget_after_cached_failure(self) -> None:
+        """验证用户主动检查可重新获得本次两次机会，之后自动入口只读缓存。"""
+        failed = URLError("network unavailable")
+        with patch.object(update, "_download", side_effect=failed) as download:
+            first = update.update_skill(self.skill)
+            cached = update.update_skill(self.skill)
+        self.assertEqual(first["status"], "failed")
+        self.assertEqual(cached["last_status"], "failed")
+        self.assertEqual(download.call_count, 3)
+        self.retry_sleep.reset_mock()
+        with patch.object(update, "_download", side_effect=[TimeoutError("slow network"),
+                          self.encode(self.release(version="0.1.1"))]) as download:
+            requested = update.update_skill(self.skill, check_now=True)
+            cached = update.update_skill(self.skill)
+        self.assertEqual(requested["status"], "latest")
+        self.assertEqual(cached["last_status"], "latest")
+        self.assertEqual(download.call_count, 2)
+        self.retry_sleep.assert_called_once_with(1)
 
     def test_http_403_allows_current_installation_and_reuses_daily_failure(self):
         """验证 HTTP 403 保留当前安装、成功退出，且当天不再联网。"""
@@ -297,7 +412,8 @@ class SkillUpdateTests(unittest.TestCase):
         self.assertIn("未完整接收", first["message"])
         self.assertFalse(first["repair_required"])
         self.assertEqual(cached["last_status"], "failed")
-        open_url.assert_called_once()
+        self.assertEqual(open_url.call_count, 3)
+        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(2)])
         self.assert_original_files()
 
     def test_update_progress_identifies_current_and_target_versions(self):
@@ -405,12 +521,14 @@ class SkillUpdateTests(unittest.TestCase):
         package, _ = self.package()
         release = self.release(package=package)
         release["body"] = "### 更新内容\n- 尚未安装的功能。"
-        with patch.object(update, "_download", side_effect=[self.encode(release), URLError("offline")]):
+        responses = [self.encode(release), URLError("offline"), URLError("offline"), URLError("offline")]
+        with patch.object(update, "_download", side_effect=responses) as download:
             code, report = self.main_report()
         self.assertEqual(code, 0)
         self.assertEqual(report["status"], "failed")
         self.assertNotIn("release_notes", report)
         self.assertNotIn("release_url", report)
+        self.assertEqual(download.call_count, 4)
         self.assert_original_files()
 
     def test_final_record_failure_preserves_actual_success_and_daily_cache(self):
@@ -452,10 +570,12 @@ class SkillUpdateTests(unittest.TestCase):
                 received = package[:-10] if failure == "size" else package
                 if failure == "digest":
                     release["assets"][0]["digest"] = "sha256:" + "0" * 64
-                with patch.object(update, "_download", side_effect=[self.encode(release), received]):
+                with patch.object(update, "_download", side_effect=[self.encode(release), received]) as download:
                     report = update.update_skill(self.skill)
                 self.assertEqual(report["status"], "failed")
                 self.assertFalse(report["repair_required"])
+                self.assertEqual(download.call_count, 2)
+                self.retry_sleep.assert_not_called()
                 self.assert_original_files()
                 self.assertFalse([path for path in self.skill.glob(".skill-update-*") if path.is_dir()])
 
@@ -465,11 +585,13 @@ class SkillUpdateTests(unittest.TestCase):
         corrupt = bytearray(package)
         corrupt[package.index(files["README.md"])] ^= 1
         received = bytes(corrupt)
-        with patch.object(update, "_download", side_effect=[self.encode(self.release(package=received)), received]):
+        with patch.object(update, "_download", side_effect=[self.encode(self.release(package=received)), received]) as download:
             report = update.update_skill(self.skill)
         self.assertEqual(report["status"], "failed")
         self.assertIn("CRC", report["message"])
         self.assertFalse(report["repair_required"])
+        self.assertEqual(download.call_count, 2)
+        self.retry_sleep.assert_not_called()
         self.assert_original_files()
 
     def test_archive_version_or_file_set_mismatch_keeps_original_installation(self):
@@ -483,10 +605,12 @@ class SkillUpdateTests(unittest.TestCase):
                     with ZipFile(buffer, "a") as archive:
                         archive.writestr("unmanaged.txt", b"outside package manifest")
                     package = buffer.getvalue()
-                with patch.object(update, "_download", side_effect=[self.encode(self.release(package=package)), package]):
+                with patch.object(update, "_download", side_effect=[self.encode(self.release(package=package)), package]) as download:
                     report = update.update_skill(self.skill)
                 self.assertEqual(report["status"], "failed")
                 self.assertFalse(report["repair_required"])
+                self.assertEqual(download.call_count, 2)
+                self.retry_sleep.assert_not_called()
                 self.assert_original_files()
 
     def test_manifest_rejects_paths_outside_managed_skill_files(self):
@@ -509,11 +633,13 @@ class SkillUpdateTests(unittest.TestCase):
                 raise PermissionError("synthetic write restriction")
             return replace(path, target)
 
-        with patch.object(update, "_download", side_effect=[self.encode(self.release(package=package)), package]), \
+        with patch.object(update, "_download", side_effect=[self.encode(self.release(package=package)), package]) as download, \
              patch.object(Path, "replace", fail_business_entry):
             report = update.update_skill(self.skill)
         self.assertEqual(report["status"], "failed")
         self.assertFalse(report["repair_required"])
+        self.assertEqual(download.call_count, 2)
+        self.retry_sleep.assert_not_called()
         self.assertEqual(self.state()["status"], "failed")
         self.assert_original_files()
         self.assertFalse((self.skill / "scripts/new").exists())

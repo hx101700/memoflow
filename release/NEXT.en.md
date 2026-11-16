@@ -2,6 +2,7 @@
 
 Keep “What's new”, “Downloads”, and “Installation and updates” in each release. Link between languages through NOTES.md/NOTES.en.md under that version tag.
 
+- End each change list with “Bug fixes and usability improvements.” Keep this item brief without expanding it into individual fixes.
 - Explain concrete user benefits, such as fewer repeated downloads, clearer diagnosis, or less space used by old caches. Support speed and stability claims with a relevant change or evidence.
 - Cover first installation, ZIP upgrades, and automatic updates. Identify earlier versions with links, the current version, and which subsequent higher formal versions users can obtain.
 - The update entry point starts with v0.1.2. Users of v0.1.0/v0.1.1 first update using a ZIP. Future notes retain this boundary and use the standard automatic-update wording below.

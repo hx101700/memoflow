@@ -126,6 +126,17 @@ class TranscriptionTests(RuntimeTestCase):
         checksum = path.with_suffix(".sha256").read_text(encoding="ascii").strip()
         self.assertEqual(checksum, hashlib.sha256(path.read_bytes()).hexdigest())
 
+    def test_review_option_reaches_delivery_receipt_without_changing_bl_request(self):
+        """验证工单回听选项进入成功回执，原稿正常交付且只执行一次识别。"""
+        job_id, _ = self.make_job(review_enabled=True)
+        report = transcribe(self.runtime, job_id)
+        self.assertEqual(report["status"], "JSON_READY")
+        self.assertTrue(report["documents_ready"])
+        self.assertTrue(report["review_enabled"])
+        self.assertTrue(job_status(self.runtime, job_id)["review_enabled"])
+        self.cli.assert_called_once()
+        self.assertFalse(any("review" in argument for argument in self.cli.call_args.args[1].argv))
+
     def test_modified_snapshot_is_rejected_before_execution_is_claimed(self):
         """验证确认后配置变化时拒绝执行。"""
         for changed in ("context", "vocabulary", "audio_metadata", "recognition_options"):

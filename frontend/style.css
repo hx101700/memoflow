@@ -153,3 +153,61 @@ footer { margin-top: 30px; color: var(--el-text-color-secondary); font-size: 12p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* 阅读区用轻量卡片组织段落，正文完整展开；工具栏和播放器固定在滚动区外。 */
+.review-layout { display: flex; flex-direction: column; height: 100dvh; }
+.review-layout .topbar { flex-shrink: 0; }
+.review-page { display: flex; flex: 1; flex-direction: column; min-height: 0; width: 100%; padding-bottom: 0; }
+.review-page > :not(.review-reading-frame) { flex-shrink: 0; }
+.review-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding-bottom: 16px; }
+.review-heading-copy { min-width: 0; flex: 1; }
+.review-file { display: inline-flex; align-items: center; min-height: 32px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.review-action-buttons { display: flex; align-items: center; gap: 20px; }
+.review-header-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.review-header-buttons .el-button { min-width: 128px; min-height: 32px; height: auto; white-space: normal; }
+.review-action-buttons .el-button + .el-button { margin-left: 0; }
+.review-notice { margin-bottom: 16px; }
+.review-notice .el-alert__description:empty { display: none; }
+.review-reading-frame { display: flex; flex: 1; min-height: 0; padding-block: 24px; overflow: hidden; background: var(--el-fill-color-light); border: 1px solid var(--el-border-color); border-radius: var(--el-border-radius-base); }
+.review-reading-list { flex: 1; min-height: 0; overflow: auto; padding-inline: 20px; scroll-padding-block: 16px; }
+.review-sentence { max-width: 1060px; margin: 0 auto; content-visibility: auto; contain-intrinsic-size: auto 125px; }
+.review-sentence + .review-sentence { margin-top: 8px; }
+.review-sentence-body { padding: 8px 16px; }
+.review-sentence.is-modified { background: var(--el-color-success-light-9); border-color: var(--el-color-success-light-5); }
+.review-sentence.is-current { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-5); }
+.review-sentence.is-current .review-paragraph,
+.review-sentence.is-current .review-text-editor .el-textarea__inner { color: var(--el-color-primary); }
+.review-sentence.is-current, .review-sentence.is-editing, .review-sentence:focus-within { content-visibility: visible; }
+.review-sentence-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; font-size: 12px; color: var(--el-text-color-secondary); }
+.review-speaker-label { padding-inline: 0; font-weight: 600; }
+.review-speaker-picker { width: 170px; }
+.el-button.review-timecode {
+  --el-button-hover-text-color: var(--el-text-color-regular);
+  --el-button-active-text-color: var(--el-text-color-regular);
+  font-variant-numeric: tabular-nums;
+}
+.review-sentence.is-current .review-timecode { font-weight: 700; }
+.review-sentence-meta .el-button + .el-button { margin-left: 0; }
+.review-sentence-meta .el-button.review-reset { margin-left: auto; }
+.review-paragraph, .review-text-editor .el-textarea__inner { padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 14px; }
+.review-paragraph { cursor: text; outline-offset: 4px; }
+.review-text-editor .el-textarea__inner { color: var(--el-text-color-primary); background: transparent; box-shadow: none; }
+.review-text-editor .el-textarea__inner:focus { outline: 1px solid var(--el-color-primary); outline-offset: 0; }
+.review-toolbar { padding: 16px 0; }
+.review-player-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.review-player-controls .el-button + .el-button { margin-left: 0; }
+.review-play-toggle { width: 32px; padding: 0; }
+.review-skip { width: 44px; padding: 0; }
+.review-speed { width: 82px; }
+.review-progress { display: flex; flex: 1; min-width: 220px; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; font-size: 12px; }
+.review-progress .el-slider { flex: 1; }
+.review-speaker-scroll { margin-top: 14px; }
+.review-speaker-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.review-speaker-list label { display: grid; gap: 6px; }
+@media (max-width: 700px) {
+  .review-action-buttons { flex-wrap: wrap; gap: 6px; }
+  .review-progress { order: 1; flex-basis: 100%; }
+  .review-toolbar { padding: 10px 0; }
+  .review-reading-list { padding-inline: 12px; }
+  .review-sentence-body { padding: 8px 12px; }
+}

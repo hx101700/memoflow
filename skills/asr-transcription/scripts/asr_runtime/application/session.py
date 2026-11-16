@@ -330,7 +330,7 @@ class Session:
             self.draft = None  # 即使新校验失败，旧预览也不再可确认。
             allowed = {"auth_mode", "audio_id", "diarization_enabled", "enhancement_mode",
                        "hotword_rows", "context", "json_directory", "document_directory",
-                       "language_hint", "speaker_count"}
+                       "language_hint", "speaker_count", "review_enabled"}
             if set(payload) - allowed:
                 raise ValidationError("请求含不支持的配置字段。", "form")
             mode_value = payload.get("auth_mode")
@@ -338,6 +338,9 @@ class Session:
                 raise ValidationError("请选择有效的鉴权方式。", "auth_mode")
             mode = cast(AuthMode, mode_value)
             diarization = payload.get("diarization_enabled")
+            review_enabled = payload.get("review_enabled", False)
+            if type(review_enabled) is not bool:
+                raise ValidationError("请选择有效的人工回听校验设置。", "review_enabled")
             recognition_options = validate_options(payload, diarization)
             enhancement_value = payload.get("enhancement_mode")
             hotwords = None
@@ -359,6 +362,7 @@ class Session:
             config: TranscriptionSettings = {
                 "model": MODEL, "region": "cn-beijing",
                 "auth_mode": mode, "audio": audio, "diarization_enabled": cast(bool, diarization),
+                "review_enabled": review_enabled,
                 "recognition_options": recognition_options,
                 "enhancement": {"mode": enhancement, "hotwords": hotwords, "context": context},
             }

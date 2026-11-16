@@ -24,6 +24,7 @@
     "**/*.vue",
     "../tests/test_frontend.ts",
     "../tests/test_i18n.ts",
-    "../tests/test_browser.ts"
+    "../tests/test_browser.ts",
+    "../tests/test_review_browser.ts"
   ]
 }

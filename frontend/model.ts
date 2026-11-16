@@ -65,6 +65,7 @@ export function configuration(model: Model, form: FormValues, limits: Limits, t:
     }
   }
   return {
+    review_enabled: form.reviewEnabled,
     auth_mode: form.useApiKey ? "api_key" : "console",
     audio_id: model.audio?.audio_id ?? null, diarization_enabled: form.diarizationEnabled,
     enhancement_mode: form.hotwordsEnabled ? (form.contextEnabled ? "both" : "hotwords") : (form.contextEnabled ? "context" : "none"),

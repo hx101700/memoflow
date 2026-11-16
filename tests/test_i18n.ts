@@ -59,3 +59,13 @@ test("本机提示随语言切换更新，未知异常内容不泄露给页面",
   assert.equal(unknown.describe(language), translate("en", "failed"));
   assert.equal(unknown.describe(language).includes("private technical detail"), false);
 });
+
+
+test("回听保存和音频故障均有中英文提示，冲突说明保留输入", () => {
+  for (const key of ["reviewSaveFailed", "reviewConflict", "reviewNetwork", "reviewAudioUnsupported", "reviewAudioNetwork", "reviewExportStale"] as const) {
+    assert.notEqual(translate("zh-CN", key), translate("en", key));
+    assert.ok(translate("en", key).length > 10);
+  }
+  assert.match(translate("zh-CN", "reviewConflict"), /保留/);
+  assert.match(translate("en", "reviewConflict"), /preserved/);
+});

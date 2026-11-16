@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { useTranscription, type ViewEffects } from "../frontend/useTranscription";
+import { useReview } from "../frontend/useReview";
+import { ReviewRequestError, sentenceModified, createReviewApi } from "../frontend/review";
+import type { ReviewApi, ReviewDocument, ReviewEndpoints } from "../frontend/types";
 import { createApi, UiError } from "../frontend/api";
 import { availability, configuration, createModel, hotwordRows } from "../frontend/model";
 import { localize, translate, type Translate } from "../frontend/i18n";
@@ -345,7 +348,7 @@ test("整单检查失败恢复原表格编辑，修正输入无需撤销不存�
 });
 
 test("刷新只恢复服务内已校验预览，重新登记渲染且不读取Key", async () => {
-  const config: Configuration = { auth_mode: "api_key", audio_id: "audio-kept", diarization_enabled: false,
+  const config: Configuration = { review_enabled: false, auth_mode: "api_key", audio_id: "audio-kept", diarization_enabled: false,
     enhancement_mode: "both", hotword_rows: [{ text: "术语", weight: "4" }], context: "完整参考文本\n",
     language_hint: "en", speaker_count: null, json_directory: "D:/json", document_directory: "D:/docs" };
   const page = harness({ "/api/session": () => ({ ...description, phase: "preview", preview: { ...validation(), configuration: config,
@@ -1027,4 +1030,212 @@ test("目录选择保留普通编辑能力，等待期间阻止整单校验", ()
   model.picker = { id: "picker", kind: "json", cancelling: false };
   assert.equal(availability(model).editable, true);
   assert.equal(availability(model).validate, false);
+});
+
+
+// 创建只含合成文本的回听会话，不读取音频或调用云端。
+function reviewHarness() {
+  const initial: ReviewDocument = { job_id: "synthetic-review", skill_version: "0.1.5", model: "synthetic",
+    source_name: "synthetic.wav", revision: 0, closed: false, delivery: null, export_revision: null,
+    audio: { available: true, name: "synthetic.wav", kind: "original", error: null },
+    sentences: [{ index: 1, begin_ms: 0, end_ms: 1000, text: "原句", speaker_id: 0, original_text: "原句", original_speaker_id: 0 },
+      { index: 2, begin_ms: 1000, end_ms: 2000, text: "第二句", speaker_id: null, original_text: "第二句", original_speaker_id: null }], speakers: [{ id: 0, name: "" }] };
+  const calls: { path: keyof ReviewEndpoints; payload?: object }[] = [];
+  let revision = 0;
+  const handlers: { save?: (payload: object) => Promise<{ revision: number }>; cancelled?: boolean } = {};
+  const presence = { opened: 0, closed: 0 };
+  const api: ReviewApi = {
+    // 记录在场连接，不在测试中创建真实浏览器连接。
+    presence(connected) { presence.opened += 1; connected(); return () => { presence.closed += 1; }; },
+    // 模拟保存、重选与导出回执，并记录真实提交顺序。
+    async request<K extends keyof ReviewEndpoints>(path: K, payload?: object): Promise<ReviewEndpoints[K]> {
+      calls.push({ path, payload: payload ? structuredClone(payload) : undefined });
+      let result: unknown;
+      if (path === "/api/review") result = structuredClone(initial);
+      else if (path === "/api/review/save") result = handlers.save ? await handlers.save(payload!) : { revision: ++revision };
+      else if (path === "/api/review/export") result = handlers.cancelled ? { cancelled: true } : { cancelled: false, revision, export_revision: revision, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } };
+      else if (path === "/api/review/select-audio") result = { cancelled: false, revision: ++revision, audio: initial.audio };
+      else if (path === "/api/review/prepare-audio") result = { audio: { ...initial.audio, kind: "preview" } };
+      else result = { closed: true, ok: true };
+      return result as ReviewEndpoints[K];
+    },
+  };
+  return { ...useReview(api, (key, values) => translate("zh-CN", key, values)), calls, handlers, presence };
+}
+
+test("人工回听默认关闭，明确开启后配置与返回编辑保留开关", async () => {
+  const page = harness();
+  await addAudio(page);
+  assert.equal(page.form.reviewEnabled, false);
+  page.form.reviewEnabled = true;
+  await page.actions.validate();
+  assert.equal(lastConfig(page).review_enabled, true);
+  await page.actions.edit();
+  assert.equal(page.form.reviewEnabled, true);
+});
+
+test("回听保存串行发送快照，等待中新增输入随后保存且不回写旧文本", async () => {
+  const page = reviewHarness();
+  await page.start();
+  const pending = deferred<{ revision: number }>();
+  let count = 0;
+  page.handlers.save = async () => ++count === 1 ? pending.promise : { revision: 2 };
+  page.changeSentence(1, { text: "第一批" });
+  const saving = page.flush();
+  page.changeSentence(1, { text: "第二批" });
+  assert.equal(page.calls.filter(call => call.path.endsWith("/save")).length, 1);
+  pending.resolve({ revision: 1 });
+  assert.equal(await saving, true);
+  const saves = page.calls.filter(call => call.path.endsWith("/save"));
+  assert.deepEqual(saves.map(call => call.payload), [
+    { revision: 0, sentences: [{ index: 1, text: "第一批", speaker_id: 0 }] },
+    { revision: 1, sentences: [{ index: 1, text: "第二批", speaker_id: 0 }] },
+  ]);
+  assert.equal(page.document.value?.sentences[0].text, "第二批");
+  assert.equal(page.dirtyCount.value, 0);
+  page.dispose();
+});
+
+test("回听保存失败保留输入并暂停自动重试，明确重试才继续", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.handlers.save = async () => { throw new Error("synthetic failure"); };
+  page.changeSentence(1, { text: "失败后仍保留" });
+  assert.equal(await page.flush(), false);
+  page.changeSentence(2, { speaker_id: 0 });
+  assert.equal(await page.flush(), false);
+  assert.equal(page.calls.filter(call => call.path.endsWith("/save")).length, 1);
+  assert.equal(page.document.value?.sentences[0].text, "失败后仍保留");
+  assert.equal(page.dirtyCount.value, 2);
+  page.handlers.save = async () => ({ revision: 1 });
+  assert.equal(await page.retry(), true);
+  assert.equal(page.dirtyCount.value, 0);
+  page.dispose();
+});
+
+test("回听版本冲突保留修改且不允许重试覆盖或导出", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.handlers.save = async () => { throw new ReviewRequestError({ zh: "冲突", en: "Conflict" }, 409); };
+  page.changeSentence(1, { text: "本页输入" });
+  await page.flush();
+  assert.equal(page.conflict.value, true);
+  assert.equal(page.editable.value, false);
+  assert.equal(await page.retry(), false);
+  await page.exportDocuments();
+  assert.equal(page.calls.some(call => call.path.endsWith("/export")), false);
+  assert.equal(page.document.value?.sentences[0].text, "本页输入");
+  assert.equal(page.document.value?.revision, 0);
+  page.dispose();
+});
+
+test("全局说话人名称与新增编号随句子归属同批保存", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.renameSpeaker(0, "主持人");
+  page.addSpeaker();
+  page.renameSpeaker(1, "访谈对象");
+  page.changeSentence(2, { speaker_id: 1 });
+  await page.flush();
+  assert.deepEqual(page.calls.at(-1)?.payload, { revision: 0,
+    sentences: [{ index: 2, text: "第二句", speaker_id: 1 }], speakers: [{ id: 0, name: "主持人" }, { id: 1, name: "访谈对象" }] });
+  page.renameSpeaker(0, "");
+  await page.flush();
+  assert.equal(page.document.value?.speakers[0].name, "");
+  page.dispose();
+});
+
+test("导出前保存完成，导出后继续编辑标记旧成品过期，选择目录带独立编号", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.changeSentence(1, { text: "导出前修改" });
+  await page.exportDocuments();
+  assert.deepEqual(page.calls.map(call => call.path), ["/api/review", "/api/review/save", "/api/review/export"]);
+  assert.equal(page.document.value?.export_revision, 1);
+  assert.equal(page.stale.value, false);
+  assert.equal(page.editable.value, true);
+  page.changeSentence(2, { text: "导出后修改" });
+  assert.equal(page.stale.value, true);
+  assert.equal(typeof (page.calls.at(-1)?.payload as { picker_id: string }).picker_id, "string");
+  assert.equal(page.operation.value, null);
+  page.dispose();
+});
+
+test("重选录音先保存编辑再接收绑定版本，不混用旧版本继续保存", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.changeSentence(1, { text: "选择前修改" });
+  assert.equal(await page.selectAudio(), true);
+  assert.deepEqual(page.calls.slice(-2).map(call => call.path), ["/api/review/save", "/api/review/select-audio"]);
+  assert.equal(page.document.value?.revision, 2);
+  page.changeSentence(1, { text: "选择后修改" });
+  await page.flush();
+  assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 2);
+  page.dispose();
+});
+
+
+test("逐句重置恢复原始正文和归属，全局姓名保持修改", async () => {
+  const page = reviewHarness();
+  await page.start();
+  const sentence = page.document.value!.sentences[0];
+  page.renameSpeaker(0, "主持人");
+  assert.equal(sentenceModified(sentence), false);
+  page.changeSentence(1, { text: "新正文", speaker_id: null });
+  assert.equal(sentenceModified(sentence), true);
+  await page.flush();
+  page.resetSentence(1);
+  assert.equal(sentenceModified(sentence), false);
+  assert.equal(page.document.value!.speakers[0].name, "主持人");
+  await page.flush();
+  assert.deepEqual(page.calls.at(-1)?.payload, { revision: 1, sentences: [{ index: 1, text: "原句", speaker_id: 0 }] });
+  page.dispose();
+});
+
+test("取消目录选择保留已保存草稿和上次导出状态", async () => {
+  const page = reviewHarness();
+  await page.start();
+  await page.exportDocuments();
+  const delivery = page.document.value!.delivery;
+  page.handlers.cancelled = true;
+  page.changeSentence(1, { text: "取消前保存" });
+  await page.exportDocuments();
+  assert.equal(page.document.value!.revision, 1);
+  assert.equal(page.document.value!.delivery, delivery);
+  assert.equal(page.document.value!.export_revision, 0);
+  assert.equal(page.stale.value, true);
+  assert.equal(page.operation.value, null);
+  assert.equal(page.editable.value, true);
+  page.dispose();
+});
+
+test("离页仅关闭在场连接，缓存恢复不重读或覆盖未保存稿件", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.changeSentence(1, { text: "缓存保留" });
+  page.suspendPresence();
+  assert.equal(page.presence.closed, 1);
+  assert.equal(page.calls.length, 1);
+  page.resumePresence();
+  assert.equal(page.presence.opened, 2);
+  assert.equal(page.document.value!.sentences[0].text, "缓存保留");
+  assert.equal(page.calls.length, 1);
+  page.dispose();
+  assert.equal(page.presence.closed, 2);
+});
+
+test("在场连接使用同源SSE，关闭后解除回调且不发送关闭请求", () => {
+  const source = { onopen: null as (() => void) | null, onerror: null as (() => void) | null, closed: false,
+    // 记录连接关闭。
+    close() { this.closed = true; } };
+  let opened = 0, disconnected = 0;
+  const api = createReviewApi(fetch, () => "en", (key, values) => translate("en", key, values), url => {
+    assert.equal(url, "/api/review/presence"); return source as unknown as EventSource;
+  });
+  const stop = api.presence(() => { opened += 1; }, () => { disconnected += 1; });
+  source.onopen!(); source.onerror!();
+  assert.equal(opened, 1); assert.equal(disconnected, 1);
+  stop();
+  assert.equal(source.closed, true);
+  assert.equal(source.onerror, null);
 });

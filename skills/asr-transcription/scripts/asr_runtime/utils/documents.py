@@ -78,7 +78,9 @@ def _title(source_name: str) -> str:
 
 
 def _speaker(sentence: Sentence) -> str:
-    """保留原始说话人编号，缺失时明确标为未标注。"""
+    """优先显示人工校对的姓名，未命名时沿用原始编号标签。"""
+    if sentence.speaker_name:
+        return sentence.speaker_name
     return "未标注" if sentence.speaker_id is None else f"说话人{sentence.speaker_id}"
 
 

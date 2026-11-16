@@ -20,6 +20,7 @@ const rows = computed<[string, string][]>(() => {
     [t("formatChannels"), `${summary.audio.format_name} / ${t(summary.audio.channels === 1 ? "channel" : "channels", { count: summary.audio.channels })}`],
     [t("sampleRate"), `${summary.audio.sample_rate.toLocaleString(language)} Hz`],
     [t("audioLanguage"), config.language_hint ? languageName(config.language_hint, language) : t("automatic")],
+    [t("reviewEnabled"), t(config.review_enabled ? "enabled" : "disabled")],
     [t("diarization"), t(config.diarization_enabled ? "enabled" : "disabled")],
   ];
   if (config.diarization_enabled) values.push([t("speakers"), config.speaker_count ? t("speakerValue", { count: config.speaker_count }) : t("automatic")]);

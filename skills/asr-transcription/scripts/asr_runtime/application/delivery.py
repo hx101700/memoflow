@@ -1,4 +1,6 @@
-"""向转写任务的固定目录导出三种格式的校对稿并记录交付结果。"""
+"""生成转写原稿或所选目录中的人工校对稿，并记录三格式交付结果。"""
+
+from pathlib import Path
 
 from ..utils.documents import DocumentError, publish_document, write_docx, write_markdown, write_xlsx
 from ..utils.environment import Runtime, SetupError
@@ -6,14 +8,30 @@ from ..utils.job_files import job_directory, prepare_documents, prepare_delivery
 from ..models import DeliveryReport, JobConfig, Transcript
 
 
-def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript) -> DeliveryReport:
+def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript, *,
+                     review_revision: int | None = None, review_directory: Path | None = None) -> DeliveryReport:
     """生成并替换转写任务的 Excel、Word 和 Markdown 校对稿，汇总交付结果。"""
-    state = prepare_delivery(job_directory(runtime, config["job_id"]))
+    root = job_directory(runtime, config["job_id"])
+    if review_revision is None:
+        state = prepare_delivery(root)
+    else:
+        state = root / "review"
+        if state.resolve() != state:
+            raise SetupError("校对记录目录不能重定向。")
+        state.mkdir(parents=True, exist_ok=True)
     report: DeliveryReport = {"job_id": config["job_id"], "status": "EXPORTING",
               "files": {}, "message": "正在本机生成校对稿。"}
+    if review_revision is not None:
+        report["export_revision"] = review_revision
     save_record(state, report)
     try:
-        destination = prepare_documents(runtime, config)
+        if review_revision is None:
+            destination = prepare_documents(runtime, config)
+        else:
+            if review_directory is None or review_directory.resolve() != review_directory or not review_directory.is_dir():
+                raise SetupError("所选校对稿目录不可用，请重新选择保存位置。")
+            destination = review_directory
+            runtime.check_output_path(destination)
     except (OSError, SetupError, KeyError, TypeError) as exc:
         message = (str(exc) + "JSON已保留。" if isinstance(exc, SetupError)
                    else "无法创建文档目录，请检查已确认的保存位置、权限和磁盘空间；JSON已保留。")
@@ -24,7 +42,8 @@ def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript
 
     # 格式之间没有成功依赖；某一项失败后仍可完成其余格式，但不重试失败项。
     for extension, writer in (("xlsx", write_xlsx), ("docx", write_docx), ("md", write_markdown)):
-        final = destination / f"transcription.{extension}"
+        name = "transcription" if review_revision is None else "transcription-reviewed"
+        final = destination / f"{name}.{extension}"
         try:
             size = publish_document(writer, transcript, final, source_name=config["audio"]["name"],
                                     job_id=config["job_id"], model=config["model"])

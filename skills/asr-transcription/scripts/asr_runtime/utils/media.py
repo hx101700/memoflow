@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from collections.abc import Iterable
+import tempfile
 
 import av
 
@@ -81,3 +82,44 @@ def convert_to_mono(source: Path, destination: Path, source_info: AudioInfo) -> 
         if isinstance(exc, av.FFmpegError):
             raise MediaError("声道转换失败，请检查录音是否损坏。") from exc
         raise
+
+
+def prepare_playback(source: Path, destination: Path) -> None:
+    """将第一音轨一次转换为浏览器可播放的完整MP3，成功后发布副本。"""
+    before = source.stat()
+    with tempfile.NamedTemporaryFile(dir=destination.parent, prefix="playback.partial-",
+                                     suffix=".mp3", delete=False) as placeholder:
+        temporary = Path(placeholder.name)
+    try:
+        with av.open(str(source), options={"protocol_whitelist": "file"}) as original:
+            if not original.streams.audio:
+                raise MediaError("录音没有可播放的音轨。")
+            layout = "mono" if len(original.streams.audio[0].codec_context.layout.channels) == 1 else "stereo"
+            with av.open(str(temporary), mode="w", format="mp3") as output:
+                stream = output.add_stream("libmp3lame", rate=48000)
+                stream.layout = layout
+                stream.bit_rate = 128000
+                resampler = av.AudioResampler(format="fltp", layout=layout, rate=48000)
+
+                def write_frames(frames: Iterable[av.AudioFrame]) -> None:
+                    """编码完整音轨的重采样帧，不按句子切分文件。"""
+                    for frame in frames:
+                        for packet in stream.encode(frame):
+                            output.mux(packet)
+
+                for frame in original.decode(audio=0):
+                    write_frames(resampler.resample(frame))
+                write_frames(resampler.resample(None))
+                for packet in stream.encode(None):
+                    output.mux(packet)
+        after = source.stat()
+        if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
+            raise MediaError("准备回听期间录音发生变化，请重新选择原录音。")
+        info = probe_audio(temporary)
+        if not info.duration_seconds or info.duration_seconds <= 0:
+            raise MediaError("未生成可播放的音频。")
+        temporary.replace(destination)
+    except av.FFmpegError as exc:
+        raise MediaError("无法准备浏览器播放音频，请检查原录音。") from exc
+    finally:
+        temporary.unlink(missing_ok=True)

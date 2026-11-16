@@ -8,6 +8,7 @@ from ..models import LocalizedText
 
 _LANGUAGE: ContextVar[str] = ContextVar("ui_language", default="zh-CN")
 _ENGLISH: dict[str, str] = {
+    "请选择有效的人工回听校验设置。": "Choose a valid audio review setting.",
     "Skill发行清单无法读取，请重新安装Skill。": "The Skill release manifest could not be read. Reinstall the Skill.",
     "选择请求无效。": "The selection request is invalid.",
     "请先关闭已打开的选择窗口。": "Finish or cancel the open selection dialog before opening another one.",

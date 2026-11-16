@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from "vue";
-import { translate, type Translate } from "./i18n";
+import { translate, type MessageKey, type Translate } from "./i18n";
 import type { Language, Theme } from "./types";
 
 export interface Preferences { language: Language; theme: Theme }
@@ -20,7 +20,7 @@ export function isDark(theme: Theme, systemDark: boolean): boolean {
 }
 
 // 同步语言、Element Plus 深色类和本机页面偏好。
-export function usePreferences() {
+export function usePreferences(title: MessageKey = "title") {
   const initial = readPreferences({ getItem: key => window.localStorage.getItem(key) }, navigator.language);
   const language = ref(initial.language);
   const theme = ref(initial.theme);
@@ -35,7 +35,7 @@ export function usePreferences() {
   watch([language, theme, dark], () => {
     document.documentElement.lang = language.value;
     document.documentElement.classList.toggle("dark", dark.value);
-    document.title = t("title");
+    document.title = t(title);
     try { window.localStorage.setItem("asr-ui-preferences", JSON.stringify({ language: language.value, theme: theme.value })); } catch { /* 当前页面继续使用所选偏好。 */ }
   }, { immediate: true });
   return { language, theme, t };

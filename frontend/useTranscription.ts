@@ -14,7 +14,7 @@ export interface ViewEffects {
 // 编排本机表单、只读预览和编辑会话结束，浏览器操作由视图提供。
 export function useTranscription(api: Api, view: ViewEffects, t: Translate, makeRequestId: () => string = () => crypto.randomUUID()) {
   const model = reactive(createModel());
-  const form = reactive<FormValues>({ useApiKey: false, diarizationEnabled: true, hotwordsEnabled: false,
+  const form = reactive<FormValues>({ reviewEnabled: false, useApiKey: false, diarizationEnabled: true, hotwordsEnabled: false,
     contextEnabled: false, context: "", language: "", speaker: "", hotwordRows: [] });
   const error = shallowRef<UiError | null>(null);
   let rowKey = 0;
@@ -52,7 +52,7 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
   // 将后端保留的预览输入恢复到本机表单。
   function restoreForm(result: EditableSnapshot): void {
     const config = result.configuration;
-    Object.assign(form, { useApiKey: config.auth_mode === "api_key", diarizationEnabled: config.diarization_enabled,
+    Object.assign(form, { reviewEnabled: config.review_enabled, useApiKey: config.auth_mode === "api_key", diarizationEnabled: config.diarization_enabled,
       hotwordsEnabled: ["hotwords", "both"].includes(config.enhancement_mode),
       contextEnabled: ["context", "both"].includes(config.enhancement_mode), context: config.context,
       language: config.language_hint ?? "", speaker: config.speaker_count === null ? "" : String(config.speaker_count) });

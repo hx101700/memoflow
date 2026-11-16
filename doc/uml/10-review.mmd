@@ -1,0 +1,131 @@
+sequenceDiagram
+actor U as 用户
+participant C as Codex＋CLI
+participant H as review_web模块
+participant V as ReviewSession
+participant W as Vue回听页
+participant D as delivery／documents模块
+participant P as PathPicker
+participant M as media模块
+participant F as 本机任务与文件
+C->>H: review --job ID（可选no-browser）
+H->>F: 读取review/connection.json
+alt 同job服务可访问且未关闭
+    H->>H: 复用原连接，不创建第二个服务
+else 没有连接或旧服务PID已确认结束
+    H->>V: ReviewSession(runtime, job_id)
+    V->>F: 核对配置、JSON_READY与原JSON摘要
+    V->>F: 恢复匹配摘要的draft及校验稿状态
+    break 来源或草稿无法核对
+        H-->>C: 停止打开，保留原文件
+    end
+    V->>V: 绑定原录音，不能读取时尝试mono.flac
+    H->>F: 保存本次port、token、pid
+else 原服务存活、状态未知或身份不符
+    break 无法确认可复用或可重建
+        H-->>C: 停止并提示检查原服务
+    end
+end
+H-->>C: listening：job_id、url、pid、reused、browser_request
+C->>W: 打开回执URL一次
+W->>H: GET /review取得Cookie；GET /api/review
+H->>V: description()
+V-->>H: 当前描述
+H-->>W: 句子当前值与original值、姓名、revision、audio及校验稿状态
+W->>H: GET /api/review/presence，保持SSE连接
+H->>H: 登记页面；重连时取消无人使用计时
+Note over H,W: 共用LocalHandler校验Host、Origin及Cookie／X-ASR-Token<br/>URL不含令牌；JSON正文上限512KiB
+loop 播放与人工编辑
+    opt 用户定位下一处修改
+        U->>W: 下一处修改
+        W->>W: 按原句顺序循环定位差异；暂停播放并聚焦正文
+    end
+    U->>W: 行内回听本句、底部连续播放或调整倍速
+    W->>W: 拖动仅更新显示值，释放才seek<br/>暂停seek也定位当前句；正文编辑时不跟随滚动
+    W->>H: GET／HEAD /api/review/audio（可带Range）
+    H->>V: audio_path()核对绑定文件属性
+    H->>F: 流式读取当前音频范围
+    H-->>W: 200／206；无效范围416
+    Note over W,F: 行内回听在原结束时间暂停，底部普通播放连续进行<br/>不设连续模式开关，不生成逐句音频文件
+    opt 文件移动或不可读取
+        W->>H: select-audio(picker_id)
+        H->>V: select_audio()
+        V->>P: 系统窗口内直接选择或取消
+        P-->>V: 已选路径或取消结果
+        alt 用户取消
+            V-->>H: cancelled=true，保留原绑定
+            H-->>W: 取消结果
+        else 已选择文件
+            V->>F: 核对原录音大小与SHA，再保存新路径和revision
+            V-->>H: 新audio与revision，或校验错误
+            H-->>W: 成功结果；不匹配时422
+        end
+    end
+    opt 浏览器不支持／解码失败且HEAD确认可读
+        W->>H: prepare-audio
+        H->>V: prepare_audio()
+        V->>M: 缺少副本时prepare_playback()
+        M->>F: 临时生成并核验后发布review/playback.mp3
+        V-->>H: 生成或复用完整MP3后的audio
+        H-->>W: 可播放的副本；原录音保留
+    end
+    opt 用户管理说话人名称
+        U->>W: 打开说话人名称；新增或修改
+        W->>W: 列表限高滚动，底部操作保持可见<br/>新增后定位末行并聚焦输入
+    end
+    U->>W: 修改正文、归属或姓名，或重置单句
+    W->>W: 与original值比较显示改动<br/>重置恢复原正文／归属，沿用save
+    W->>W: 800ms延迟或失焦；串行提交本批修改
+    W->>H: save(revision, sentences?, speakers?)
+    H->>V: save(payload)
+    critical ReviewSession锁
+        V->>V: 核对revision及字段，合并改动
+        V->>F: 原子写review/draft.json
+        V->>V: 写入成功后更新内存与revision
+    end
+    V-->>H: 保存结果或校验异常
+    H-->>W: 新revision；冲突409／输入错误422
+    Note over W,V: 保存失败保留输入，停止自动重试<br/>保存期间新增输入留待下一批；时间与顺序不可编辑
+end
+opt 用户导出校验稿
+    W->>W: 等待同一保存队列成功
+    W->>H: export(revision, picker_id)
+    H->>V: export(payload)
+    V->>V: 核对版本；选窗口初始目录
+    V->>P: select(mode=directory, picker_id)
+    Note over W,P: 用户直接在系统窗口选择或取消，无页面取消接口
+    P-->>V: 选定目录或取消
+    alt 用户取消选择
+        V-->>H: cancelled=true
+        H-->>W: 保留草稿与原交付；不生成文件
+    else 用户选定目录
+        V->>V: 再核对revision，锁内取得Transcript快照
+        V->>D: export_documents(review_revision, review_directory)
+        D->>F: 选定目录下生成transcription-reviewed三格式<br/>逐项记录review/status.json
+        D-->>V: COMPLETE／PARTIAL／FAILED及export_revision
+        V-->>H: cancelled=false、交付结果与当前revision
+        H-->>W: delivery与export_revision
+    end
+    Note over V,F: 窗口从最近READY文件父目录或原documents开始<br/>原JSON、documents原稿及原delivery/status.json保持<br/>后续改动可使revision与export_revision不同
+end
+alt 用户关闭或离开页面
+    W->>H: 释放presence连接；服务端观察socket EOF
+    H->>H: 记录离页；最后一页断开才开始10秒宽限
+    alt 宽限内重连或还有其他页面
+        H->>H: 取消计时或继续服务
+        Note over H,W: 刷新恢复同一服务；不发送周期心跳请求
+    else 10秒后仍无页面
+        H->>V: close()并关闭选择器
+        H->>H: shutdown并等待请求线程
+        H->>F: 移除connection.json；保留草稿及成品
+    end
+else 用户要求Codex结束
+    C->>H: review-close --job ID
+    Note over C,W: 代码关闭不能保存浏览器尚未提交的输入
+    H->>V: close()并关闭选择器
+    H-->>C: closed回执
+    H->>H: finally中shutdown；退出时等待请求线程
+    H->>F: 移除connection.json；保留草稿及成品
+end
+Note over H,F: 关闭响应断管仍执行服务收尾；收到断管不能伪造成功回执
+Note over C,F: 草稿保存在review/draft.json，Cookie只用于认证<br/>不创建新任务，不调用ASR；下次打开恢复已保存版本<br/>缺少连接时closed表示无登记活动服务，没有持久化关闭回执

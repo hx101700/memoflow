@@ -1,17 +1,14 @@
 """本机HTTP入口：协议检查、静态资源和用例结果到响应的转换。"""
 
-import hmac
 import http.client
 import json
 import os
-import socket
 import sys
 import threading
 import webbrowser
 from collections.abc import Mapping
-from http.cookies import CookieError, SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from .utils.local_http import LocalHTTPServer, LocalHandler, RequestError, STATIC, STATIC_ROUTES
 from typing import Literal
 from urllib.parse import unquote, urlsplit
 
@@ -23,16 +20,13 @@ from .application.recovery import CleanupReport, finish_session, recover_workspa
 from .application.session import Session
 from .application.rules import ValidationError
 
-STATIC = Path(__file__).parent / "static"
 # JSON词表保留编辑值和类型标记，需容纳模型支持的2000条词语。
 MAX_REQUEST_BYTES = 512 * 1024
 
 
-class LocalServer(ThreadingHTTPServer):
+class LocalServer(LocalHTTPServer):
     """提供带编辑会话的本机 HTTP 服务。"""
 
-    allow_reuse_address = False
-    daemon_threads = False
     session: Session
     recovery: CleanupReport
 
@@ -50,13 +44,6 @@ class LocalServer(ThreadingHTTPServer):
         """结束达到截止时间的编辑会话并停止接收请求。"""
         if self.session.expire() is not None:
             self.shutdown()
-
-    def server_bind(self) -> None:
-        """独占绑定本机HTTP端口。"""
-        # Windows默认复用地址可能让两个预览进程同时占用同一端口。
-        if os.name == "nt":
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
 
     def server_close(self) -> None:
         """关闭会话并等待请求结束，再回收会话的磁盘暂存。"""
@@ -76,69 +63,14 @@ def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None)
     recovery = recover_workspace(runtime)
     session = Session(runtime, audio=audio)
 
-    class Handler(BaseHTTPRequestHandler):
+    class Handler(LocalHandler):
         server: LocalServer
-
-        def log_message(self, *_args: object) -> None:
-            """关闭默认HTTP访问日志。"""
-            # 请求URL和请求头可能携带会话令牌。
-            pass
-
-        def setup(self) -> None:
-            """初始化连接并设置网络读写超时。"""
-            super().setup()
-            self.connection.settimeout(10)
-
-        def send(self, status: int, data: bytes, content_type: str = "application/json; charset=utf-8", cookie: bool = False) -> None:
-            """发送响应内容及缓存控制头，按需设置会话Cookie。"""
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-            if cookie:
-                self.send_header("Set-Cookie", f"asr_ui_{self.server.server_port}={session.token}; Path=/; HttpOnly; SameSite=Strict")
-            self.end_headers()
-            self.wfile.write(data)
-
-        def json(self, status: int, payload: Mapping[str, object], cookie: bool = False) -> None:
-            """将用例回执编码为UTF-8 JSON响应。"""
-            self.send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), cookie=cookie)
-
-        def allowed(self, authenticated: bool = True, *, control: bool = False) -> bool:
-            """核对本机请求来源及必要的会话令牌，拒绝时直接回复403。"""
-            expected_host = f"127.0.0.1:{self.server.server_port}"
-            origin = self.headers.get("Origin")
-            if self.headers.get("Host") != expected_host or (origin is not None and origin != f"http://{expected_host}"):
-                self.json(403, {"ok": False, "error": localize("请求来源不被允许。")})
-                return False
-            if self.command == "POST" and origin != f"http://{expected_host}":
-                self.json(403, {"ok": False, "error": localize("缺少有效的本地页面来源。")})
-                return False
-            if authenticated:
-                token = self.headers.get("X-ASR-Token", "")
-                if not token and not control:
-                    try:
-                        cookies = SimpleCookie(self.headers.get("Cookie", ""))
-                        value = cookies.get(f"asr_ui_{self.server.server_port}")
-                        token = value.value if value else ""
-                    except CookieError:
-                        token = ""
-                if not hmac.compare_digest(token.encode("utf-8"), session.token.encode("ascii")):
-                    self.json(403, {"ok": False, "error": localize("会话无效，请从Codex重新打开本地页面链接。")})
-                    return False
-            return True
 
         def do_GET(self) -> None:
             """分派静态资源、会话描述和热词模板的读取请求。"""
             with language_scope(self.headers.get("Accept-Language", "zh-CN")):
                 path = urlsplit(self.path)
-                static = {"/": ("index.html", "text/html; charset=utf-8"),
-                          "/app.css": ("app.css", "text/css; charset=utf-8"),
-                          "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                          "/favicon.svg": ("favicon.svg", "image/svg+xml")}
+                static = STATIC_ROUTES
                 if not self.allowed(authenticated=path.path not in static):
                     return
                 try:
@@ -193,17 +125,7 @@ def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None)
                         name = unquote(self.headers.get("X-File-Name", ""), errors="strict")
                         self.json(200, session.receive_hotwords(name, self.rfile, size))
                         return
-                    if self.headers.get("Transfer-Encoding") or self.headers.get_content_type() != "application/json":
-                        raise ValidationError("请求必须为JSON。", "request")
-                    length = int(self.headers.get("Content-Length", "0"))
-                    if length > MAX_REQUEST_BYTES:
-                        self.json(413, {"ok": False, "field": "form", "error": localize("表格或文本内容过大，请减少后重新检查。")})
-                        return
-                    if length <= 0:
-                        raise ValidationError("请求体不能为空。", "request")
-                    payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                    if not isinstance(payload, dict):
-                        raise ValidationError("请求格式不正确。", "request")
+                    payload = self.read_json(MAX_REQUEST_BYTES)
                     if path == "/api/validate":
                         self.json(200, session.validate(payload))
                     elif path == "/api/preview-ready":
@@ -228,6 +150,8 @@ def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None)
                         self.json(404, {"ok": False, "error": localize("未找到此接口。")})
                 except (ValidationError, SetupError, OSError) as exc:
                     self.error_response(exc)
+                except RequestError as exc:
+                    self.json(exc.status, {"ok": False, "field": "form", "error": localize(str(exc))})
                 except (ValueError, TypeError):
                     self.json(400, {"ok": False, "error": localize("请求格式不正确。")})
                 finally:
@@ -236,6 +160,7 @@ def create_server(runtime: Runtime, port: int = 0, *, audio: Path | None = None)
 
     server = LocalServer(("127.0.0.1", port), Handler, bind_and_activate=False)
     server.session = session
+    server.token = session.token
     server.recovery = recovery
     try:
         server.server_bind()

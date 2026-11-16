@@ -54,7 +54,7 @@ async function renderDiagram(browser: Browser, name: string, renderer: string, t
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("npm run render:uml -- [图名 ...]；省略图名时渲染doc/uml中的全部.mmd。示例：02-install 07-state");
+    console.log("npm run render:uml -- [图名 ...]；省略图名时渲染doc/uml中的全部.mmd。示例：02-install 07-workflow");
     return;
   }
   const available = (await readdir(directory)).filter(name => name.endsWith(".mmd")).map(name => name.slice(0, -4)).sort();

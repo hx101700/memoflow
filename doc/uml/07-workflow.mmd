@@ -1,0 +1,61 @@
+flowchart TB
+subgraph Bailian["百炼"]
+  BTop[" "]
+  BRun["上传、提交识别、轮询<br/>下载并保存原始JSON"]
+  BBottom[" "]
+end
+
+subgraph Local["本机工具"]
+  LTop[" "]
+  LCancel(["cancelled / expired<br/>结束编辑，不请求ASR"])
+  LHandoff["发布配置与回执<br/>会话handed_off<br/>新建独立job_id"]
+  LPrepare["占用execution：PREPARING<br/>准备后先记录RUNNING"]
+  LStop["执行停止：STOPPED"]
+  LJson["检查转写结果<br/>保存状态并尝试生成原稿"]
+  LBottom[" "]
+end
+
+subgraph Codex["Codex"]
+  CTop[" "]
+  COpen["准备环境并打开配置页"]
+  CConfirm["按用户session_id请求交接"]
+  CExecute["取得job_id后按需认证<br/>执行同一任务并等待"]
+  CCancel["取消本次编辑"]
+  CResult["交付原JSON<br/>及原稿实际结果"]
+  CFail(["报告失败或未知结果<br/>保留记录，不重传"])
+  CReview{"配置中已开启回听？"}
+  COpenReview(["打开回听页<br/>见图10"])
+  CEnd(["结束本次处理"])
+  CBottom[" "]
+end
+
+subgraph User["用户"]
+  UTop[" "]
+  UStart(["提供录音"])
+  UCheck["填写并核对预览"]
+  UBottom[" "]
+end
+
+%% 不可见锚点只约束泳道的起止位置，不代表业务步骤。
+UTop & CTop & LTop & BTop ~~~ UStart
+CEnd & COpenReview & CFail & LCancel ~~~ UBottom & CBottom & LBottom & BBottom
+LCancel ~~~ LHandoff
+CFail ~~~ CResult
+classDef laneAnchor fill:none,stroke:none,color:transparent;
+class UTop,CTop,LTop,BTop,UBottom,CBottom,LBottom,BBottom laneAnchor;
+
+UStart --> COpen -->|本机填写与预览| UCheck
+UCheck -->|发送确认消息| CConfirm
+CConfirm --> LHandoff --> CExecute --> LPrepare
+UCheck -->|取消| CCancel --> LCancel
+COpen -.->|编辑会话到期| LCancel
+LPrepare -->|本机准备失败| LStop
+LPrepare -->|启动一次BL| BRun
+BRun -->|失败或等待中断| LStop
+BRun -->|正常返回| LJson
+LJson -->|结果检查失败| LStop
+LJson -->|记录保存失败| CFail
+LStop --> CFail
+LJson -->|JSON_READY且无记录错误| CResult --> CReview
+CReview -->|否| CEnd
+CReview -->|是，沿用job_id| COpenReview

@@ -51,6 +51,10 @@ def job_status(runtime: Runtime, job_id: str) -> ExecutionReport:
         if delivery["status"] == "EXPORTING":
             delivery["message"] = "这是最近保存的导出状态，不代表进程仍在运行。请检查原进程和已完成文件；不会自动重试。"
         _attach_delivery(report, delivery)
+    from .review import read_review_status
+    review = read_review_status(runtime, job_id)
+    if review is not None:
+        report["review"] = review
     return report
 
 
@@ -138,6 +142,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
     except FileExistsError:
         return job_status(runtime, job_id)
     report: ExecutionReport = {"job_id": job_id, "status": "PREPARING", "execution_authorized": True,
+              "review_enabled": config.get("review_enabled", False),
               "authorization_source": "session_handoff", "cloud_outcome": "not_started",
               "started_at": datetime.now(timezone.utc).isoformat(),
               "executor_pid": os.getpid(), "documents_ready": False}

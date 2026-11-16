@@ -77,7 +77,18 @@ class Sentence {
   +int begin_ms
   +int end_ms
   +int_or_None speaker_id
+  +str_or_None speaker_name
   +str text
+}
+class ReviewSentence {
+  <<TypeScript interface>>
+  +int index
+  +int begin_ms
+  +int end_ms
+  +str text
+  +int_or_null speaker_id
+  +str original_text
+  +int_or_null original_speaker_id
 }
 class PreparedCommand {
   <<frozen dataclass>>
@@ -99,6 +110,7 @@ AudioSelection ..> AudioInfo : validate_audio读取原文件
 SessionDescription ..> AudioSelection : 当前登记的原录音
 SessionDescription ..> LocalizedText : 初始路径读取错误
 Transcript --> "0..*" Sentence : 保存原顺序及毫秒时间戳
+Sentence ..> ReviewSentence : 回听描述合并原值与校对值
 HotwordImport --> "0..*" HotwordRow : Excel读取后可继续编辑
 HotwordRow <|-- EditorRow : 前端表格状态
 HotwordRow ..> HotwordIssue : 按当前数组位置校验
@@ -115,7 +127,8 @@ note for HotwordIssue "application/rules.py::build_vocabulary<br/>row是本次�
 note for EditorIssue "frontend/types.ts；useTranscription.ts<br/>接收时将row关联到稳定key<br/>key、row、field、duplicate_group为可选字段<br/>编辑／删除只移除当前格／行报错<br/>重复组剩余至少两行时保留红标，仅剩一行时清除重复提示<br/>修改权重只清该格错误；其他行按稳定键保留"
 note for LocalizedText "models.py／frontend/types.ts；utils/i18n.py::localize<br/>网页错误、格级说明和预览警告一次包含zh与en<br/>切换语言只选择文本，不重新请求、不清空状态"
 note for HotwordImport "application/inputs.py::import_hotwords<br/>utils/hotwords.py::read_hotwords读取内存bytes<br/>返回可编辑数组和读取说明，不生成热词upload_id<br/>内容规则由Session.validate在确认并预览时应用"
-note for Transcript "scripts/asr_runtime/models.py<br/>utils/results.py::load_transcript创建<br/>三个writer共享内容；Sentence可独立存在或共享"
+note for Transcript "scripts/asr_runtime/models.py<br/>utils/results.py::load_transcript创建原始结果<br/>ReviewSession合并正文、speaker_id及speaker_name供独立导出<br/>时间、音轨和顺序仍取自原JSON；三个writer共用结构"
+note for ReviewSentence "frontend/types.ts；GET /api/review的逐句数据<br/>original_text／original_speaker_id取自原JSON，供高亮与重置<br/>重置通过save提交恢复后的text与speaker_id<br/>不增加端点，不更改原JSON或统一说话人姓名"
 note for PreparedCommand "scripts/asr_runtime/utils/bailian.py<br/>prepare_command创建；run_recognition使用<br/>argv和env隐藏repr；env是可变字典，frozen限制属性重赋值"
 note for PythonIndex "scripts/asr_runtime/utils/installation.py<br/>固定PyPI与阿里云镜像的索引和文件根地址<br/>rank_python_indexes按小样本吞吐排序，bootstrap依次选择"
 note for BailianFailure "scripts/asr_runtime/utils/bailian.py<br/>started表示本机BL进程已启动<br/>云端结果由application/transcription.py解释"

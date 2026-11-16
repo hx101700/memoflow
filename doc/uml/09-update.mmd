@@ -9,11 +9,16 @@ participant W as 本次工作目录
 participant H as web模块
 participant B as 宿主开链接工具
 U->>C: 请求转写，或明确检查／更新此Skill
-opt 当前填写／预览期间用户转去更新
-    C->>H: cancel --session 本次活动页面编号
-    H-->>C: 取消或到期结果
-    C->>H: 等待原serve退出，释放共享句柄
-    Note over C,H: 响应丢失时读取同一持久结果<br/>已交接或结果无法核实时按实际状态处理
+opt 当前有活动页面且用户转去更新
+    alt 填写或预览
+        C->>H: cancel --session 本次活动页面编号
+        H-->>C: 取消或到期结果
+        C->>H: 等待原serve退出，释放共享句柄
+        Note over C,H: 响应丢失时读取同一持久结果<br/>已交接或结果无法核实时按实际状态处理
+    else 人工回听
+        C->>U: 请先完成当前校对保存
+        C->>S: review-close --job 原编号；等待原review退出
+    end
 end
 C->>U: 说明将检查更新
 C->>P: 工作目录基础Python执行update.py<br/>明确检查／更新时加--check-now；不传workspace
@@ -37,19 +42,28 @@ else 存在发行清单
             alt 首次记录写入失败
                 P->>P: failed，repair_required=false，record_error<br/>尚未联网，安装未改
             else 日期已保存
-                P->>G: GET releases/latest
-                alt 请求／发布资料失败
+                P->>P: 建立本操作共用的两次额外重试预算
+                P->>G: GET releases/latest（30秒请求超时）
+                loop 暂时请求失败且还有共用预算；成功即结束
+                    P->>P: 扣减一次预算；按使用顺序退避1秒／2秒
+                    P->>G: 重发当前版本查询请求
+                end
+                alt 请求最终失败／发布资料无效
                     P->>P: failed，保留当前安装
                 else 安装版本相同或更高
                     P->>P: latest／local_ahead
                 else 有更高正式版本
                     P-->>C: stderr进度：当前与目标版本
                     C->>U: 说明发现新版并正在更新
-                    P->>G: 下载对应轻量ZIP
-                    P->>P: 核对大小、可用SHA-256、清单与CRC
+                    P->>G: 下载对应轻量ZIP（30秒请求超时）
+                    loop 暂时下载失败且还有共用预算；成功即结束
+                        P->>P: 继续使用同一预算与1秒／2秒退避序号
+                        P->>G: 仅重发轻量ZIP请求，不重查版本
+                    end
+                    P->>P: 下载完成时核对大小、可用SHA-256、清单与CRC
                     alt 下载或预检失败
                         P->>P: failed，旧安装保持
-                    else 完整包已核对
+                    else 轻量包已完整核对
                         P->>P: 在内存保存原文件内容
                         P->>S: 记录applying与目标版本
                         P->>S: 替换受管文件，删除旧清单独有文件
@@ -72,7 +86,9 @@ else 存在发行清单
     end
 end
 P-->>C: JSON回执，释放已取得的句柄
-Note over P,W: 只有repair_required=true返回非零；deferred不消耗检查机会<br/>已记日期的失败当天不自动重查；工作目录不参与覆盖
+Note over P,G: 仅网络／断流、HTTP408／429／5xx使用重试预算<br/>其他HTTP状态、证书验证、资料／文件校验及覆盖错误不重试
+Note over P,W: 只有repair_required=true返回非零；deferred不消耗检查机会<br/>日检按整次操作计数，含最多两次额外重试；最终失败当天不自动重查<br/>工作目录不参与覆盖
+Note over P,S: asr.py的共享读取保护同时覆盖配置页与回听页<br/>回听服务未退出时保持当前文件并暂缓更新
 C->>U: 报告版本、结果及附带警告
 alt repair_required=true
     C->>U: 停止业务，按实际问题修复安装

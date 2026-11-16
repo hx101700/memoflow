@@ -58,6 +58,27 @@ class SessionTests(WebFixture):
         self.assertFalse(self.runtime.path(".state/jobs").exists())
         self.assertFalse(self.runtime.output_root.exists())
 
+    def test_audio_review_setting_survives_preview_edit_and_handoff(self):
+        """验证回听选项随工单预览、返回编辑及正式任务保存。"""
+        self.payload["review_enabled"] = True
+        preview = self.session.validate(self.payload)
+        self.session.preview_ready(preview["validation_id"])
+        restored = self.session.edit(preview["validation_id"])
+        self.assertTrue(restored["configuration"]["review_enabled"])
+        preview = self.session.validate(restored["configuration"])
+        self.session.preview_ready(preview["validation_id"])
+        receipt = self.session.confirm()
+        config = json.loads(Path(receipt["config_path"]).read_text(encoding="utf-8"))
+        self.assertTrue(config["review_enabled"])
+
+    def test_audio_review_defaults_off_and_rejects_non_boolean(self):
+        """验证现有工单默认沿用直接交付，回听开关接受布尔值。"""
+        self.session.validate(self.payload)
+        self.assertFalse(self.session.draft["config"]["review_enabled"])
+        with self.assertRaises(ValidationError) as caught:
+            self.session.validate({**self.payload, "review_enabled": "yes"})
+        self.assertEqual(caught.exception.field, "review_enabled")
+
     def test_hotword_import_errors_target_the_editable_table(self):
         """验证导入前的文件错误与等待提示指向当前热词表格字段。"""
         with self.assertRaises(ValidationError) as caught:

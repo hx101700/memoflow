@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch, ElText } from "element-plus";
-import { Aim, ChatLineSquare, DocumentCopy, Edit, FolderOpened, Headset, Key, Monitor, Moon, Reading, Setting, Sunny, View } from "@element-plus/icons-vue";
+import { ElAlert, ElButton, ElCard, ElConfigProvider, ElDescriptions, ElDescriptionsItem, ElDivider, ElForm, ElFormItem, ElIcon, ElInput, ElLink, ElMessage, ElOption, ElResult, ElSelect, ElStep, ElSteps, ElSwitch } from "element-plus";
+import { Aim, ChatLineSquare, DocumentCopy, Edit, FolderOpened, Headset, Key, Reading, Setting, View } from "@element-plus/icons-vue";
 import en from "element-plus/es/locale/lang/en";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { availability } from "./model";
@@ -9,6 +9,7 @@ import { languageName, type Translate } from "./i18n";
 import { usePreferences } from "./preferences";
 import { useTranscription } from "./useTranscription";
 import type { Api, DirectoryKind, Language } from "./types";
+import AppHeader from "./components/AppHeader.vue";
 import KeyDisplay from "./components/KeyDisplay.vue";
 import ReviewPanel from "./components/ReviewPanel.vue";
 import AudioField from "./components/AudioField.vue";
@@ -104,23 +105,8 @@ onUnmounted(actions.dispose);
 <template>
   <ElConfigProvider :locale="locale">
     <a class="skip-link" href="#config-fields">{{ t('skip') }}</a>
-    <header class="topbar">
-      <div class="topbar-inner">
-        <a class="brand" href="#" @click.prevent="focus('page-title')">
-          <ElIcon class="brand-mark" :size="22" aria-hidden="true"><Headset /></ElIcon>
-          <span class="brand-label"><span>MemoFlow</span><ElText v-if="model.session" class="skill-version" type="info" size="small">{{ model.session.skill_version ? `v${model.session.skill_version}` : t('developmentBuild') }}</ElText></span>
-        </a>
-        <div class="appearance-controls">
-          <ElSelect id="interface-language" v-model="language" :aria-label="t('language')" :disabled="!available.changeLanguage" class="language-select">
-            <ElOption value="zh-CN" label="简体中文" /><ElOption value="en" label="English" />
-          </ElSelect>
-          <ElSelect id="theme" v-model="theme" :aria-label="t('theme')" class="theme-select">
-            <template #prefix><ElIcon :size="16" aria-hidden="true"><component :is="theme === 'system' ? Monitor : theme === 'light' ? Sunny : Moon" /></ElIcon></template>
-            <ElOption value="system" :label="t('system')" /><ElOption value="light" :label="t('light')" /><ElOption value="dark" :label="t('dark')" />
-          </ElSelect>
-        </div>
-      </div>
-    </header>
+    <AppHeader v-model:language="language" v-model:theme="theme" :version="model.session?.skill_version"
+      :language-disabled="!available.changeLanguage" :t="t" @home="focus('page-title')" />
 
     <main class="page-shell">
       <div class="workspace" :class="{ 'with-summary': model.session && configuring }">
@@ -237,6 +223,13 @@ onUnmounted(actions.dispose);
                 <p v-if="invalid(kind + '_directory')" class="field-error">{{ errorText }}</p>
               </div>
               <div v-if="model.picker && model.picker.kind !== 'audio'" class="picker-wait" role="status"><span>{{ t('folderWaiting') }}</span><ElButton :disabled="!available.cancelPicker" @click="actions.cancelPicker">{{ model.picker.cancelling ? t('cancelling') : t('cancelWaiting') }}</ElButton></div>
+            </ElCard>
+
+            <ElCard shadow="never">
+              <div class="toggle-row">
+                <div><label for="review-enabled">{{ t('reviewEnabled') }}</label><p>{{ t('reviewEnabledHelp') }}</p></div>
+                <ElSwitch id="review-enabled" v-model="form.reviewEnabled" :aria-label="t('reviewEnabled')" @change="actions.changed('review_enabled')" />
+              </div>
             </ElCard>
 
             <ElCard id="auth_mode" shadow="never" header-class="section-heading" :class="{ 'needs-attention': invalid('auth_mode') }" tabindex="-1">
