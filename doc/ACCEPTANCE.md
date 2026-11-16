@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-16 v0.1.6正式发布与公开升级
+
+用户明确授权合并master并发布新版本。master/dev已快进到137ab3f9cdacde695d636b047a203f922a956b40，新增标签v0.1.6指向该提交。GitHub Release446669327公开且latest为v0.1.6，正文与本地release/NOTES.md一致；两附件大小及SHA-256均与下方发布准备记录一致。六个历史Release的ID和附件摘要回读保持，未删除或重发旧版本。
+
+以本地保留、摘要匹配官方v0.1.5的轻量包解压到.runtime/release-016-upgrade/skill，执行其中原版update.py --check-now，通过公开GitHub入口下载并升级到v0.1.6。受管资源逐字节匹配本次正式轻量包，manifest解析结构一致，成功回执返回对应release_url与正文；使用新入口再次自动调用得到checked_today、last_status=updated，未重复返回更新说明。验证时按更新器实际的清单序列化及正文strip规则比较，运行实现未作改动。
+
+实际回执保存在.runtime/release-0.1.6-publish.json与.runtime/release-016-upgrade/verification.json。没有替换用户安装、调用云端识别或重新下载完整版；此次公开升级验证覆盖Skill资源与日检衔接，不代表重新完成冷安装或真实音频验收。
+
 ## 2026-11-16 v0.1.6发布准备
 
 用户授权正式发布与master合并。版本通过npm同步为0.1.6，依赖项未改变；README包含最后确认的回听节点、持续反馈及可复制请求，Release采用已审阅的双语正文。
