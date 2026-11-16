@@ -1,61 +1,51 @@
-flowchart TB
-subgraph Bailian["百炼"]
-  BTop[" "]
-  BRun["上传、提交识别、轮询<br/>下载并保存原始JSON"]
-  BBottom[" "]
+sequenceDiagram
+actor U as 用户
+participant C as Codex＋Skill
+participant M as MemoFlow本机工具
+participant B as 百炼CLI／云端ASR
+U->>C: 提供录音并请求转写
+C->>M: 准备环境，启动配置页
+M-->>C: listening：session_id与URL
+C-->>U: 打开页面，请用户填写
+U->>M: 选择录音、填写设置并核对预览
+Note over U,M: 填写／预览沿用session_id，尚未创建任务<br/>具体交互与返回修改见图03
+break 用户取消或编辑会话到期
+    Note over C,M: Codex按session_id取消，或服务端到期处理
+    M-->>U: 编辑已结束
 end
-
-subgraph Local["本机工具"]
-  LTop[" "]
-  LCancel(["cancelled / expired<br/>结束编辑，不请求ASR"])
-  LHandoff["发布配置与回执<br/>会话handed_off<br/>新建独立job_id"]
-  LPrepare["占用execution：PREPARING<br/>准备后先记录RUNNING"]
-  LStop["执行停止：STOPPED"]
-  LJson["检查转写结果<br/>保存状态并尝试生成原稿"]
-  LBottom[" "]
+U->>C: 发送含session_id的确认消息
+C->>M: confirm --session ID
+alt 有效预览交接成功
+    M-->>C: 已保存配置与回执，返回job_id
+else 无法交接
+    break 未创建执行任务
+        M-->>C: 实际原因与处理提示
+        C-->>U: 提示完成或修正原页面
+    end
 end
-
-subgraph Codex["Codex"]
-  CTop[" "]
-  COpen["准备环境并打开配置页"]
-  CConfirm["按用户session_id请求交接"]
-  CExecute["取得job_id后按需认证<br/>执行同一任务并等待"]
-  CCancel["取消本次编辑"]
-  CResult["交付原JSON<br/>及原稿实际结果"]
-  CFail(["报告失败或未知结果<br/>保留记录，不重传"])
-  CReview{"配置中已开启回听？"}
-  COpenReview(["打开回听页<br/>见图10"])
-  CEnd(["结束本次处理"])
-  CBottom[" "]
+C->>C: 按认证方式处理，必要时引导BL登录（图04）
+C->>M: transcribe --job ID，等待同一进程
+M->>M: 一次执行占用，保存PREPARING<br/>媒体准备完成后保存RUNNING
+break 本机准备或执行记录保存失败
+    M-->>C: 失败回执与实际记录情况
+    C-->>U: 说明原因并保留任务
 end
-
-subgraph User["用户"]
-  UTop[" "]
-  UStart(["提供录音"])
-  UCheck["填写并核对预览"]
-  UBottom[" "]
+M->>B: 执行一次录音识别
+B->>B: 上传、提交、轮询，下载原始JSON
+B-->>M: 返回结果或错误
+alt JSON有效且JSON_READY记录保存成功
+    M->>M: 按同一结果生成Word、Excel、Markdown
+    M-->>C: JSON_READY及三格式实际交付结果
+    C-->>U: 交付原JSON与已完成的校对稿
+    alt 已确认配置开启回听校对
+        C->>M: review --job 同一ID
+        M-->>C: 回听页面URL
+        C-->>U: 打开回听校对页（图10）
+    else 未开启回听校对
+        Note over U,C: 本次转写交付结束；以后可按同一任务请求回听
+    end
+else BL失败、结果检查失败或记录保存失败
+    M-->>C: 实际执行结果及错误（图05／08）
+    C-->>U: 说明已知结果，保留记录
 end
-
-%% 不可见锚点只约束泳道的起止位置，不代表业务步骤。
-UTop & CTop & LTop & BTop ~~~ UStart
-CEnd & COpenReview & CFail & LCancel ~~~ UBottom & CBottom & LBottom & BBottom
-LCancel ~~~ LHandoff
-CFail ~~~ CResult
-classDef laneAnchor fill:none,stroke:none,color:transparent;
-class UTop,CTop,LTop,BTop,UBottom,CBottom,LBottom,BBottom laneAnchor;
-
-UStart --> COpen -->|本机填写与预览| UCheck
-UCheck -->|发送确认消息| CConfirm
-CConfirm --> LHandoff --> CExecute --> LPrepare
-UCheck -->|取消| CCancel --> LCancel
-COpen -.->|编辑会话到期| LCancel
-LPrepare -->|本机准备失败| LStop
-LPrepare -->|启动一次BL| BRun
-BRun -->|失败或等待中断| LStop
-BRun -->|正常返回| LJson
-LJson -->|结果检查失败| LStop
-LJson -->|记录保存失败| CFail
-LStop --> CFail
-LJson -->|JSON_READY且无记录错误| CResult --> CReview
-CReview -->|否| CEnd
-CReview -->|是，沿用job_id| COpenReview
+Note over C,B: 一个任务只执行一次；失败或结果未知时不自动重传<br/>原稿交付状态与执行状态分别记录，回听不再次调用ASR

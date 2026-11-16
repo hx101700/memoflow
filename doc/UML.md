@@ -16,15 +16,15 @@
 | 04 凭据来源与登录 | KeyDisplay、`utils/auth.py`、`utils/bailian.py`；本机Key与官方BL登录 | [PNG](uml/04-auth.png) / [Mermaid](uml/04-auth.mmd) |
 | 05 转写与交付 | `application/transcription.py`、delivery、BL与文档writer | [PNG](uml/05-transcribe.png) / [Mermaid](uml/05-transcribe.mmd) |
 | 06 重新导出与状态查询 | `export_job()`、`job_status()`与本机记录，不调用云端 | [PNG](uml/06-export.png) / [Mermaid](uml/06-export.mmd) |
-| 07 转写流程（泳道） | 用户、Codex、本机工具、百炼的职责；会话交接、一次执行、原稿交付及已确认的回听开关 | [PNG](uml/07-workflow.png) / [Mermaid](uml/07-workflow.mmd) |
+| 07 转写流程 | 用户、Codex、本机工具、百炼的职责；会话交接、一次执行、原稿交付及已确认的回听开关 | [PNG](uml/07-workflow.png) / [Mermaid](uml/07-workflow.mmd) |
 | 08 记录保存失败 | `_save_status()`失败时的当次回执、磁盘状态与停止位置 | [PNG](uml/08-failure.png) / [Mermaid](uml/08-failure.mmd) |
 | 09 Skill 自动更新 | `scripts/update.py`、共享读取保护及Codex后续分派 | [PNG](uml/09-update.png) / [Mermaid](uml/09-update.mmd) |
 | 10 人工回听与校验稿 | `review_web.py`、ReviewSession、useReview；音频Range、版本保存、选目录导出及页面在场连接 | [PNG](uml/10-review.png) / [Mermaid](uml/10-review.mmd) |
-| 11 回听与校验稿状态 | 浏览器保存状态、ReviewSession关闭与review导出版本，独立于原任务 | [PNG](uml/11-review-state.png) / [Mermaid](uml/11-review-state.mmd) |
+| 11 回听与校验稿状态 | 页面保存状态、草稿revision与导出记录export_revision的关系，独立于原任务 | [PNG](uml/11-review-state.png) / [Mermaid](uml/11-review-state.mmd) |
 
 `session_id` 定位编辑会话，`job_id` 定位已交接任务。图03/07中的预览不是执行授权；交接失败发现原录音变化或命令过长时保留预览，经既有“返回修改”退出后重新检查。成功交接以原子发布的 `config.json` 为完成标记；会话的handed_off关联新任务，不是同一对象转入执行状态。
 
-图07是四职责泳道的主流程，百炼泳道包含官方BL与云端ASR；节点中的状态用于定位步骤，不是跨对象的状态转换。图03、05说明具体调用，记录保存异常见图08，回听保存与导出状态见图11。配置中的status始终为CONFIGURED；`job-status`在execution尚不存在且配置有效时派生CONFIGURED，已有execution目录但记录缺失或不可读时合成OUTCOME_UNKNOWN。磁盘快照可能滞后，不能据PREPARING、RUNNING或EXPORTING认定进程仍存活。
+图07按用户、Codex、本机工具和百炼四个参与者呈现转写主流程；具体调用见图03、05，记录保存异常见图08。图11区分页面保存变量、草稿版本与校验稿交付记录，关页与服务收尾统一放在图10。配置中的status始终为CONFIGURED；`job-status`在execution尚不存在且配置有效时派生CONFIGURED，已有execution目录但记录缺失或不可读时合成OUTCOME_UNKNOWN。磁盘快照可能滞后，不能据PREPARING、RUNNING或EXPORTING认定进程仍存活。
 
 HTTP控制回执与SSE由不同请求线程发送，没有固定先后。显式取消先保存 `cancelled.json`，再设置终态事件；Codex取得结果后等待原serve退出。图04省略了HTTP分派生命线，事件发送仍由web完成。会话结束与任务执行是两个生命周期，编辑取消不表示云端取消。
 
@@ -84,7 +84,7 @@ npm run render:uml -- 03-configure 07-workflow
 
 ![本地重导与状态查询](uml/06-export.png)
 
-### 07 转写流程（泳道）
+### 07 转写流程
 
 ![用户、Codex、本机工具和百炼的转写职责](uml/07-workflow.png)
 
@@ -106,4 +106,4 @@ npm run render:uml -- 03-configure 07-workflow
 
 ### 11 回听与校验稿状态
 
-![校对保存状态与独立导出版本](uml/11-review-state.png)
+![页面修改、草稿保存与校验稿导出版本](uml/11-review-state.png)

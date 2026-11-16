@@ -45,6 +45,8 @@ flowchart TD
     C --> D("User confirms and sends<br/>the message to Codex")
     D --> E("Receive the original result<br/>and transcript drafts")
     E --> F("User reviews, adds priorities,<br/>and gives format requirements")
+    E -. "Optional" .-> R("Listen and review<br/>Replay and edit sentences<br/>Export reviewed documents")
+    R --> F
     G("Existing formatted<br/>reference documents") --> H("Personalized minutes Skill<br/>In development")
     F --> H
     H --> I("Minutes in the user's<br/>requested format")
@@ -96,7 +98,7 @@ After installation, tell Codex:
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
-Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents.
+Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents. You can also tell Codex after transcription: “I'd like to listen to the recording and review the transcript.”
 
 <details>
 <summary>Transcription configuration (illustration)</summary>

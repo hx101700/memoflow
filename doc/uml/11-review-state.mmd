@@ -1,72 +1,52 @@
-stateDiagram-v2
-direction TB
-state "原任务JSON_READY<br/>执行记录与原结果保留" as Source
-state "回听可用<br/>已载入revision" as Ready
-state "本页有未保存修改" as Dirty
-state "保存中<br/>同一队列串行写入" as Saving
-state "保存失败<br/>输入与原保存版本保留" as SaveFailed
-state "版本冲突<br/>保留输入后重新核对" as Conflict
-state "没有页面连接<br/>等待10秒重连" as Grace
-state "关闭<br/>磁盘草稿仍保留" as Closed
-[*] --> Source : 已有通过摘要检查的结果
-Source --> Ready : review核对原摘要并恢复draft
-Ready --> Dirty : 编辑正文／说话人，或单句重置
-Dirty --> Saving : 延迟、失焦或显式保存
-Saving --> Ready : 保存成功且没有新输入
-Saving --> Saving : 保存期间还有新输入 / 下一批
-Saving --> SaveFailed : 写入或请求失败
-SaveFailed --> Saving : 用户明确重试
-Saving --> Conflict : 服务端返回409
-Conflict --> Ready : 先保留输入，再重新读取
-Ready --> Grace : 最后presence连接断开
-Dirty --> Grace : 离页 / 未提交输入不保证恢复
-Grace --> Ready : 10秒内重连 / 取消关闭计时
-Grace --> Closed : 到期仍无页面连接
-Ready --> Closed : Codex明确review-close
-Dirty --> Closed : 代码结束／强制退出，未提交输入不保证恢复
-Closed --> Ready : 再次review / 核对来源并恢复草稿
-note right of Ready
-  显示状态对应前端变量，不是新任务status
-  _closed只在ReviewSession内存中
-  原job_id和JSON_READY不随回听变化
-  presence检测EOF，不发送周期心跳
-  其他页面仍连接时不关闭
-  没有两小时到期或持久closed回执
-end note
-note left of Saving
-  revision在原子落盘成功后递增
-  无实际改动不递增
-  锁内校验版本与合并改动
-  失败停止自动保存，不自动重试
-end note
-state "校验稿导出状态" as Delivery {
-  state "尚无校验稿" as NoExport
-  state "选择导出目录<br/>保持原交付记录" as Selecting
-  state "EXPORTING<br/>已保存revision的快照" as Exporting
-  state "COMPLETE<br/>三格式均READY" as Complete
-  state "PARTIAL／FAILED<br/>保留已成功格式及旧目标" as Incomplete
-  state "OUTCOME_UNKNOWN<br/>中断或记录不可读" as Unknown
-  [*] --> NoExport
-  NoExport --> Selecting : 页面先保存，再请求目录选择
-  Selecting --> NoExport : 取消 / 尚无上次交付
-  Selecting --> Exporting : 选定目录，再核对revision
-  Exporting --> Complete : 三格式完成
-  Exporting --> Incomplete : 一种或多种格式失败
-  Exporting --> Unknown : 导出／状态保存中断
-  Complete --> Selecting : 用户再次导出已保存版本
-  Incomplete --> Selecting : 用户明确再次导出
-  Unknown --> Selecting : 核实后用户明确再次导出
-  Selecting --> Complete : 取消 / 上次为COMPLETE
-  Selecting --> Incomplete : 取消 / 上次为PARTIAL或FAILED
-  Selecting --> Unknown : 取消 / 上次结果未知
-}
-note right of Delivery
-  review/status.json独立于原delivery/status.json
-  Selecting只表示窗口等待，不是持久status
-  取消目录选择不生成文件、不改写交付记录
-  成品直接写选定目录的transcription-reviewed三格式
-  export_revision标明这批文件使用的版本
-  revision变化不会把旧COMPLETE改写成新版本已导出
-  原documents_ready只描述原稿
-  导出不会关闭回听或重新请求ASR
-end note
+sequenceDiagram
+participant W as useReview（前端）
+participant S as ReviewSession
+participant F as review/draft.json
+participant D as delivery模块
+participant R as review/status.json
+Note over W,R: 沿用原job_id与JSON_READY；校对草稿和导出记录各自保存
+S->>F: 打开时读取已保存草稿
+F-->>S: revision、句子修改及说话人名称
+S->>R: 读取最近一次校验稿交付记录
+R-->>S: delivery及export_revision，或暂无记录
+S-->>W: 当前稿件与保存／导出版本
+
+loop 用户编辑正文、说话人或重置单句
+    W->>W: 标记待保存修改，更新dirtyCount
+    W->>S: 串行save，携带当前revision
+    alt 版本一致且存在有效改动
+        S->>F: 原子保存合并后的草稿与新revision
+        F-->>S: 写入成功
+        S-->>W: 返回新revision
+        W->>W: 清除本批待保存标记<br/>保存期间新增的输入留待下一批
+    else 没有实际改动
+        S-->>W: 返回原revision
+    else 输入错误、版本冲突或写入失败
+        S-->>W: 错误回执，磁盘原草稿保留
+        W->>W: 保留输入并显示saveError<br/>409设conflict；其余失败可明确重试
+    end
+end
+Note over W,F: saving与dirtyCount是页面变量；revision表示已保存的最新草稿<br/>草稿覆盖最新修改，原转写保留作为重置基线
+
+W->>W: 点击导出，先等待保存队列完成
+W->>S: export，携带已保存revision
+S->>S: 核对版本，打开目录选择窗口
+alt 用户取消选择
+    S-->>W: cancelled=true
+    Note over F,R: 草稿和上次导出记录保持
+else 用户选定目录且版本仍一致
+    S->>D: 导出该revision的三格式快照
+    D->>R: 保存EXPORTING及export_revision
+    D->>D: 逐项生成文件并记录各格式结果
+    alt 文件处理与记录正常完成
+        D->>R: 保存COMPLETE／PARTIAL／FAILED
+        D-->>S: 实际交付结果
+    else 导出或记录写入中断
+        D-->>S: 异常
+        S->>S: 当次回执标为OUTCOME_UNKNOWN
+        Note over S,R: 磁盘记录可能滞后，保留已写出的文件
+    end
+    S-->>W: delivery、export_revision与当前revision
+end
+Note over W,R: 之后继续修改只更新draft；export_revision仍对应上次导出<br/>页面优先提示保存进度，保存完成后版本不同则提示重新导出
+Note over S,R: 关闭服务保留草稿与交付记录，下次打开恢复<br/>连接与关页收尾见图10；本图不新增任务状态
