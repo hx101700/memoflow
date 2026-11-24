@@ -9,8 +9,12 @@ participant D as delivery（函数模块）
 participant V as review（函数模块）
 participant W as documents（函数模块）
 participant F as 本机任务与文件
-alt 用户明确要求重新导出
-    U->>C: 提供确切job_id并要求重新导出
+Note over U,C: 任务按当前对话或jobs查询定位<br/>泛称重导且无活动回听页时，对JSON_READY任务查询review<br/>revision大于0选校对稿；缺失或为0选原稿；不可读先核对来源
+alt 用户要已校对稿、最新稿或当前回听稿
+    U->>C: 要求导出当前校对内容
+    C-->>U: 沿用同一回听页，保存后选择目录导出（图10）
+else 用户明确要原始稿，或泛称重导且无已保存修改
+    U->>C: 请求原始稿，或泛称重导且已核实无修改
     C->>T: --workspace 用户目录 export --job ID
     T->>J: read_config()核对配置协议与摘要
     J-->>T: 确认配置或配置错误
@@ -63,7 +67,7 @@ else 用户查看本地任务状态
         T-->>C: 本地ASR执行与已有草稿信息
     end
 end
-Note over T,F: 自动交付与显式export复用同一export_documents()<br/>重导更新固定documents中的三个同名文件；失败格式保留已有成品<br/>读取范围为确认配置、执行记录和原JSON
+Note over T,F: 未开启回听时的自动交付与原稿export复用同一export_documents()<br/>原稿重导更新固定documents中的三个同名文件；失败格式保留已有成品<br/>读取范围为确认配置、执行记录和原JSON
 Note over C,J: 状态来自本机磁盘，既不查询云端，也不证明进程仍存活<br/>job-status不读取导出历史或成品文件
 Note over C,V: export仅从原JSON重导原稿；人工校验稿由图10的页面入口导出<br/>回执review只返回草稿版本或读取问题，不含正文<br/>文件导出后由用户管理，不再跟踪<br/>未保存的浏览器输入不在回执中
 Note over T,J: export要求磁盘JSON_READY及摘要<br/>当次回执不能替代已保存记录<br/>历史模型任务可本地查询或重导，不触发上传<br/>记录恢复入口尚未提供

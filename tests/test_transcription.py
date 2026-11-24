@@ -7,18 +7,21 @@ import os
 import threading
 import wave
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 from openpyxl import Workbook
 
 from asr_runtime import MODEL
+from asr_runtime.__main__ import main
 from asr_runtime.utils.auth import read_api_key
 from asr_runtime.utils.bailian import BailianFailure
 from asr_runtime.utils.environment import SetupError
 from asr_runtime.utils.media import probe_audio
 from asr_runtime.application.session import Session
 from asr_runtime.application.recovery import finish_session
+from asr_runtime.application.review import ReviewSession
 from asr_runtime.application.transcription import export_job, job_status, transcribe
 from asr_runtime.utils.job_files import save_record
 from asr_runtime.utils.files import file_fingerprint
@@ -126,14 +129,31 @@ class TranscriptionTests(RuntimeTestCase):
         checksum = path.with_suffix(".sha256").read_text(encoding="ascii").strip()
         self.assertEqual(checksum, hashlib.sha256(path.read_bytes()).hexdigest())
 
-    def test_review_option_reaches_delivery_receipt_without_changing_bl_request(self):
-        """验证工单回听选项进入成功回执，原稿正常交付且只执行一次识别。"""
-        job_id, _ = self.make_job(review_enabled=True)
-        report = transcribe(self.runtime, job_id)
+    def test_review_option_returns_verified_json_before_document_export(self):
+        """验证开启回听先交付有效JSON，成功退出且只执行一次识别。"""
+        job_id, config = self.make_job(review_enabled=True)
+        output = io.StringIO()
+        with patch("asr_runtime.application.transcription.export_documents", side_effect=AssertionError("回听前不应导出原稿")), \
+                redirect_stdout(output):
+            exit_code = main(["--workspace", str(self.runtime.workspace), "transcribe", "--job", job_id])
+        report = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 0)
         self.assertEqual(report["status"], "JSON_READY")
-        self.assertTrue(report["documents_ready"])
+        self.assertNotIn("documents_ready", report)
+        self.assertNotIn("delivery", report)
+        self.assertTrue(Path(report["json_path"]).is_file())
+        self.assertFalse(Path(config["document_directory"]).exists())
         self.assertTrue(report["review_enabled"])
         self.assertTrue(job_status(self.runtime, job_id)["review_enabled"])
+        review = ReviewSession(self.runtime, job_id)
+        try:
+            with patch.object(review._picker, "select", return_value=None) as picker:
+                self.assertTrue(review.export({"revision": 0, "picker_id": "review-first-export"})["cancelled"])
+            picker.assert_called_once_with(Path(config["document_directory"]).parent,
+                                           "review-first-export", mode="directory")
+        finally:
+            review.close()
+        self.assertEqual(transcribe(self.runtime, job_id)["status"], "JSON_READY")
         self.cli.assert_called_once()
         self.assertFalse(any("review" in argument for argument in self.cli.call_args.args[1].argv))
 

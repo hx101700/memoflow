@@ -67,7 +67,7 @@ def read_review_status(runtime: Runtime, job_id: str) -> dict[str, object] | Non
 
 class ReviewSession:
     def __init__(self, runtime: Runtime, job_id: str) -> None:
-        """核对原结果与摘要，恢复草稿并绑定可回听的原录音或单声道副本。"""
+        """核对原结果与摘要，恢复草稿并绑定可回听的录音或已有副本。"""
         self.runtime = runtime
         self.job_id = job_id
         self.config = read_config(runtime, job_id)
@@ -217,22 +217,33 @@ class ReviewSession:
         return selected
 
     def _bind_initial_audio(self) -> None:
-        """先尝试原录音或已重选原文件，无法读取时使用已有单声道副本。"""
-        try:
-            if self._selected_path:
-                original = self._verify_recording(Path(self._selected_path))
-            else:
-                original = resolve_input(self.config["audio"]["path"], AUDIO_SUFFIXES)
-                check_file_unchanged(original, self.config["audio"]["fingerprint"])
-            self._bind_audio(original, "original")
-            return
-        except (OSError, FileError, ReviewError):
-            pass
-        try:
-            self._bind_audio(job_directory(self.runtime, self.job_id) / "execution/mono.flac", "mono")
-        except OSError:
-            self._audio_error = {"zh": "原录音和单声道副本均无法读取，请重新选择原录音。",
-                                 "en": "Neither the original recording nor its mono copy is available. Select the original recording again."}
+        """按重选位置、原位置、单声道和播放副本的顺序绑定可用音频。"""
+        candidates: list[tuple[Path, Literal["selected", "original", "mono", "preview"]]] = []
+        if self._selected_path:
+            candidates.append((Path(self._selected_path), "selected"))
+        candidates.extend([
+            (Path(self.config["audio"]["path"]), "original"),
+            (job_directory(self.runtime, self.job_id) / "execution/mono.flac", "mono"),
+            (self._directory / "playback.mp3", "preview"),
+        ])
+        attempted: set[Path] = set()
+        for path, kind in candidates:
+            if path in attempted:
+                continue
+            # 同一位置若未通过重选摘要检查，不能再降级为原路径的属性检查。
+            attempted.add(path)
+            try:
+                if kind == "selected":
+                    path = self._verify_recording(path)
+                elif kind == "original":
+                    path = resolve_input(path, AUDIO_SUFFIXES)
+                    check_file_unchanged(path, self.config["audio"]["fingerprint"])
+                self._bind_audio(path, "original" if kind == "selected" else kind)
+                return
+            except (OSError, FileError, ReviewError):
+                pass
+        self._audio_error = {"zh": "可用录音和播放副本均不可读，请重选原录音。",
+                             "en": "Neither a recording nor a playback copy is readable. Select the original recording again."}
 
     def _audio_description(self) -> dict[str, object]:
         """只返回播放可用性与文件名，不向页面暴露本机文件路径。"""
@@ -304,6 +315,9 @@ class ReviewSession:
             if self._exporting:
                 raise ReviewError("校对稿正在导出，请等待本次完成。", "Review documents are being exported. Wait for this export to finish.")
             initial = Path(self.config["document_directory"])
+            # 回听优先的任务尚未生成文档目录，从其最近可用上级开始选择。
+            while not initial.is_dir() and initial != initial.parent:
+                initial = initial.parent
         selected = self._picker.select(initial if initial.is_dir() else self.runtime.workspace,
                                         payload["picker_id"], mode="directory")
         if selected is None:

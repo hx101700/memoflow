@@ -38,14 +38,16 @@ M->>B: 执行一次录音识别
 B->>B: 上传、提交、轮询，下载原始JSON
 B-->>M: 返回结果或错误
 alt JSON有效且JSON_READY记录保存成功
-    M->>M: 按同一结果生成Word、Excel、Markdown
-    M-->>C: JSON_READY及三格式实际交付结果
-    C-->>U: 交付原JSON与已完成的校对稿
     alt 已确认配置开启回听校对
+        M-->>C: JSON_READY及原JSON位置；不预先生成文档
         C->>M: review --job 同一ID
         M-->>C: 回听页面URL
-        C-->>U: 打开回听校对页（图10）
+        C-->>U: 原始结果已保存，打开回听校对页（图10）
+        Note over U,M: 用户校对后按需选择目录导出三格式
     else 未开启回听校对
+        M->>M: 按同一结果生成Word、Excel、Markdown原稿
+        M-->>C: JSON_READY及三格式实际交付结果
+        C-->>U: 交付原JSON与已完成的原稿
         Note over U,C: 本次转写交付结束；以后可按同一任务请求回听
     end
 else BL失败、结果检查失败或记录保存失败

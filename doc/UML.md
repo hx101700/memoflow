@@ -15,7 +15,7 @@
 | 03 本机配置 | `web.py`、Session、recovery、前端用例；填写、预览、交接与退出 | [PNG](uml/03-configure.png) / [Mermaid](uml/03-configure.mmd) |
 | 04 凭据来源与登录 | KeyDisplay、`utils/auth.py`、`utils/bailian.py`；本机Key与官方BL登录 | [PNG](uml/04-auth.png) / [Mermaid](uml/04-auth.mmd) |
 | 05 转写与交付 | `application/transcription.py`、delivery、BL与文档writer | [PNG](uml/05-transcribe.png) / [Mermaid](uml/05-transcribe.mmd) |
-| 06 重新导出与状态查询 | `export_job()`、`job_status()`与本机记录，不调用云端 | [PNG](uml/06-export.png) / [Mermaid](uml/06-export.mmd) |
+| 06 重新导出与状态查询 | 按用户所指稿件选择原稿export或回听导出；`job_status()`读取本机记录 | [PNG](uml/06-export.png) / [Mermaid](uml/06-export.mmd) |
 | 07 转写流程 | 用户、Codex、本机工具、百炼的职责；会话交接、一次执行、原稿交付及已确认的回听开关 | [PNG](uml/07-workflow.png) / [Mermaid](uml/07-workflow.mmd) |
 | 08 记录保存失败 | `_save_status()`失败时的当次回执、磁盘状态与停止位置 | [PNG](uml/08-failure.png) / [Mermaid](uml/08-failure.mmd) |
 | 09 Skill 自动更新 | `scripts/update.py`、共享读取保护及Codex后续分派 | [PNG](uml/09-update.png) / [Mermaid](uml/09-update.mmd) |
@@ -88,7 +88,7 @@ npm run render:uml -- 03-configure 07-workflow
 
 ![用户、Codex、本机工具和百炼的转写职责](uml/07-workflow.png)
 
-编辑取消/到期不进入ASR；交接后每个job保留一次执行占用。成功JSON记录保存后，原稿交付独立完成或报告部分失败。最后的回听判断只读取已确认配置，不再次询问或授权；开启时沿用同一job_id打开图10的独立回听流程。详细失败回执和磁盘记录的区别见图08。
+编辑取消/到期不进入ASR；交接后每个job保留一次执行占用。成功JSON记录保存后，按已确认开关分派：开启回听则直接按同一job_id打开图10，用户校对后按需导出；未开启则自动生成三格式原稿。此处不再次询问或授权，也不重新识别。详细失败回执和磁盘记录的区别见图08。
 
 原稿与校验稿共用当次导出回执：三格式全部READY时为COMPLETE，部分成功为PARTIAL，没有成功格式时为FAILED；中断后保留已生成文件。这些结果不持久保存，也不改写执行JSON_READY。`documents_ready`只附在当次CLI导出回执中，`job-status`仅查询ASR与已保存草稿，不读取导出历史或成品。
 

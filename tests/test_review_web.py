@@ -497,6 +497,30 @@ class ReviewWebTests(ReviewFixture):
         self.assertEqual(self.config_path.read_bytes(), self.original_config)
         self.cloud.assert_not_called()
 
+    def test_reopened_review_serves_existing_playback_when_original_is_unavailable(self) -> None:
+        """验证重开HTTP页面直接提供已有播放副本，不要求再次选择原录音或转码。"""
+        self.request("POST", "/api/review/save", {"revision": 0, "sentences": [
+            {"index": 1, "text": "已保存的校对", "speaker_id": 0}]})
+        self.assertEqual(self.request("POST", "/api/review/prepare-audio", {})[0], 200)
+        playback = (self.job_root / "review/playback.mp3").read_bytes()
+        draft = (self.job_root / "review/draft.json").read_bytes()
+        self.stop_server()
+        moved = self.audio.with_name("moved.wav")
+        self.audio.rename(moved)
+        with patch("asr_runtime.application.review.prepare_playback", side_effect=AssertionError("重开不转码")):
+            self.start_server()
+            self.assertEqual(self.description()["audio"]["kind"], "preview")
+            status, headers, body = self.request("GET", "/api/review/audio", headers={"Range": "bytes=0-31"})
+            self.assertEqual(status, 206)
+            self.assertEqual(headers["Content-Type"], "audio/mpeg")
+            self.assertEqual(body, playback[:32])
+        self.assertEqual(self.description()["revision"], 1)
+        self.assertEqual((self.job_root / "review/draft.json").read_bytes(), draft)
+        self.assertEqual(moved.read_bytes(), self.original_audio)
+        self.assertEqual(self.json_path.read_bytes(), self.original_json)
+        self.assertEqual(self.config_path.read_bytes(), self.original_config)
+        self.cloud.assert_not_called()
+
     def test_close_command_stops_server_without_altering_originals(self) -> None:
         """验证本机关闭入口结束回听服务，原任务和结果仍可保留。"""
         report = review_web.control_review(self.runtime, self.job_id)

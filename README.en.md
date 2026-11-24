@@ -98,7 +98,7 @@ After installation, tell Codex:
 
 Codex opens the local configuration page. Choose the recording and recognition settings, open the preview, choose “Copy for Codex”, and send the confirmation message back to the conversation.
 
-Enable “Listen and review after transcription” to replay individual sentences, edit the text and speaker labels, and choose a folder for the reviewed documents. You can also tell Codex after transcription:
+Enable “Listen and review after transcription” to open the review page first, edit the text and speaker labels, then choose a folder to generate the three reviewed formats. With this option off, the three original formats are generated automatically. You can also tell Codex after transcription:
 
 ```text
 I'd like to listen to the recording and review the transcript.

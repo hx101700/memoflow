@@ -1,6 +1,7 @@
 """验证人工回听的草稿版本、原件保留、独立导出和媒体复用。"""
 
 import json
+import os
 import threading
 import wave
 from concurrent.futures import ThreadPoolExecutor
@@ -405,10 +406,73 @@ class ReviewTests(RuntimeTestCase):
         """验证原文件不可读时绑定任务已有单声道副本。"""
         mono = self.root / "execution/mono.flac"
         convert_to_mono(self.audio, mono, AudioInfo(**self.config["audio"]["metadata"]))
+        prepared = self.open_review()
+        prepared.prepare_audio()
+        prepared.close()
+        self.assertEqual(self.open_review().audio_path(), self.audio)
         self.audio.unlink()
         review = self.open_review()
         self.assertEqual(review.description()["audio"]["kind"], "mono")
         self.assertEqual(review.audio_path(), mono)
+
+    def test_reopen_uses_existing_playback_when_recording_and_mono_are_missing(self):
+        """验证已有完整MP3可独立恢复回听，原稿和草稿版本保持不变。"""
+        review = self.open_review()
+        self.edit_first(review)
+        review.prepare_audio()
+        playback = review.audio_path()
+        before = playback.read_bytes()
+        draft = (self.root / "review/draft.json").read_bytes()
+        review.close()
+        moved = self.audio.with_name("moved.wav")
+        self.audio.rename(moved)
+        original = moved.read_bytes()
+        self.assertFalse((self.root / "execution/mono.flac").exists())
+        with patch("asr_runtime.application.review.prepare_playback", side_effect=AssertionError("重开不转码")), \
+                patch("asr_runtime.application.review.file_fingerprint", side_effect=AssertionError("不完整读取播放副本")):
+            reopened = self.open_review()
+            self.assertEqual(reopened.description()["audio"]["kind"], "preview")
+            self.assertEqual(reopened.audio_path(), playback)
+            self.assertTrue(reopened.prepare_audio()["audio"]["available"])
+        self.assertEqual(reopened.description()["revision"], 1)
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), draft)
+        self.assertEqual(playback.read_bytes(), before)
+        self.assertEqual(moved.read_bytes(), original)
+        for path, content in self.original_files.items():
+            self.assertEqual(path.read_bytes(), content)
+
+    def test_reopen_uses_restored_original_when_reselected_path_is_missing(self):
+        """验证重选文件移回原位置后可自动恢复，不改写已保存的稿件或录音引用。"""
+        moved = self.audio.with_name("moved.wav")
+        self.audio.rename(moved)
+        review = self.open_review()
+        self.edit_first(review)
+        with patch.object(review._picker, "select", return_value=moved):
+            review.select_audio("moved")
+        draft = (self.root / "review/draft.json").read_bytes()
+        review.close()
+        moved.rename(self.audio)
+        reopened = self.open_review()
+        self.assertEqual(reopened.audio_path(), self.audio)
+        self.assertEqual(reopened.description()["audio"]["kind"], "original")
+        self.assertEqual(reopened.description()["revision"], 1)
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), draft)
+
+    def test_reselected_original_is_not_reaccepted_by_weaker_metadata_check(self):
+        """验证同一位置摘要校验失败后，不再用大小和时间复查接受该文件。"""
+        review = self.open_review()
+        with patch.object(review._picker, "select", return_value=self.audio):
+            review.select_audio("same-original")
+        review.close()
+        before = self.audio.stat()
+        content = bytearray(self.audio.read_bytes())
+        content[-1] ^= 1
+        self.audio.write_bytes(content)
+        os.utime(self.audio, ns=(before.st_atime_ns, before.st_mtime_ns))
+        with patch("asr_runtime.application.review.check_file_unchanged", side_effect=AssertionError("不能降级检查同一路径")):
+            reopened = self.open_review()
+        self.assertFalse(reopened.description()["audio"]["available"])
+        self.assertEqual(reopened.description()["audio"]["error"]["zh"], "可用录音和播放副本均不可读，请重选原录音。")
 
     def test_missing_audio_can_rebind_only_identical_original(self):
         """验证录音移动后可按摘要重新绑定，错误文件不会改变草稿。"""

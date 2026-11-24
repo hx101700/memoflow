@@ -3,7 +3,7 @@ import type { Language, LocalizedText } from "./types";
 const en = {
   reviewDone: "Done", reviewModified: "Modified", reviewNextModified: "Next change", reviewReset: "Reset", reviewResetSentence: "Reset sentence {index}",
   reviewEditSentence: "Edit sentence {index}", reviewEmptyText: "Empty text · click to edit",
-  reviewEnabled: "Listen and review after transcription", reviewEnabledHelp: "Open a local audio review page after transcription. Your original transcript is preserved.",
+  reviewEnabled: "Listen and review after transcription", reviewEnabledHelp: "Review the transcript first, then export documents when you are ready.",
   reviewTitlePage: "Transcript review",
   reviewPlay: "Play", reviewPause: "Pause", reviewPlaySentence: "Listen to sentence {index}", reviewBack: "Back 5 seconds", reviewForward: "Forward 5 seconds",
   reviewFollow: "Follow current sentence", reviewSpeed: "Playback speed", reviewProgress: "Playback position",
@@ -95,7 +95,7 @@ const en = {
 const zh: Record<keyof typeof en, string> = {
   reviewDone: "完成", reviewModified: "已修改", reviewNextModified: "下一处修改", reviewReset: "重置", reviewResetSentence: "重置第 {index} 句",
   reviewEditSentence: "编辑第 {index} 句", reviewEmptyText: "正文为空，点击编辑",
-  reviewEnabled: "转写后回听校对", reviewEnabledHelp: "转写完成后打开本机回听页面，保留原始转写稿。",
+  reviewEnabled: "转写后回听校对", reviewEnabledHelp: "转写后先回听校对，再按需导出文档。",
   reviewTitlePage: "回听校对",
   reviewPlay: "播放", reviewPause: "暂停", reviewPlaySentence: "回听第 {index} 句", reviewBack: "后退 5 秒", reviewForward: "前进 5 秒",
   reviewFollow: "跟随当前句", reviewSpeed: "播放倍速", reviewProgress: "播放进度",

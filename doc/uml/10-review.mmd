@@ -26,7 +26,8 @@ else 没有连接或旧服务PID已确认结束
     break 来源或草稿无法核对
         H-->>C: 停止打开，保留原文件
     end
-    V->>V: 绑定原录音，不能读取时尝试mono.flac
+    V->>V: 依次尝试重选位置、配置原位置、mono.flac、已有playback.mp3
+    Note over V,F: 相同路径只尝试一次；恢复只复用已有文件，不新增转码
     H->>F: 保存本次port、token、pid
 else 原服务存活、状态未知或身份不符
     break 无法确认可复用或可重建
@@ -129,7 +130,7 @@ opt 用户导出校验稿
         H-->>W: 当次导出结果
         W->>W: 成功短提示／失败告示，不缓存结果<br/>保持本页文字revision
     end
-    Note over V,F: 窗口从原配置documents开始，不可用时回退工作目录<br/>原JSON与草稿保持；导出文件交给用户后不再跟踪
+    Note over V,F: 从原配置documents向上找最近可用目录，原盘不可用再回退工作目录<br/>原JSON与草稿保持；导出文件交给用户后不再跟踪
 end
 alt 用户关闭或离开页面
     W->>H: 释放presence连接；服务端观察socket EOF

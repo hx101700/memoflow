@@ -102,7 +102,7 @@ def _deliver(runtime: Runtime, config: JobConfig, transcript: Transcript, report
 
 
 def export_job(runtime: Runtime, job_id: str) -> ExecutionReport:
-    """核对已保存的转写结果并更新转写任务的校对稿。"""
+    """核对原始转写JSON并导出三格式原稿。"""
     config = read_config(runtime, job_id)
     report = read_execution(job_directory(runtime, job_id))
     if report is None or report["status"] != "JSON_READY":
@@ -154,7 +154,7 @@ def prepare_input(runtime: Runtime, config: JobConfig, execution: Path) -> tuple
 
 
 def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
-    """按确认快照执行一次 BL 转写及本机校对稿导出，返回已知结果与失败阶段。"""
+    """按确认快照执行一次BL转写，保存JSON并为未开启回听的任务导出原稿。"""
     config = read_config(runtime, job_id)
     if config["model"] != MODEL:
         raise SetupError(
@@ -217,7 +217,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
         else:
             report["message"] += " 执行记录也未保存，请保留本次回执。"
         return report
-    if report["status"] == "JSON_READY":
-        # 云端成功先独立落盘。导出失败不得改写为转写失败或触发第二次BL执行。
+    if report["status"] == "JSON_READY" and not config.get("review_enabled", False):
+        # 开启回听的任务直接使用已保存JSON，文档在用户校对后按需导出。
         return _deliver(runtime, config, transcript, report)
     return report

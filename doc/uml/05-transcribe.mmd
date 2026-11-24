@@ -12,7 +12,7 @@ participant H as review_web（函数模块）
 Note over C,D: 成功主路径：用户已明确交接，输入有效且记录均写入成功；职责总览见07-workflow，保存失败见08-failure<br/>各lifeline为函数模块或外部进程，未建立同名服务类
 Note over C,L: BL明确返回免费额度／欠费／预算或账单限制时，复用error_catalog解释<br/>Skill告知原因、处理入口与原job_id；保留原状态，不自动改计费或重传<br/>仅凭限流码、HTTP状态或空结果不能推断余额不足
 C->>T: --workspace 用户目录 transcribe --job ID
-Note over C,T: 告知已开始转写；等待同一进程直到文件交付或明确失败
+Note over C,T: 告知已开始转写；等待同一进程返回实际结果，再按回听选项处理
 Note over C,J: 网页服务已结束，编辑会话到期不影响本次任务
 T->>J: read_config()核对协议、交接授权及配置SHA
 T->>T: 核对config.model等于当前MODEL
@@ -65,25 +65,30 @@ else 本次取得执行占用
     L-->>T: Transcript＋SHA
     T->>T: _save_status(execution, report)<br/>JSON_READY / result_received
     T->>J: save_record(execution, report)
-    T->>T: _deliver(runtime, config, transcript, report)
-    T->>D: export_documents(runtime, config, transcript)
-    D->>J: prepare_documents(runtime, config)
-    J->>R: check_output_path(documents目录)
-    J->>F: 创建或复用固定documents目录
-    loop xlsx、docx、md逐格式各执行一次
-        D->>L: documents.publish_document(writer, transcript, final_path,<br/>model=config.model，其他标签来自确认配置)
-        L->>F: 写partial文件，完成后替换同名成品<br/>Excel和Word回读；Markdown编码写入
-        L-->>D: 字节数或格式异常
-        D->>D: 将该格式READY／FAILED附入当次回执
+    alt 已确认配置开启回听
+        T-->>C: JSON_READY、review_enabled及原JSON位置
+        Note over T,F: 不调用文档导出，不创建documents目录；CLI正常退出0
+    else 未开启回听
+        T->>T: _deliver(runtime, config, transcript, report)
+        T->>D: export_documents(runtime, config, transcript)
+        D->>J: prepare_documents(runtime, config)
+        J->>R: check_output_path(documents目录)
+        J->>F: 创建或复用固定documents目录
+        loop xlsx、docx、md逐格式各执行一次
+            D->>L: documents.publish_document(writer, transcript, final_path,<br/>model=config.model，其他标签来自确认配置)
+            L->>F: 写partial文件，完成后替换同名成品<br/>Excel和Word回读；Markdown编码写入
+            L-->>D: 字节数或格式异常
+            D->>D: 将该格式READY／FAILED附入当次回执
+        end
+        D-->>T: 当次COMPLETE／PARTIAL／FAILED及files
+        T->>T: _deliver()附加delivery与documents_ready，不改写ASR记录
+        T-->>C: JSON状态＋delivery＋review_enabled＋已知文件位置
     end
-    D-->>T: 当次COMPLETE／PARTIAL／FAILED及files
-    T->>T: _deliver()附加delivery与documents_ready，不改写ASR记录
-    T-->>C: JSON状态＋delivery＋review_enabled＋已知文件位置
 end
 opt 返回JSON_READY、review_enabled为true且无record_error
-    C->>C: 先说明原稿的实际交付结果
+    C->>C: 告知原始结果已保存
     C->>H: review --job 原ID；打开回听页面
-    Note over C,H: 有效JSON即可回听，原稿部分导出失败不阻止<br/>沿用原job_id，不再请求BL；回听与独立导出见图10
+    Note over C,H: 沿用原job_id，不再请求BL<br/>用户校对后按需导出三格式，见图10
 end
 Note over B,F: 云端鉴权、临时上传、提交、轮询、下载和原JSON落盘属于BL<br/>CLI、core、commands、runtime均为官方2.10.5<br/>Python等待完整命令；失败停止，job占用保持，不自动重试<br/>通用超时不能证明失败阶段；时限不保证云端完成<br/>job_id是本机转写任务编号；Python未提供可靠task_id恢复入口
 Note over T,F: JSON：已选根 / job_id / json / transcription.json<br/>导出目标：已选根 / job_id / documents / transcription.xlsx、.docx、.md<br/>文件导出后由用户管理，不持久记录导出状态<br/>json_path先记录目标位置，其存在本身不是JSON成功证明

@@ -1,5 +1,31 @@
 # 验证记录
 
+## 2026-11-24 bad port官方依据与本机对照
+
+按用户要求搜索[WHATWG Fetch端口规则](https://fetch.spec.whatwg.org/#port-blocking)，确认HTTP(S)目的端口命中bad port列表时返回网络错误。当前私有Node为24.21.0、内置Undici为7.29.1；直接读取其内置实现确认requestBadPort检查badPortsSet，命中后makeNetworkError("bad port")。
+
+使用现有合约夹具和真实BL2.10.5，仅临时指定本机端口：6000返回`Network request failed: bad port`，模拟服务收到0次请求；系统分配的46218收到提交及查询共2次请求，正常返回预设的免费额度耗尽消息。两次均为合成数据/凭据，没有云端识别；测试服务正常关闭。脚本与输出在.runtime/probe_bad_port.py和.runtime/bad-port-evidence.log，不进入发行包。
+
+该对照确认错误机制与BL可见文案，不能补回此前失败用例的实际端口；“那次随机端口恰好被拦截”仍为推断。保持原134项失败记录，不改写为全部通过，也不为此修改生产网络或增加重试。
+
+## 2026-11-24 R06／R07／R10实施验证
+
+用户接受R08统一准备，R09暂缓；本批只处理音频复用、重导分派和回听优先。基线54b7ba5，版本保持0.1.6。R08对应更新/准备代码和R09的review_web生产代码没有改动。
+
+| 范围 | 实际结果 |
+| --- | --- |
+| R06定向Python | tests.test_review、tests.test_review_web：56项通过，22.985秒；原问题用例在旧实现先FAIL/ERROR，再验证原路径恢复、候选优先级、同路径单次核对、MP3解码和HTTP Range |
+| R10定向Python | 新的CLI回听优先用例、默认交付用例及test_review：34项通过，7.124秒；旧实现先失败，修正后JSON_READY退出0、无预先文档、目录取消无导出、重复执行不调用BL |
+| 六模块相关回归 | review、review_web、review_lifecycle、transcription、delivery、bl_contract共134项，72.969秒，133通过；计费合约一项返回bad port，同项独立复跑通过（1.098秒）。夹具随机端口且失败端口未留存，疑似禁用端口碰撞但根因未确认。日志.runtime/r06-r07-r10-python.log |
+| 前端与静态 | npm run build:web通过（含Vue类型）；test:web 77项通过；mypy36源文件与官方Skill quick_validate通过 |
+| 发行边界 | tests.test_package 15项通过，20.241秒；验证当前受管运行文件、README与manifest。初次命令误写为不存在的test_packaging，修正模块名后执行本项 |
+| 真实缓存复用 | .runtime/audit-review-followup-20261124/repro_audio_reuse.py：MP3完整解码48000样本，原录音缺失后重开preview可用、草稿不变；重选位置失效但原位置恢复时成功绑定original；原稿与校对稿实际导出内容分别核对 |
+| Edge播放 | .runtime/r06-cached-audio-browser.mjs使用真实生产服务及构建页面；audio.available=true、kind=preview、1秒音频播放到0.110822秒，无prepare-audio请求、无pageerror、draft字节不变。浏览器关闭后连接记录消失，测试PID退出；证据.runtime/r06-cached-audio-browser.log |
+| Skill分派 | 独立只读推演覆盖原始稿、最新稿、泛称重导、活动页未保存内容、不可读草稿及未知执行状态；补清review缺失含义后通过。未声称已重放真实用户Codex对话 |
+| UML | 05/06/07/10通过scripts/render_uml.ts与原theme.json渲染，07视觉核对通过；其余图未改变样式或生命周期 |
+
+分组存在重叠，不相加当作唯一用例总数。本批未重复此前585项全量或5项完整Edge；没有真实云端调用、私人音频或Office视觉验收。测试文件在.runtime，用户安装、master与公开Release未改变。
+
 ## 2026-11-24 回听追加只读审查
 
 用户要求继续找出类似的回听业务缺口，未授权实施新增建议。R06：真实MP3转码/48000样本解码后移动原录音，重开未复用有效播放副本；重选B后恢复原A路径也未回退，原稿和草稿保持。R07：同一合成稿的原稿export只含原文，ReviewSession.export含保存修改；Skill误分派属于静态风险，不声称真实对话必然误选。R08：实际bootstrap在模拟旧BL时于Runtime.prepare前拒绝，回听本地入口不消费BL；这是分支推演而非新环境安装验收。
