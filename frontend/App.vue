@@ -122,6 +122,7 @@ onUnmounted(actions.dispose);
             <ElStep :title="t('stepConfigure')" /><ElStep :title="t('stepReview')" />
           </ElSteps>
           <ElAlert v-if="configuring" :title="t('beforeStart')" type="info" :closable="false" show-icon class="intro-note" />
+          <p v-if="!model.connected && !terminal && model.phase !== 'unavailable'" id="connection-panel" role="status" class="page-notice">{{ t('connectionRestoring') }}</p>
           <ElAlert v-if="error && model.phase !== 'unavailable' && !['audio_id', 'hotword_rows', 'context'].includes(error.field ?? '')" id="error-panel" tabindex="-1" class="page-notice" :title="errorText" type="error" :closable="false" show-icon />
           <p v-if="model.phase === 'loading'" class="loading-note" role="status">{{ t('loading') }}</p>
           <ElCard v-if="model.phase === 'unavailable'" id="session-unavailable" class="receipt" shadow="never" tabindex="-1">

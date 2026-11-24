@@ -136,7 +136,6 @@ export function useReview(api: ReviewApi, t: Translate) {
       if (!result.cancelled) {
         document.value.delivery = result.delivery;
         document.value.export_revision = result.export_revision;
-        document.value.revision = result.revision;
       }
     } catch (reason) { operationFailed(reason); }
     finally { operation.value = null; }
@@ -150,7 +149,7 @@ export function useReview(api: ReviewApi, t: Translate) {
     } else error.value = uiError(reason, () => t("failed"));
   }
 
-  // 保存草稿后重新选择录音，并接收绑定更新后的版本号。
+  // 保存草稿后重新绑定录音，保持本页的文字稿版本。
   async function selectAudio(): Promise<boolean> {
     if (!editable.value || !document.value) return false;
     operation.value = "select";
@@ -159,7 +158,6 @@ export function useReview(api: ReviewApi, t: Translate) {
       if (!await flush()) return false;
       const result = await api.request("/api/review/select-audio", { picker_id: crypto.randomUUID() });
       if (result.cancelled) return false;
-      document.value.revision = result.revision;
       document.value.audio = result.audio;
       return true;
     } catch (reason) { operationFailed(reason); return false; }

@@ -172,7 +172,7 @@ class ReviewTests(RuntimeTestCase):
         self.assertEqual(report["delivery"]["status"], "COMPLETE")
         files = report["delivery"]["files"]
         for extension, record in files.items():
-            self.assertEqual(Path(record["path"]), Path(self.config["document_directory"]) / f"transcription-reviewed.{extension}")
+            self.assertEqual(Path(record["path"]), Path(self.config["document_directory"]) / f"合成录音-reviewed-{self.job_id}.{extension}")
         with Path(files["xlsx"]["path"]).open("rb") as stream:
             workbook = load_workbook(stream)
             try:
@@ -188,6 +188,55 @@ class ReviewTests(RuntimeTestCase):
         self.assertEqual(self.open_review().description()["delivery"], report["delivery"])
         self.cloud.assert_not_called()
 
+    def test_shared_export_directory_keeps_each_jobs_files_and_replaces_same_job(self):
+        """验证同名录音的不同任务各有成品，同一任务重导保持原路径。"""
+        first = self.open_review()
+        self.edit_first(first, text="任务A的校对稿")
+        directory = self.runtime.workspace / "常用导出目录"
+        directory.mkdir()
+        first_files = self.export_review(first, directory=directory)["delivery"]["files"]
+        first_bytes = {Path(file["path"]): Path(file["path"]).read_bytes() for file in first_files.values()}
+
+        other_id = "c" * 32
+        other_base = self.runtime.output_root / other_id
+        config = {**self.config, "job_id": other_id, "json_directory": str(other_base / "json"),
+                  "document_directory": str(other_base / "documents")}
+        publish_config(self.runtime, config)
+        result = other_base / "json/transcription.json"
+        result.parent.mkdir(parents=True)
+        result.write_bytes(self.json_path.read_bytes())
+        execution = job_directory(self.runtime, other_id) / "execution"
+        execution.mkdir()
+        save_record(execution, {**self.execution, "job_id": other_id})
+        second = ReviewSession(self.runtime, other_id)
+        self.addCleanup(second.close)
+        self.edit_first(second, text="任务B的校对稿")
+        second_files = self.export_review(second, directory=directory)["delivery"]["files"]
+        second_bytes = {Path(file["path"]): Path(file["path"]).read_bytes() for file in second_files.values()}
+
+        self.assertTrue(first_bytes.keys().isdisjoint(second_bytes))
+        for path, original in first_bytes.items():
+            self.assertEqual(path.read_bytes(), original)
+        self.edit_first(first, revision=1, text="任务A的再次校对")
+        updated = self.export_review(first, revision=2, directory=directory)["delivery"]["files"]
+        self.assertEqual({row["path"] for row in updated.values()}, {str(path) for path in first_bytes})
+        self.assertEqual(len(list(directory.iterdir())), 6)
+        for path, original in second_bytes.items():
+            self.assertEqual(path.read_bytes(), original)
+        self.assertIn("任务A的再次校对", Path(updated["md"]["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(read_review_status(self.runtime, self.job_id)["delivery"]["status"], "COMPLETE")
+        self.cloud.assert_not_called()
+
+    def test_review_filename_leaves_room_for_publication_suffix(self):
+        """验证长录音名仍可在Windows生成三格式并保留完整文档标题。"""
+        review = self.open_review()
+        review.config = {**review.config, "audio": {**review.config["audio"], "name": "录" * 110 + ".wav"}}
+        report = self.export_review(review, revision=0)
+        self.assertEqual(report["delivery"]["status"], "COMPLETE")
+        for extension, file in report["delivery"]["files"].items():
+            self.assertEqual(Path(file["path"]).name, f"{'录' * 80}-reviewed-{self.job_id}.{extension}")
+        self.assertIn("录" * 110, Path(report["delivery"]["files"]["md"]["path"]).read_text(encoding="utf-8"))
+
     def test_export_cancel_keeps_previous_delivery_and_creates_no_files(self):
         """验证取消选择不启动导出，已有导出记录和文件保持原样。"""
         review = self.open_review()
@@ -196,7 +245,7 @@ class ReviewTests(RuntimeTestCase):
                 patch("asr_runtime.application.review.export_documents", side_effect=AssertionError("取消不能导出")):
             self.assertEqual(review.export({"revision": 1, "picker_id": "cancelled"}), {"ok": True, "cancelled": True})
         self.assertFalse((self.root / "review/status.json").exists())
-        self.assertFalse(list(Path(self.config["document_directory"]).glob("transcription-reviewed.*")))
+        self.assertFalse(list(Path(self.config["document_directory"]).glob("*-reviewed-*")))
         completed = self.export_review(review)
         status = (self.root / "review/status.json").read_bytes()
         with patch.object(review._picker, "select", return_value=None):
@@ -320,8 +369,12 @@ class ReviewTests(RuntimeTestCase):
             finally:
                 release.set()
             report = exporting.result(timeout=10)
-        self.assertEqual((report["export_revision"], report["revision"]), (1, 2))
+        self.assertNotIn("revision", report)
+        self.assertEqual(report["export_revision"], 1)
+        self.assertEqual(review.description()["revision"], 2)
         self.assertEqual(review.description()["sentences"][0]["text"], "最新正文")
+        with self.assertRaises(ReviewConflict):
+            self.edit_first(review, revision=1, text="旧页面修改")
         markdown = Path(report["delivery"]["files"]["md"]["path"]).read_text(encoding="utf-8")
         self.assertIn("已校对第一句", markdown)
         self.assertNotIn("最新正文", markdown)
@@ -348,10 +401,78 @@ class ReviewTests(RuntimeTestCase):
         self.assertEqual(review.description()["revision"], 0)
         with patch.object(review._picker, "select", return_value=moved):
             selected = review.select_audio("moved")
-        self.assertEqual(selected["revision"], 1)
+        self.assertNotIn("revision", selected)
+        self.assertEqual(review.description()["revision"], 0)
         self.assertEqual(review.audio_path(), moved)
-        self.assertEqual(self.open_review().audio_path(), moved)
+        restored = self.open_review()
+        self.assertEqual(restored.audio_path(), moved)
+        self.assertEqual(restored.description()["revision"], 0)
         self.assertEqual((self.root / "config.json").read_bytes(), self.original_files[self.root / "config.json"])
+
+    def test_audio_reselection_keeps_document_and_export_revisions(self):
+        """验证重选只持久化录音位置，不推进文字版本或使已导出稿过期。"""
+        review = self.open_review()
+        self.edit_first(review)
+        self.export_review(review)
+        moved = self.audio.with_name("moved.wav")
+        self.audio.rename(moved)
+        before = review.description()
+        with patch.object(review._picker, "select", return_value=moved):
+            result = review.select_audio("moved")
+        self.assertNotIn("revision", result)
+        for actual in (review.description(), self.open_review().description()):
+            self.assertEqual((actual["revision"], actual["export_revision"]), (1, 1))
+            self.assertEqual(actual["sentences"], before["sentences"])
+            self.assertEqual(actual["speakers"], before["speakers"])
+            self.assertEqual(actual["delivery"], before["delivery"])
+        self.assertEqual(read_review_status(self.runtime, self.job_id)["revision"], 1)
+
+    def test_audio_reselection_keeps_edits_saved_during_picker(self):
+        """验证选择期间另一页保存后，重选保留最新稿件且旧文字保存仍冲突。"""
+        moved = self.audio.with_name("moved.wav")
+        moved.write_bytes(self.audio.read_bytes())
+        review = self.open_review()
+        entered, release = threading.Event(), threading.Event()
+
+        def choose(*_args, **_kwargs):
+            """暂停选择器，供另一页先保存姓名。"""
+            entered.set()
+            if not release.wait(5):
+                raise AssertionError("未释放录音选择")
+            return moved
+
+        with patch.object(review._picker, "select", side_effect=choose), ThreadPoolExecutor(max_workers=1) as pool:
+            selecting = pool.submit(review.select_audio, "waiting")
+            try:
+                self.assertTrue(entered.wait(5))
+                review.save({"revision": 0, "speakers": [{"id": 0, "name": "另一页已保存"}]})
+                before = json.loads((self.root / "review/draft.json").read_bytes())
+            finally:
+                release.set()
+            self.assertNotIn("revision", selecting.result(timeout=5))
+        self.assertEqual(json.loads((self.root / "review/draft.json").read_bytes()),
+                         {**before, "audio_path": str(moved)})
+        self.assertEqual(review.description()["revision"], 1)
+        self.assertEqual(review.description()["speakers"][0]["name"], "另一页已保存")
+        self.assertEqual(review.audio_path(), moved)
+        with self.assertRaises(ReviewConflict):
+            review.save({"revision": 0, "speakers": [{"id": 0, "name": ""}]})
+
+    def test_cancelled_audio_reselection_keeps_concurrent_save(self):
+        """验证选择期间取消仍成功返回，不改写另一页刚保存的草稿。"""
+        review = self.open_review()
+
+        def cancel(*_args, **_kwargs):
+            """模拟另一页保存姓名后用户取消录音选择。"""
+            review.save({"revision": 0, "speakers": [{"id": 0, "name": "另一页已保存"}]})
+            return None
+
+        with patch.object(review._picker, "select", side_effect=cancel):
+            result = review.select_audio("cancelled")
+        self.assertEqual(result, {"ok": True, "cancelled": True})
+        self.assertEqual(review.description()["revision"], 1)
+        self.assertEqual(review.description()["speakers"][0]["name"], "另一页已保存")
+        self.assertEqual(review.audio_path(), self.audio)
 
     def test_playback_conversion_runs_once_and_keeps_original(self):
         """验证完整MP3可播放并复用，不因重复准备再次转码。"""

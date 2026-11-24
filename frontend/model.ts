@@ -5,7 +5,7 @@ import type { Configuration, FormValues, HotwordRow, Limits, Model, SessionEnd, 
 // 初始化页面阶段、录音选择、热词表导入与凭据状态。
 export function createModel(): Model {
   return {
-    phase: "loading", preview: null, receipt: null, session: null,
+    phase: "loading", preview: null, receipt: null, session: null, connected: true,
     directories: { json: "default", document: "default" },
     audio: null, hotwordImport: { status: "empty", name: "" },
     hotwords: { issues: [], warnings: [] },

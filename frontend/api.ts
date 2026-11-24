@@ -66,16 +66,27 @@ export function createApi(fetchRequest: typeof fetch, language: () => Language, 
         return await response.blob();
       } catch { throw new UiError(() => t("templateFailed")); }
     },
-    // 读取编辑会话结束事件，结束或断开后关闭连接。
-    listen(ended, disconnected): () => void {
+    // 读取结束事件，短暂断线沿用浏览器重连，终态或离页时关闭。
+    listen(ended, connected, disconnected): () => void {
       const source = eventSource("/api/events");
-      source.addEventListener("ended", event => {
+      let closed = false;
+      // 关闭通知并解除回调，避免终态或离页后重新激活页面。
+      function close(): void {
+        if (closed) return;
+        closed = true;
+        source.onopen = null;
+        source.onerror = null;
         source.close();
+      }
+      source.addEventListener("ended", event => {
+        if (closed) return;
+        close();
         try { ended(JSON.parse((event as MessageEvent<string>).data) as SessionEnd); }
         catch { disconnected(); }
       });
-      source.onerror = () => { source.close(); disconnected(); };
-      return () => source.close();
+      source.onopen = () => { if (!closed) connected(); };
+      source.onerror = () => { if (!closed) disconnected(); };
+      return close;
     },
   };
 }

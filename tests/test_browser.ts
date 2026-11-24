@@ -68,18 +68,23 @@ async function assertSessionViews(browser: Browser, url: string, description: Se
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: language, colorScheme: theme });
       let releaseEvents!: () => void;
       const eventsGate = new Promise<void>(resolve => { releaseEvents = resolve; });
+      let releaseRecovery!: () => void;
+      const recoveryGate = new Promise<void>(resolve => { releaseRecovery = resolve; });
       try {
         const page = await context.newPage();
         const failures: string[] = [];
         page.on("pageerror", error => failures.push(error.message));
         let scenario: SessionEnd["state"] | "unavailable" | "disconnected" = "cancelled";
         let eventRequests = 0;
+        let sessionRequests = 0;
         await page.route(new URL("/api/events", url).href, async route => {
           eventRequests += 1;
+          if (eventRequests > 1) { await recoveryGate; return route.continue(); }
           await eventsGate;
           await route.abort("failed");
         });
         await page.route(new URL("/api/session", url).href, route => {
+          sessionRequests += 1;
           if (scenario === "unavailable") return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({
             ok: false, error: { zh: "无法加载测试会话。", en: "The test session could not be loaded." },
           }) });
@@ -93,12 +98,35 @@ async function assertSessionViews(browser: Browser, url: string, description: Se
         for (const state of ["cancelled", "expired", "handed_off", "unavailable", "disconnected"] as const) {
           scenario = state;
           await page.goto(url);
-          const unavailable = state === "unavailable" || state === "disconnected";
+          const unavailable = state === "unavailable";
           if (state === "disconnected") {
             await page.locator("#config-fields").waitFor();
             await page.locator('label[for="context-enabled"]').click();
             await page.locator("#context-text").fill("In-progress text");
+            const requests = sessionRequests;
             releaseEvents();
+            await page.locator("#connection-panel").waitFor();
+            assert.equal(await page.locator("#config-fields").isVisible(), true);
+            assert.equal(await page.locator("#context-text").inputValue(), "In-progress text");
+            assert.equal(await page.locator("#context-text").isEnabled(), true);
+            assert.equal(await page.locator(".action-buttons button").isEnabled(), true);
+            assert.equal(await page.locator("#connection-panel button").count(), 0);
+            assert.equal(await page.locator("#session-unavailable").count(), 0);
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+            await page.screenshot({ path: path.join(screenshots, `state-${state}-${language}-${theme}.png`), animations: "disabled" });
+            await page.locator("#context-text").fill("Continued while disconnected");
+            await page.locator('label[for="hotwords-enabled"]').click();
+            await Promise.all([
+              page.waitForEvent("download"),
+              page.getByRole("button", { name: language === "en" ? "Download template" : "下载模板", exact: true }).click(),
+            ]);
+            releaseRecovery();
+            await page.locator("#connection-panel").waitFor({ state: "hidden" });
+            assert.equal(await page.locator("#context-text").inputValue(), "Continued while disconnected");
+            assert.equal(await page.locator("#context-text").isEnabled(), true);
+            assert.equal(await page.locator(".action-buttons button").isEnabled(), true);
+            assert.equal(sessionRequests, requests);
+            continue;
           }
           await page.locator(unavailable ? "#session-unavailable" : "#session-ended").waitFor();
           if (state !== "unavailable") {
@@ -128,9 +156,9 @@ async function assertSessionViews(browser: Browser, url: string, description: Se
             await page.setViewportSize({ width: 1280, height: 900 });
           }
         }
-        assert.equal(eventRequests, 1);
+        assert.equal(eventRequests, 2);
         assert.deepEqual(failures, []);
-      } finally { releaseEvents(); await context.close(); }
+      } finally { releaseEvents(); releaseRecovery(); await context.close(); }
     }
   }
 }

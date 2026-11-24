@@ -1,6 +1,7 @@
 """验证三种成品的文字保真、格式和回读检查。"""
 
 import html
+from dataclasses import replace
 import re
 import string
 from datetime import timedelta
@@ -204,13 +205,26 @@ class DocumentTests(RuntimeTestCase):
         path = self.write(write_markdown, "md", sample(text))
         content = path.read_text(encoding="utf-8")
         marker, escaped = content.split("### ", 1)[1].split("\n\n", 1)
-        self.assertIn("00:00:00.123 — 01:00:00.789", marker)
+        self.assertIn("00:00:00.123 — 01:00:00.789", self.decode_markdown(marker))
         self.assertEqual(self.decode_markdown(escaped[:-1]), text)
         self.assertNotIn("![", escaped)
         self.assertNotIn("<script>", escaped)
         self.assertNotIn("https://", escaped)
         self.assertNotIn("    #", escaped)
         self.assertNotRegex(escaped, r"(?<!\\)`")
+
+    def test_markdown_speaker_names_render_as_literal_text(self):
+        """验证人工姓名中的链接、实体和强调符号保留为原始文字。"""
+        name = '研发<负责人> &amp; 王**老师** [成员](https://example.invalid)'
+        transcript = sample("正文")
+        transcript = replace(transcript, sentences=tuple(replace(row, speaker_name=name)
+                                                       for row in transcript.sentences))
+        path = self.write(write_markdown, "md", transcript)
+        label = next(line[4:] for line in path.read_text(encoding="utf-8").splitlines()
+                     if line.startswith("### "))
+        self.assertIn(name, self.decode_markdown(label))
+        self.assertNotIn("**老师**", label)
+        self.assertNotIn("[成员](", label)
 
     def test_markdown_does_not_reinterpret_original_entities(self):
         """验证Markdown保留原始HTML实体文本。"""

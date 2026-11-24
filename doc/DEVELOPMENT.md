@@ -6,7 +6,7 @@
 
 MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定格式的纪要，并采用用户确认的范例与修改反馈改善后续结果。当前 `asr-transcription` Skill 实现第一阶段：把单个录音转为原始 JSON 和 Word、Excel、Markdown 转写校对稿，并支持已有结果的本机人工回听、文字与说话人修改、独立校验稿导出。第二阶段的个性化纪要生成、偏好存储及反馈学习仍在开发中，当前代码尚未实现。
 
-固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.10.1` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
+固定模型为 `qwen-audio-3.1-asr-flash-filetrans`，北京地域，使用官方百炼 CLI（BL）`2.10.5` 临时 OSS 上传。CLI、core、commands、runtime 均由 npm 锁定官方版本。版本比较及升级取舍见 [BL_COMPATIBILITY](BL_COMPATIBILITY.md)。
 
 | 参与者 | 职责 |
 | --- | --- |
@@ -76,7 +76,7 @@ Python 模块路径相对于 `skills/asr-transcription/scripts/asr_runtime/`，�
 | `application/session.py` | 编辑会话、附件与原生窗口共用音频登记、内存热词导入、预览与交接 |
 | `application/recovery.py` | 正常关闭及下次开页时回收可确认归属的临时文件 |
 | `application/inputs.py` / `rules.py` | 读取输入事实、统一应用模型规则；rules 无 I/O |
-| `application/transcription.py` | 一次执行、状态查询和重新导出 |
+| `application/transcription.py` | 一次执行、任务元信息查询、状态查询和重新导出 |
 | `application/review.py` | 已有任务的回听会话、版本化校对草稿、音频绑定和校验稿导出 |
 | `application/delivery.py` | 三种 writer 的顺序调用与交付汇总，分别写原稿与校验稿 |
 | `utils/environment.py` / `auth.py` | Runtime、工作区进程环境和运行凭据 |
@@ -107,6 +107,8 @@ Session、ReviewSession、PathPicker 持有实际生命周期；无状态操作�
 转写工单只负责“填写 → 预览”，往返不生成任务编号。前端完成预览展示后登记当前版本；后端可确认“当前预览已就绪”，不把成功校验直接等同页面状态。返回修改先通知后端，成功后才恢复可编辑表单。
 
 `review_enabled` 随工单预览和交接配置保存，只决定Skill在JSON_READY后是否打开人工回听；不映射为BL参数。旧任务缺失此可选字段时按false处理，仍可按用户要求用原job_id打开回听。原稿导出照常尝试，部分格式失败不阻止有效JSON进入回听。
+
+每个成功任务固定对应一份本机校对稿；没有修改时原JSON就是基线，有修改时同一job的 `review/draft.json` 保存最新差异。网页是临时编辑窗口，导出、取消选择、不修改或关闭服务都不删除稿件，后续按同一job恢复。
 
 预览有“复制给 Codex”按钮，复制明确开始请求及 `session_id`。Skill 必须从当前用户确认消息读取编号；仅“继续”不能选择会话，不从启动回执、历史或目录代替用户选择。会话编号是定位信息，保护请求的令牌是另一数据。
 
@@ -173,11 +175,11 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 控制台模式复用当前工作目录的 BL 模型凭据；未知时查询一次本机状态，缺失才登录。两种模式的在线有效性都由实际 BL 调用判断。用户交接时已确认上传范围与可能的费用；登录完成回复“已完成”后，Codex 读取原 BL 结果并执行同一任务，不再次询问业务授权。
 
-登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.10.1 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
+登录从首次调用就采用正常 Windows 桌面执行权限。`check_login_execution_context()` 拒绝已观察到会导致浏览器失败的受限令牌。官方 BL 2.10.5 的 `buildOpenInvocation()` 使用 Windows 命令引用和 `windowsVerbatimArguments` 保留完整 URL；Python 直接调用 `bl auth login --console`，由 BL 打开系统默认浏览器、等待回调并保存凭据。
 
-官方2.10.1的浏览器登录要求text输出；Python使用`--output text`等待原进程，按退出码解释失败，原始登录stderr保留在进程内。BL先注册完成事件再异步打开浏览器，空等返回TIMEOUT，结束却未保存凭据返回GENERAL。成功后单独以JSON查询公开本机状态，区分控制台会话与ASR所需的模型Key；识别和状态命令的JSONL错误仍由explain_cli_error读取末尾根对象并脱敏。
+官方2.10.5的浏览器登录要求text输出；Python使用`--output text`等待原进程，按退出码解释失败，原始登录stderr保留在进程内。BL先注册完成事件再异步打开浏览器，空等返回TIMEOUT，结束却未保存凭据返回GENERAL。成功后单独以JSON查询公开本机状态，区分控制台会话与ASR所需的模型Key；识别和状态命令的JSONL错误仍由explain_cli_error读取末尾根对象并脱敏。
 
-`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.10.1 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
+`recognition_arguments()` 统一映射 BL 选项。热词序列化为一个 JSON 参数，上下文使用一个 `--context=<原文>` 参数，子进程采用参数数组与 `shell=False`。交接与执行准备复用同一个命令构造和长度检查；前者允许用户在生成任务前修正超长输入，后者核对即将启动的实际命令。交接不读取 Key 或启动 BL，运行凭据只在执行准备时读取。固定 BL 2.10.5 的即时热词参数仅接受 JSON 文本，没有文件或标准输入入口；规则允许的 2000 条热词不保证都能装入 Windows 的完整命令。来源见 [model.md](../skills/asr-transcription/references/model.md)。
 
 官方 core 的 `Client.uploadFile()` 将已解析的 `settings.timeout` 经 `resolveFileUrl()`、`UploadOptions`、`uploadFile()` 传给 `uploadToOSS()`；上传计时器使用该秒数，获取上传凭证仍为15秒。core 的 JSON 请求期限覆盖响应头与 JSON 正文，并在 Node 请求中关闭较短的 undici headers/body 默认期限。上传、提交、轮询、下载与 `--out` 保存均使用官方包。
 
@@ -200,15 +202,18 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 成功 JSON 记录写入失败时保留 JSON 并在导出前返回。当前没有补签摘要或恢复成功记录入口。`job-status` 只读本地记录，不查询云端或进程存活。[转写流程](UML.md#07-转写流程)展示各方职责，分别保留编辑会话、执行记录和独立交付边界；保存失败导致的当次回执与磁盘滞后见[图08](UML.md#08-记录保存失败)。具体状态与修复见 [errors.md](../skills/asr-transcription/references/errors.md)。
 
+`jobs [--query TEXT]`由 `list_jobs()` 读取当前工作目录下已发布的任务配置与执行状态，仅返回job_id、audio_name、confirmed_at、status，按确认时间倒序排列。query对录音名或编号作大小写无关的包含匹配；时间描述由Codex核对返回的confirmed_at，多匹配先让用户选择。逐项问题放入issues，其余候选保留；已有执行目录但记录损坏时保留候选并标记OUTCOME_UNKNOWN。查询不读取原转写正文、校对草稿或凭据，不调用BL、不创建目录或另建索引；选定任务后继续使用原review或job-status入口。
+
 ## 文档交付与路径
 
 results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把 `config.model` 传给 writer，保留历史任务真实模型；依次尝试 Excel、Word、Markdown，单格式失败仍尝试其他格式。每次用同目录独立临时文件完成后替换固定目标，失败保留旧目标。Excel/Word 替换前回读，Markdown 编码保真由测试验证。
 
-`export --job` 重导核对配置、磁盘 JSON_READY 及原 JSON 摘要，复用同一 writer、路径和模型，不读取音频、Excel 或 Key，也不调用 BL。原稿交付记录为 `delivery/status.json`；此入口只导出原JSON，手工改过的原稿文件应先另存。回听页面导出由原生窗口选择目录，以 `transcription-reviewed` 文件名另存，并将交付结果记入 `review/status.json`；原稿文件和原交付记录保持。
+`export --job` 重导核对配置、磁盘 JSON_READY 及原 JSON 摘要，复用同一 writer、路径和模型，不读取音频、Excel 或 Key，也不调用 BL。原稿交付记录为 `delivery/status.json`；此入口只导出原JSON，手工改过的原稿文件应先另存。回听页面导出由原生窗口选择目录，使用 `录音名-reviewed-JOB_ID` 文件名，并将交付结果记入 `review/status.json`；原稿文件和原交付记录保持。文件名取 `Path(config["audio"]["name"]).stem[:80]` 与完整job_id，同任务在同目录重导覆盖，不同任务互不覆盖；文档标题保留完整源文件名。
 
 - 标题均为“源文件名（不含扩展名） 录音转写”，不另列音频信息行。
 - Excel 使用等线、黑白无填充，第三行即表头；标题和任务说明左对齐，表头与非正文列居中，正文左对齐并自动换行。展示行高封顶，完整文本保留；真实存储超限时报错。
 - Word 使用等线，标题 20 磅，其余正文、元信息、时间标签、页码 10 磅。时间标签无圆点，随下一段。正文标题保留完整文件名，不重复写入有限长的可选核心标题属性。
+- Markdown的标题、元信息、时间与说话人标签、正文共用文本转义，人工姓名中的Markdown或HTML按文字输出。
 
 | 数据 | 位置 |
 | --- | --- |
@@ -224,15 +229,17 @@ results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把
 | 回听连接 / 播放副本 | 同一 job 目录的 `review/connection.json` / 按需生成的 `review/playback.mp3` |
 | 原始 JSON | `<json_root>/<job_id>/json/transcription.json` |
 | 三种成品 | `<document_root>/<job_id>/documents/transcription.{xlsx,docx,md}` |
-| 三种人工校验稿 | `<本次原生窗口选定目录>/transcription-reviewed.{xlsx,docx,md}` |
+| 三种人工校验稿 | `<本次原生窗口选定目录>/<录音名>-reviewed-<job_id>.{xlsx,docx,md}` |
 
 JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。内容保真、识别质量与 Office 视觉效果分别验收。
 
 ## 人工回听与校对
 
-`review --job ID [--port PORT] [--no-browser]` 由CLI进入 `serve_review()`。首次打开通过 `ReviewSession` 核对确认配置、磁盘JSON_READY及原JSON摘要，恢复与该摘要绑定的草稿；这些条件不满足就停止，不补签原结果或重新识别。回听沿用job_id，不创建新的编辑session_id，不读取模型凭据。
+`review --job ID [--port PORT] [--no-browser]` 由CLI进入 `serve_review()`。不知道编号时先用jobs核对已有任务。首次打开通过 `ReviewSession` 核对确认配置、磁盘JSON_READY及原JSON摘要，恢复与该摘要绑定的草稿；没有草稿文件时直接使用原JSON，不创建空草稿。这些条件不满足就停止，不补签原结果或重新识别。回听沿用job_id，不创建新的编辑session_id，不读取模型凭据。
 
 服务绑定127.0.0.1并将port、token、pid写到任务的 `review/connection.json`。`serve_review()`先请求已有连接的描述：任务匹配且未关闭时复用该服务；服务无响应时，只有原PID已确认结束才重新创建，存活或未知时停止并提示检查。`listening`回执包含job_id、url、pid、reused及browser_request，不含token。回听没有转写配置页的两小时期限，使用独立页面在场连接管理最后一个页面离开后的收尾。
+
+普通调用由服务请求系统浏览器开页；仅传入 `--no-browser` 时由Codex在listening回执后请求宿主打开URL。browser_request只说明开页请求结果，不证明用户已看到页面。
 
 页面连接采用浏览器原生[EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource)，离页处理使用[pagehide](https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event)；服务端直接观察连接断开，因此关闭进程时不依赖离页事件一定触发。
 
@@ -246,20 +253,20 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 | `GET /api/review/presence` | 保持受保护SSE连接，登记页面在场；服务端通过连接EOF识别离开，不发送周期心跳 |
 | `GET /api/review/audio`、`HEAD /api/review/audio` | 读取当前绑定录音；单段起止、开放结尾或后缀Range返回206及Content-Range，不满足返回416及总字节数；HEAD不发音频正文 |
 | `POST /api/review/save` | revision加可选sentences与speakers；返回ok及已保存revision；旧版本返回409，校验错误422 |
-| `POST /api/review/export` | 严格提交revision与picker_id；选择目录取消返回cancelled=true，成功返回cancelled=false、delivery、export_revision及当前revision |
-| `POST /api/review/select-audio` | picker_id关联原生窗口；取消保留绑定，匹配原录音后返回新revision及audio |
+| `POST /api/review/export` | 严格提交revision与picker_id；选择目录取消返回cancelled=true，成功返回cancelled=false、delivery及export_revision，不返回文字revision |
+| `POST /api/review/select-audio` | picker_id关联原生窗口；取消保留绑定，匹配原录音后返回audio，不传入或返回文字revision |
 | `POST /api/review/prepare-audio` | 按需生成或复用完整播放副本，返回audio；不改变原稿或调用ASR |
 | `POST /api/review/close` | 关闭会话及选择器，返回closed后停止服务；不代替保存请求 |
 
 ### 保存与独立导出
 
-句子编号、音轨和时间来自原JSON；只允许修改原有句子的text、speaker_id，以及非负整数说话人编号对应的name。空姓名沿用原编号标签，None表示未标注。描述中的original_text与original_speaker_id始终来自原JSON；单句重置把这两个原值提交给现有save，不增加重置接口，也不改变统一说话人姓名。`ReviewSession`在锁内检查revision、合并本批改动，先原子保存 `draft.json`，成功后才更新内存和版本；无实际改动不递增。草稿保存source_sha256、revision、句子改动、姓名及可选重选音频路径，原JSON与确认配置保持不变。每次保存覆盖最新草稿，不保存逐次编辑历史；草稿无自动到期清理，关闭服务仅移除连接信息。恢复依赖原任务文件及原JSON，和是否导出无关。
+句子编号、音轨和时间来自原JSON；只允许修改原有句子的text、speaker_id，以及非负整数说话人编号对应的name。空姓名沿用原编号标签，None表示未标注。描述中的original_text与original_speaker_id始终来自原JSON；单句重置把这两个原值提交给现有save，不增加重置接口，也不改变统一说话人姓名。`ReviewSession`在锁内检查revision、合并本批改动，先原子保存 `draft.json`，成功后才更新内存和版本；仅正文、归属或姓名变化递增revision，无实际改动不递增。草稿保存source_sha256、revision、句子改动、姓名及可选重选音频路径，原JSON与确认配置保持不变。重选录音只保存新路径，保留服务端最新文字内容及revision，前端只接收audio，不能借此更新旧页面的文字版本。每次保存覆盖最新草稿，不保存逐次编辑历史；草稿无自动到期清理，关闭服务仅移除连接信息。恢复依赖原任务文件及原JSON，和是否导出无关。
 
 前端 `useReview` 用800ms延迟及失焦触发串行保存；保存期间的新输入保留为下一批，不被旧回执覆盖。失败后保留输入、停止自动保存，用户可明确重试；409冲突要求先保留输入并重新读取。导出与重选录音先等待同一保存队列成功，再发对应请求。直接关闭浏览器标签页不会替用户完成保存；未保存或保存中通过标准beforeunload提示。
 
 导出请求先检查revision，再通过共享PathPicker打开目录窗口，由用户在系统窗口中选择或取消。前端只为本次请求生成picker_id，不保存独立的选择等待状态，也不提供回听专用取消接口。初始目录优先使用最近交付中已有READY文件的父目录，否则使用原documents；目录不存在时回退工作目录。取消返回cancelled=true，不生成文件或改写导出状态。用户选定目录后再次核对会话、revision及导出占用，才冻结已保存版本快照，锁外复用 `export_documents(..., review_revision=revision, review_directory=selected)`。窗口等待期间其他页面保存了新版本时，旧请求被拒绝，不导出混合版本。
 
-三个writer共用合并后的Transcript；`Sentence.speaker_name`只用于输出人工姓名，原结果解析仍保留原编号。校验稿直接写到选定目录的 `transcription-reviewed.{xlsx,docx,md}`，原documents及原JSON保持。再次选择同一目录会覆盖同名校验稿，对这些文件的外部手工修改应先另存。单格式失败继续其余格式，交付记录含本次export_revision和各实际文件路径。
+三个writer共用合并后的Transcript；`Sentence.speaker_name`只用于输出人工姓名，原结果解析仍保留原编号。校验稿按上节任务命名规则直接写到选定目录，原documents及原JSON保持。同任务再次选择同一目录会覆盖自己的校验稿，对这些文件的外部手工修改应先另存。单格式失败继续其余格式，交付记录含本次export_revision和各实际文件路径。前端只据导出回执更新delivery和export_revision，不据其推进本页文字revision；其他页面在导出期间保存的修改仍受后续save版本检查保护。
 
 `job-status`在原执行/原稿交付之外附加review，只返回版本与交付摘要，不启动回听；读取draft.json时不把其中正文放入回执。校验稿完成须看 `review.delivery.status=COMPLETE`；`review.revision != review.export_revision`表示已保存草稿与已导出版本不同。原 `documents_ready`只描述原稿，不能代表校验稿；页面未保存的改动也不在磁盘查询结果中。
 
@@ -269,7 +276,7 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 浏览器先播放绑定的原文件或单声道副本。明确不支持/解码失败时，前端先用同一端点HEAD核实可读，再请求一次 `prepare-audio`；网络失败不触发转码。`prepare_playback()`使用现有PyAV将第一音轨转成完整MP3，经临时文件、源文件属性检查和媒体探测后发布；不逐句生成文件。底部普通播放连续进行，行内“回听本句”从原开始时间播放到结束时间暂停，没有连续模式开关。进度条拖动值与音频实际位置分开，释放后才seek；暂停时seek也更新当前句高亮。滚动跟随响应实际currentIndex变化及重新开启跟随，正文编辑期间不滚动。
 
-前端通过EventSource保持 `/api/review/presence`，服务端等待socket EOF并统计活动页面；这不是周期HTTP请求或心跳。最后一个页面断开后启动10秒宽限计时，期间任何页面重连会取消计时，另有页面连接时不安排退出。到期仍无人连接才关闭会话及服务；刷新短暂断开可继续原会话，网络中断超过宽限期也可能触发收尾。页面离开时关闭在场连接，重连只恢复连接，不代替校对保存。
+前端通过EventSource保持 `/api/review/presence`，服务端等待socket EOF并统计活动页面；这不是周期HTTP请求或心跳。短暂断线由浏览器自动重连，页面保留当前输入，不增加手动重连按钮或重新GET稿件。presence只表示页面在场，连接错误不代替保存结果；实际保存失败仍沿saveError保留输入并等待用户重试。最后一个页面断开后启动10秒宽限计时，期间任何页面重连会取消计时，另有页面连接时不安排退出。到期仍无人连接才关闭会话及服务；刷新短暂断开可继续原会话，网络中断超过宽限期也可能触发收尾。页面离开时关闭在场连接，重连不代替校对保存。
 
 页面不提供单独结束按钮。用户等待已保存后关闭标签，Codex仍可按明确请求调用 `review-close --job ID`；该命令不能保存浏览器中尚未提交的输入。主动关闭在finally中停止服务，关闭响应遇到断管也会收尾；正常退出等待请求线程并移除连接记录，保留草稿、播放副本及成品，下次打开恢复已保存版本。没有持久化的closed终态回执，也不套用配置页的cancelled.json；缺少连接时返回closed表示没有登记的活动服务。强制中断时不保证清理完成或未保存输入可恢复，现有回收器不自动删除review数据。
 
@@ -319,7 +326,7 @@ Codex在更新和本工作目录依赖准备成功后，根据Release正文用�
 
 编辑视图在宽度至少 1100px 时显示右侧 `SettingsSummary.vue`，通过 CSS Grid 分列、sticky 跟随，并按可用高度允许摘要内部滚动。摘要只读取当前表单中的文件名、大小、识别选项、增强计数和认证选择；不读取 Key、不请求校验或产生预览版本。较窄窗口保持单列；正式预览仍由 ReviewPanel 独立展示，遵循原来的确认交接协议。
 
-全局提示与字段卡片由同一个主列控制宽度。加载失败或事件连接中断时，前端进入 unavailable，统一显示一个错误结果页并隐藏填写引导、步骤和操作栏。cancelled／expired／handed_off保持独立终态说明。
+全局提示与字段卡片由同一个主列控制宽度。配置页初次加载失败时进入unavailable；已打开页面的事件连接中断则保留原phase、表单、API Key输入、预览及操作，由EventSource自动重连。连接状态只用于恢复提示，不作为HTTP可用性判断；各请求仍由后端检查并沿原错误处理，不额外GET会话或重建表单。cancelled／expired／handed_off保持独立终态说明，收到终态或卸载后关闭连接。
 
 回听路由 `/review` 使用独立 `ReviewApp.vue`，复用转写页的page-shell、AppHeader、语言和主题。主标题为“回听校对”；录音名以纯文本放在“说话人名称”按钮之前，两项顶部操作等宽等高。播放器保留在弹性工作区底部，播放/暂停使用32px方形按钮内的基本图形。中间阅读区使用共享8px圆角，滚动区域外上下各留24px，逐句使用ElCard无阴影圆角卡片，卡片间隔8px，内边距上下8px、左右16px（窄屏12px）。正文14px、1.7倍行距，阅读与编辑共用文字边距和尺寸；焦点使用原生textarea的preventScroll避免进入编辑时跳动。时间、说话人和重置附在对应句子。时间使用Clock图标的无边框按钮，当前句时间仅加粗，文字颜色保持。
 
@@ -327,7 +334,7 @@ Codex在更新和本工作目录依赖准备成功后，根据Release正文用�
 
 说话人对话框使用 `ElScrollbar`，列表高度上限为 `min(360px, 50vh)`；标题、说明和底部新增/完成按钮位于滚动区外。新增仍调用原 `useReview.addSpeaker()`，等待Vue更新后滚到列表末项并聚焦新增名称输入，焦点使用preventScroll避免移动外层页面；自动保存逻辑保持。
 
-页面共用一处固定提示区，保存中或未保存状态优先于先前导出完成及版本过期提示，失败和连接问题仍按各自优先级显示。导出期间播放器继续响应播放和暂停。音频重选失败且录音仍不可用时保留重选入口，用户直接在系统窗口选择或取消，不增加页面等待/取消操作。保存及导出版本分别判断，不以播放状态代表保存完成。
+回听页在录音名旁以ElText小字显示保存及导出状态；提示区只在加载、音频转换、连接中断或错误等需要说明时出现。导出期间播放器继续响应播放和暂停。音频重选失败且录音仍不可用时保留重选入口，用户直接在系统窗口选择或取消，不增加页面等待/取消操作。保存及导出版本分别判断，不以播放状态代表保存完成。
 
 Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求由根 package.json 的 `^20.19.0 || >=22.12.0` 约束；Skill 使用固定 Node 24.21.0，满足该条件。具体环境前提与验证命令统一见下节。
 
@@ -378,7 +385,7 @@ npm run render:uml
 
 浏览器测试使用仓库`.venv`和构建后的静态资源，所以先构建。UML生成方法与主题见[图稿说明](UML.md)。文档检查验证本仓库使用的相对文件和章节链接，不检查外网可用性。Skill格式可使用当前Codex提供的`skill-creator/scripts/quick_validate.py`，传入`skills/asr-transcription`；PyYAML来自上述开发依赖，校验器不复制进仓库。格式通过还须通过入口场景推演，不能代替实际流程检查。
 
-人工回听的本机用例与HTTP边界分别由 `tests/test_review.py`、`tests/test_review_web.py` 验证，使用合成JSON与录音，不调用云端。长列表页面验收可在完成前端构建后运行 `& $pythonPath -X utf8 -m tests.review_browser_server --workspace .runtime/新的回听验收目录`：夹具生成五秒单声道录音、一千句结果和原始三格式文档，输出listening回执供浏览器打开。目录必须位于仓库.runtime内，已存在fixtures时拒绝覆盖；结束后保留合成数据。HTTP测试通过不代表实际浏览器播放、布局或Office视觉检查已经通过，实际范围记录在ACCEPTANCE。
+人工回听的本机用例与HTTP边界分别由 `tests/test_review.py`、`tests/test_review_web.py` 验证，使用合成JSON与录音，不调用云端。长列表页面验收可在完成前端构建后运行 `& $pythonPath -X utf8 -m tests.review_browser_server --workspace .runtime/新的回听验收目录`：夹具生成一千秒单声道录音、一千句结果和原始三格式文档，输出listening回执供浏览器打开。目录必须位于仓库.runtime内，已存在fixtures时拒绝覆盖；结束后保留合成数据。HTTP测试通过不代表实际浏览器播放、布局或Office视觉检查已经通过，实际范围记录在ACCEPTANCE。
 
 发行包构建使用`scripts/build_zip.py`。轻量包直接生成；完整版用`--runtime-directory`指向与`runtimes.json`摘要匹配的两个官方ZIP目录。打包测试检查固定文件集、当前README、manifest和源码一致性；生成文件放`dist`，实际运行结果追加[ACCEPTANCE](ACCEPTANCE.md)。本机测试、真实用户授权、云端识别与Office视觉排版分别记录验收范围。
 
@@ -404,7 +411,7 @@ Python 安装器继续按锁定版本准备依赖。先并行采样 PyPI 与阿�
 
 首次安装 BL 时，`rank_npm_registries()` 复用 `_sample_download()` 比较 npm 官方源与 npmmirror 的固定 BL 包前缀。正文采样窗口从响应就绪后开始，评分包含连接等待。`_install_bailian()` 按顺序每源至多调用一次原生 `npm ci`，由 `--registry` 切换下载位置，保留锁定版本及 integrity；`fetch-retries=2` 与 `prefer-offline` 分别交给 npm 处理有限重试和缓存复用。正常下载没有额外总时限。
 
-BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.10.1` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
+BL 安装资源只有 `scripts/bailian/package.json` 与 `package-lock.json`，由 npm 下载官方 `2.10.5` 包及锁定依赖。安装检查要求当前固定版本；版本不匹配时按 [错误说明](../skills/asr-transcription/references/errors.md#常见问题处理)仅重新安装工作目录的 BL，凭据及任务位于独立目录。两个发行包均使用同一套官方依赖锁。
 
 `run_installer()` 可将 stdout 写入调用方持有的临时文件，stderr 仍逐行写入安装日志和进度。BL 安装从 npm `--json` 的 `error.code` 判断是否换源：已识别连接、请求/正文超时、404/408/429/5xx、下载校验错误可以切换；权限、磁盘、锁冲突、未知错误或无法解析的结果立即停止。临时 JSON 关闭后删除，无需新的持久状态或日志解析器。第二次 ci 重建的是本次新安装目录，已有冲突安装仍由 bootstrap 在开始前拒绝。两源失败保留 bootstrap.log；缓存复用不等于文件断点续传，这些策略不扩展为云端转写重试。
 

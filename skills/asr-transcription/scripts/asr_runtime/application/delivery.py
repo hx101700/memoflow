@@ -40,9 +40,13 @@ def export_documents(runtime: Runtime, config: JobConfig, transcript: Transcript
         save_record(state, report)
         return report
 
+    name = "transcription"
+    if review_revision is not None:
+        # 为Windows文件名中的任务编号、扩展名及发布暂存后缀预留空间。
+        source_stem = Path(config["audio"]["name"]).stem[:80]
+        name = f"{source_stem}-reviewed-{config['job_id']}"
     # 格式之间没有成功依赖；某一项失败后仍可完成其余格式，但不重试失败项。
     for extension, writer in (("xlsx", write_xlsx), ("docx", write_docx), ("md", write_markdown)):
-        name = "transcription" if review_revision is None else "transcription-reviewed"
         final = destination / f"{name}.{extension}"
         try:
             size = publish_document(writer, transcript, final, source_name=config["audio"]["name"],

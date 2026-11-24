@@ -48,6 +48,7 @@ export interface ImportState { status: "empty" | "importing" | "ready" | "failed
 export interface Picker { id: string; kind: DirectoryKind | "audio"; cancelling: boolean }
 export interface Model {
   phase: Phase; preview: Preview | null; receipt: Receipt | null;
+  connected: boolean;
   session: SessionDescription | null; directories: Record<DirectoryKind, string>;
   audio: AudioSelection | null; hotwordImport: ImportState;
   hotwords: { issues: EditorIssue[]; warnings: LocalizedText[] };
@@ -77,7 +78,7 @@ export interface Endpoints {
 export interface Api {
   request<K extends keyof Endpoints>(path: K, payload?: object, file?: File): Promise<Endpoints[K]>;
   template(): Promise<Blob>;
-  listen(ended: (result: SessionEnd) => void, disconnected: () => void): () => void;
+  listen(ended: (result: SessionEnd) => void, connected: () => void, disconnected: () => void): () => void;
 }
 
 export interface ReviewSentence { index: number; begin_ms: number; end_ms: number; text: string; speaker_id: number | null; original_text: string; original_speaker_id: number | null }
@@ -96,8 +97,8 @@ export interface ReviewDocument {
 export interface ReviewEndpoints {
   "/api/review": ReviewDocument;
   "/api/review/save": { revision: number };
-  "/api/review/export": { cancelled: true } | { cancelled: false; delivery: ReviewDelivery; export_revision: number | null; revision: number };
-  "/api/review/select-audio": { cancelled: true } | { cancelled: false; revision: number; audio: ReviewAudio };
+  "/api/review/export": { cancelled: true } | { cancelled: false; delivery: ReviewDelivery; export_revision: number | null };
+  "/api/review/select-audio": { cancelled: true } | { cancelled: false; audio: ReviewAudio };
   "/api/review/prepare-audio": { audio: ReviewAudio };
 }
 export interface ReviewApi {

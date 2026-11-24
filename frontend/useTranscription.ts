@@ -163,12 +163,9 @@ export function useTranscription(api: Api, view: ViewEffects, t: Translate, make
       try {
         model.session = await api.request("/api/session");
         if (model.session.terminal) { ended(model.session.terminal); return; }
-        stopListening = api.listen(ended, () => {
-          if (!active()) return;
-          error.value = new UiError(() => t("network"));
-          model.phase = "unavailable";
-          view.setApiKey("");
-        });
+        stopListening = api.listen(ended,
+          () => { if (active()) model.connected = true; },
+          () => { if (active()) model.connected = false; });
         const preview = model.session.preview;
         if (preview) {
           restoreForm(preview);

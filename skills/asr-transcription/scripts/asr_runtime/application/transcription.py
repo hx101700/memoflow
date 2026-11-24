@@ -58,6 +58,43 @@ def job_status(runtime: Runtime, job_id: str) -> ExecutionReport:
     return report
 
 
+def list_jobs(runtime: Runtime, query: str = "") -> dict[str, object]:
+    """按录音名或编号查询本工作区已确认任务，只返回元信息并逐项报告损坏记录。"""
+    jobs: list[dict[str, str]] = []
+    issues: list[dict[str, str]] = []
+    directory = runtime.path(".state/jobs")
+    if directory != runtime.root / ".state/jobs":
+        raise SetupError("任务目录不能重定向。")
+    if not directory.exists():
+        return {"jobs": jobs, "issues": issues}
+    search = query.strip().casefold()
+    for entry in sorted(directory.iterdir()):
+        try:
+            if not entry.is_dir():
+                continue
+            config = read_config(runtime, entry.name)
+            audio_name = config["audio"]["name"]
+            confirmed_at = config["confirmed_at"]
+            if not isinstance(audio_name, str) or not audio_name or not isinstance(confirmed_at, str):
+                raise SetupError("任务配置缺少有效的录音名或确认时间。")
+            if search and search not in audio_name.casefold() and search not in entry.name:
+                continue
+            execution = read_execution(job_directory(runtime, entry.name))
+            status = execution["status"] if execution is not None else "CONFIGURED"
+            jobs.append({"job_id": entry.name, "audio_name": audio_name,
+                         "confirmed_at": confirmed_at, "status": status})
+            if execution is not None and status == "OUTCOME_UNKNOWN":
+                issues.append({"job_id": entry.name, "message": execution["message"]})
+        except SetupError as exc:
+            issues.append({"job_id": entry.name, "message": str(exc)})
+        except OSError as exc:
+            issues.append({"job_id": entry.name, "message": f"读取任务记录失败（{type(exc).__name__}）。"})
+        except (KeyError, TypeError):
+            issues.append({"job_id": entry.name, "message": "任务配置缺少有效的录音名或确认时间。"})
+    jobs.sort(key=lambda job: job["confirmed_at"], reverse=True)
+    return {"jobs": jobs, "issues": issues}
+
+
 def _attach_delivery(report: ExecutionReport, delivery: DeliveryReport) -> ExecutionReport:
     """合并导出回执并更新文档就绪状态。"""
     report.update({"delivery": delivery, "documents_ready": delivery["status"] == "COMPLETE",

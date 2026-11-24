@@ -196,9 +196,8 @@ class ReviewSession:
                               "The review draft is unreadable or belongs to a different transcript. The file was preserved.") from exc
 
     def _write_draft(self, changes: dict[int, ReviewSentence], names: dict[int, str],
-                     audio: str | None) -> int:
-        """先原子保存新版本，再更新内存；保存失败保留原版本和输入。"""
-        revision = self._revision + 1
+                     audio: str | None, *, revision: int) -> int:
+        """原子保存指定文字版本及录音位置，成功后再更新内存。"""
         draft: ReviewDraft = {"revision": revision, "source_sha256": self._source.sha256,
                               "sentences": list(changes.values()),
                               "speakers": [{"id": identifier, "name": name} for identifier, name in names.items()],
@@ -318,7 +317,8 @@ class ReviewSession:
             names = {**self._names, **self._validate_speakers(payload.get("speakers", []))}
             if changes == self._changes and names == self._names:
                 return {"ok": True, "revision": self._revision}
-            return {"ok": True, "revision": self._write_draft(changes, names, self._selected_path)}
+            return {"ok": True, "revision": self._write_draft(changes, names, self._selected_path,
+                                                              revision=self._revision + 1)}
 
     def export(self, payload: Mapping[str, object]) -> dict[str, object]:
         """选择导出目录后冻结已保存版本，生成三种独立校对稿。"""
@@ -364,7 +364,7 @@ class ReviewSession:
             self._exporting = False
             self._delivery = delivery
             return {"ok": True, "cancelled": False, "delivery": deepcopy(delivery),
-                    "export_revision": revision, "revision": self._revision}
+                    "export_revision": revision}
 
     def audio_path(self) -> Path:
         """返回已经绑定并核对属性的音频文件，供HTTP范围读取。"""
@@ -373,7 +373,7 @@ class ReviewSession:
             return self._check_audio()
 
     def select_audio(self, picker_id: object) -> dict[str, object]:
-        """重新选择并验证原录音，只将新位置保存到校对草稿。"""
+        """重选并验证原录音，保存播放位置且保持最新文字稿版本。"""
         with self._lock:
             self._require_open()
             initial = self._audio.parent if self._audio else self.runtime.workspace
@@ -388,9 +388,9 @@ class ReviewSession:
                               "The selected recording could not be read. Check the file and its permissions.", "audio") from exc
         with self._lock:
             self._require_open()
-            self._write_draft(self._changes, self._names, str(selected))
+            self._write_draft(self._changes, self._names, str(selected), revision=self._revision)
             self._bind_audio(selected, "original")
-            return {"ok": True, "cancelled": False, "revision": self._revision, "audio": self._audio_description()}
+            return {"ok": True, "cancelled": False, "audio": self._audio_description()}
 
     def prepare_audio(self) -> dict[str, object]:
         """在浏览器不支持原格式时准备一次完整MP3，期间允许保存校对。"""

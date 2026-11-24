@@ -275,12 +275,13 @@ class ReviewWebTests(ReviewFixture):
         exported = json.loads(body)
         self.assertFalse(exported["cancelled"])
         self.assertEqual(exported["delivery"]["status"], "COMPLETE")
+        self.assertNotIn("revision", exported)
         self.assertEqual(exported["export_revision"], restored["revision"])
         picker.assert_called_once_with(Path(self.config["document_directory"]), "export-reviewed", mode="directory")
         reviewed = {kind: Path(record["path"]) for kind, record in exported["delivery"]["files"].items()}
         self.assertEqual(set(reviewed), {"xlsx", "docx", "md"})
         self.assertTrue(set(reviewed.values()).isdisjoint(originals))
-        self.assertEqual(reviewed, {kind: destination / f"transcription-reviewed.{kind}"
+        self.assertEqual(reviewed, {kind: destination / f"{self.audio.stem}-reviewed-{self.job_id}.{kind}"
                                     for kind in ("xlsx", "docx", "md")})
         workbook = load_workbook(reviewed["xlsx"], read_only=True, data_only=False)
         try:
@@ -427,6 +428,27 @@ class ReviewWebTests(ReviewFixture):
         self.assertEqual(status, 200)
         self.assertTrue(json.loads(body)["cancelled"])
         self.assertEqual(self.description()["revision"], previous["revision"])
+        self.assertEqual(self.request("GET", "/api/review/audio")[2], self.original_audio)
+
+    def test_audio_reselection_does_not_advance_stale_page_revision(self) -> None:
+        """验证旧页重选后不能取得新文字版本，后续旧姓名保存被拒绝。"""
+        stale = self.description()
+        status, _, _ = self.request("POST", "/api/review/save", {
+            "revision": 0, "speakers": [{"id": 0, "name": "另一页已保存"}],
+        })
+        self.assertEqual(status, 200)
+        before = self.description()
+        with patch("asr_runtime.utils.path_picker.PathPicker.select", return_value=self.audio):
+            status, _, body = self.request("POST", "/api/review/select-audio", {"picker_id": "reselect"})
+        self.assertEqual(status, 200)
+        self.assertNotIn("revision", json.loads(body))
+        self.assertEqual(self.description(), before)
+        status, _, body = self.request("POST", "/api/review/save", {
+            "revision": stale["revision"], "speakers": stale["speakers"],
+        })
+        self.assertEqual(status, 409)
+        self.assertIn("error", json.loads(body))
+        self.assertEqual(self.description(), before)
         self.assertEqual(self.request("GET", "/api/review/audio")[2], self.original_audio)
 
     def test_close_service_releases_waiting_audio_selection(self) -> None:

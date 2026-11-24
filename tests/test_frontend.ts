@@ -46,6 +46,7 @@ function harness(overrides: Partial<Handlers> = {}) {
   const calls: { path: keyof Endpoints; payload?: object; file?: File }[] = [];
   const view = { apiKey: "", focus: "", downloaded: false, subscriptions: 0, closed: 0 };
   let endListener: (result: SessionEnd) => void = () => undefined;
+  let openListener: () => void = () => undefined;
   let errorListener: () => void = () => undefined;
   const effects: ViewEffects = {
     // 保存最后一次焦点目标。
@@ -81,9 +82,10 @@ function harness(overrides: Partial<Handlers> = {}) {
     // 返回合成模板文件。
     async template() { return new Blob(["fixture"]); },
     // 保留单次结束通知回调，供测试控制交接时点。
-    listen(ended, disconnected) {
+    listen(ended, connected, disconnected) {
       view.subscriptions += 1;
       endListener = ended;
+      openListener = connected;
       errorListener = disconnected;
       return () => { view.closed += 1; };
     },
@@ -95,6 +97,8 @@ function harness(overrides: Partial<Handlers> = {}) {
     end(result: SessionEnd) { endListener(result); },
     // 模拟通知连接意外断开。
     disconnect() { errorListener(); },
+    // 模拟浏览器自动恢复同一个事件连接。
+    connected() { openListener(); },
     // 切换后续请求与界面使用的翻译语言。
     setLanguage(value: Language) { language = value; } };
 }
@@ -175,7 +179,7 @@ test("附件错误定位音频区域，语言切换保留提示，替换成功�
   assert.equal(page.model.preview?.ready, true);
 });
 
-test("启动失败与事件断线显示不可用，禁止继续确认或修改", async () => {
+test("启动失败显示不可用，事件断线保留预览并允许正常返回修改", async () => {
   const failed = harness({ "/api/session": () => { throw new Error("服务不可用"); } });
   await failed.actions.start();
   assert.equal(failed.model.phase, "unavailable");
@@ -183,10 +187,109 @@ test("启动失败与事件断线显示不可用，禁止继续确认或修改",
   const page = harness();
   await preview(page);
   page.disconnect();
+  assert.equal(page.model.phase, "preview");
+  assert.equal(page.model.connected, false);
+  assert.ok(page.model.preview);
+  assert.equal(availability(page.model).copy, true);
   await page.actions.edit();
-  assert.equal(page.model.phase, "unavailable");
-  assert.equal(availability(page.model).copy, false);
-  assert.equal(page.calls.some(call => call.path === "/api/edit"), false);
+  assert.equal(page.model.phase, "editing");
+  assert.equal(page.calls.some(call => call.path === "/api/edit"), true);
+});
+
+test("断线保留输入和诊断并允许本地修改，自动恢复不查询会话或提交任务", async () => {
+  const page = harness();
+  await addAudio(page);
+  await page.actions.setAuthMode(true);
+  page.view.apiKey = "unsaved-fixture-key";
+  page.actions.keyChanged();
+  page.actions.setContextEnabled(true);
+  page.form.context = "未预览的参考文本";
+  page.actions.setHotwordsEnabled(true);
+  page.actions.changeHotword(page.form.hotwordRows[0].key, "text", "未预览热词");
+  page.model.directories.document = "D:/selected";
+  page.model.hotwords.issues = [{ key: page.form.hotwordRows[0].key, field: "weight", message: { zh: "待校对", en: "Check weight" } }];
+  const before = JSON.stringify({ form: page.form, audio: page.model.audio, directories: page.model.directories, hotwords: page.model.hotwords });
+  const calls = page.calls.length;
+  page.disconnect();
+  assert.equal(page.model.phase, "editing");
+  assert.equal(page.view.apiKey, "unsaved-fixture-key");
+  assert.equal(page.calls.length, calls);
+  assert.equal(JSON.stringify({ form: page.form, audio: page.model.audio, directories: page.model.directories, hotwords: page.model.hotwords }), before);
+  assert.equal(availability(page.model).editable, true);
+  assert.equal(availability(page.model).editHotwords, true);
+  assert.equal(availability(page.model).changeAuth, true);
+  assert.equal(availability(page.model).importHotwords, true);
+  assert.equal(availability(page.model).validate, true);
+  assert.equal(page.calls.length, calls);
+  page.form.context = "断线中继续填写";
+  page.actions.changeHotword(page.form.hotwordRows[0].key, "text", "继续修改热词");
+  page.actions.resetDirectory("document");
+  page.connected();
+  assert.equal(page.model.connected, true);
+  assert.equal(availability(page.model).validate, true);
+  assert.equal(page.form.context, "断线中继续填写");
+  assert.equal(page.form.hotwordRows[0].text, "继续修改热词");
+  assert.equal(page.model.directories.document, "default");
+  assert.equal(page.view.apiKey, "unsaved-fixture-key");
+  assert.equal(page.calls.length, calls);
+  assert.equal(page.view.subscriptions, 1);
+});
+
+test("通知断线时按HTTP实际结果处理操作，失败保留输入且不自动重试", async () => {
+  const page = harness({ "/api/validate": () => { throw new UiError(() => "本次请求失败"); } });
+  await addAudio(page);
+  page.form.context = "保留此输入";
+  page.disconnect();
+  page.disconnect();
+  await page.actions.validate();
+  assert.equal(page.model.phase, "editing");
+  assert.equal(page.model.connected, false);
+  assert.equal(page.form.context, "保留此输入");
+  assert.equal(page.error.value?.describe("zh-CN"), "本次请求失败");
+  assert.deepEqual(page.calls.map(call => call.path), ["/api/session", "/api/select-audio", "/api/validate"]);
+  page.handlers["/api/validate"] = () => validation();
+  await page.actions.validate();
+  assert.equal(page.model.phase, "preview");
+  assert.equal(page.model.connected, false);
+  const calls = page.calls.length;
+  page.connected();
+  assert.equal(page.model.connected, true);
+  assert.equal(page.calls.length, calls);
+});
+
+test("通知恢复后收到到期、取消或交接按终态收尾，迟到连接不能复活页面", async () => {
+  for (const state of ["expired", "cancelled", "handed_off"] as const) {
+    const page = harness();
+    await preview(page);
+    page.disconnect();
+    const calls = page.calls.length;
+    page.connected();
+    page.end({ state, receipt: state === "handed_off" ? receipt : null });
+    page.connected();
+    page.disconnect();
+    assert.equal(page.model.phase, state);
+    assert.equal(page.model.preview, null);
+    assert.equal(page.model.receipt?.job_id ?? null, state === "handed_off" ? receipt.job_id : null);
+    assert.equal(page.view.apiKey, "");
+    assert.equal(availability(page.model).validate, false);
+    assert.equal(availability(page.model).copy, false);
+    assert.equal(page.view.subscriptions, 1);
+    assert.equal(page.calls.length, calls);
+  }
+});
+
+test("预览断线后恢复同一快照与确认入口，不重做校验或预览登记", async () => {
+  const page = harness();
+  await preview(page);
+  const snapshot = page.model.preview;
+  const calls = page.calls.length;
+  page.disconnect();
+  assert.equal(page.model.phase, "preview");
+  assert.equal(availability(page.model).copy, true);
+  page.connected();
+  assert.equal(page.model.preview, snapshot);
+  assert.equal(availability(page.model).copy, true);
+  assert.equal(page.calls.length, calls);
 });
 
 test("校验成功后进入独立预览，渲染登记成功前不能复制确认文字", async () => {
@@ -1000,25 +1103,40 @@ test("HTTP使用同源cookie与语言头，保留服务端字段错误", async (
   assert.equal(JSON.parse(sent?.body as string).context, "a\n'\\中文");
 });
 
-test("结束事件读取一次后关闭，连接失败也关闭且不自动重连", () => {
+test("通知断线保留原生重连，恢复仅通知页面，终态后关闭且忽略迟到回调", () => {
   let listener: EventListener = () => undefined;
   let closed = 0;
   let opened = 0;
   let ended: SessionEnd | null = null;
   let disconnected = 0;
-  const source = { onerror: null as (() => void) | null,
+  let connected = 0;
+  const source = { onopen: null as (() => void) | null, onerror: null as (() => void) | null,
     // 记录结束事件回调。
     addEventListener(name: string, callback: EventListener) { assert.equal(name, "ended"); listener = callback; },
     // 记录连接关闭。
     close() { closed += 1; } };
   const t: Translate = (key, values) => translate("en", key, values);
   const api = createApi(fetch, () => "en", t, url => { opened += 1; assert.equal(url, "/api/events"); return source as unknown as EventSource; });
-  api.listen(result => { ended = result; }, () => { disconnected += 1; });
+  const stop = api.listen(result => { ended = result; }, () => { connected += 1; }, () => { disconnected += 1; });
+  const lateOpen = source.onopen;
+  const lateError = source.onerror;
+  source.onopen?.();
+  source.onerror?.();
+  assert.equal(closed, 0);
+  assert.equal(disconnected, 1);
+  source.onopen?.();
+  assert.equal(connected, 2);
   listener(new MessageEvent("ended", { data: JSON.stringify({ state: "expired", receipt: null }) }));
   assert.deepEqual(ended, { state: "expired", receipt: null });
   assert.equal(closed, 1);
-  source.onerror?.();
+  lateOpen?.();
+  lateError?.();
+  stop();
+  assert.equal(source.onopen, null);
+  assert.equal(source.onerror, null);
+  assert.equal(connected, 2);
   assert.equal(disconnected, 1);
+  assert.equal(closed, 1);
   assert.equal(opened, 1);
 });
 
@@ -1042,7 +1160,9 @@ function reviewHarness() {
       { index: 2, begin_ms: 1000, end_ms: 2000, text: "第二句", speaker_id: null, original_text: "第二句", original_speaker_id: null }], speakers: [{ id: 0, name: "" }] };
   const calls: { path: keyof ReviewEndpoints; payload?: object }[] = [];
   let revision = 0;
-  const handlers: { save?: (payload: object) => Promise<{ revision: number }>; cancelled?: boolean } = {};
+  const handlers: { save?: (payload: object) => Promise<{ revision: number }>;
+    export?: () => Promise<ReviewEndpoints["/api/review/export"]>;
+    selectAudio?: () => Promise<ReviewEndpoints["/api/review/select-audio"]>; cancelled?: boolean } = {};
   const presence = { opened: 0, closed: 0 };
   const api: ReviewApi = {
     // 记录在场连接，不在测试中创建真实浏览器连接。
@@ -1053,8 +1173,10 @@ function reviewHarness() {
       let result: unknown;
       if (path === "/api/review") result = structuredClone(initial);
       else if (path === "/api/review/save") result = handlers.save ? await handlers.save(payload!) : { revision: ++revision };
-      else if (path === "/api/review/export") result = handlers.cancelled ? { cancelled: true } : { cancelled: false, revision, export_revision: revision, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } };
-      else if (path === "/api/review/select-audio") result = { cancelled: false, revision: ++revision, audio: initial.audio };
+      else if (path === "/api/review/export") result = handlers.export ? await handlers.export()
+        : handlers.cancelled ? { cancelled: true } : { cancelled: false, export_revision: revision, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } };
+      else if (path === "/api/review/select-audio") result = handlers.selectAudio ? await handlers.selectAudio()
+        : { cancelled: false, audio: initial.audio };
       else if (path === "/api/review/prepare-audio") result = { audio: { ...initial.audio, kind: "preview" } };
       else result = { closed: true, ok: true };
       return result as ReviewEndpoints[K];
@@ -1161,16 +1283,93 @@ test("导出前保存完成，导出后继续编辑标记旧成品过期，选�
   page.dispose();
 });
 
-test("重选录音先保存编辑再接收绑定版本，不混用旧版本继续保存", async () => {
+test("导出期间另页保存后，本页保持原文字版本且后续保存仍冲突", async () => {
+  const page = reviewHarness();
+  await page.start();
+  const started = deferred<void>();
+  const pending = deferred<ReviewEndpoints["/api/review/export"]>();
+  page.handlers.export = async () => { started.resolve(); return pending.promise; };
+  const exporting = page.exportDocuments();
+  await started.promise;
+  // 模拟另一页已保存新文字版本，旧页面的后续写入由服务端拒绝。
+  page.handlers.save = async () => { throw new ReviewRequestError({ zh: "冲突", en: "Conflict" }, 409); };
+  pending.resolve({ cancelled: false, export_revision: 0, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } });
+  await exporting;
+  assert.equal(page.document.value?.revision, 0);
+  assert.equal(page.document.value?.export_revision, 0);
+  assert.equal(page.document.value?.speakers[0].name, "");
+  assert.equal(page.stale.value, false);
+  page.renameSpeaker(0, "本页输入");
+  assert.equal(await page.flush(), false);
+  assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 0);
+  assert.equal(page.document.value?.revision, 0);
+  assert.equal(page.document.value?.speakers[0].name, "本页输入");
+  assert.equal(page.conflict.value, true);
+  page.dispose();
+});
+
+test("重选录音先保存编辑，再绑定音频且保持文字稿版本", async () => {
   const page = reviewHarness();
   await page.start();
   page.changeSentence(1, { text: "选择前修改" });
   assert.equal(await page.selectAudio(), true);
   assert.deepEqual(page.calls.slice(-2).map(call => call.path), ["/api/review/save", "/api/review/select-audio"]);
-  assert.equal(page.document.value?.revision, 2);
+  assert.deepEqual(Object.keys(page.calls.at(-1)!.payload!), ["picker_id"]);
+  assert.equal(page.document.value?.revision, 1);
   page.changeSentence(1, { text: "选择后修改" });
   await page.flush();
-  assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 2);
+  assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 1);
+  page.dispose();
+});
+
+test("旧页重选录音保持原文字版本，之后修改姓名仍被版本冲突拒绝", async () => {
+  const page = reviewHarness();
+  await page.start();
+  const before = JSON.stringify(page.document.value);
+  assert.equal(await page.selectAudio(), true);
+  assert.equal(page.document.value?.revision, 0);
+  assert.equal(JSON.stringify(page.document.value), before);
+  page.handlers.save = async () => { throw new ReviewRequestError({ zh: "冲突", en: "Conflict" }, 409); };
+  page.renameSpeaker(0, "旧页面修改");
+  assert.equal(await page.flush(), false);
+  assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 0);
+  assert.equal(page.conflict.value, true);
+  assert.equal(page.editable.value, false);
+  assert.equal(page.operation.value, null);
+  assert.equal(page.saveError.value?.describe("zh-CN"), translate("zh-CN", "reviewConflict"));
+  await page.exportDocuments();
+  assert.equal(await page.selectAudio(), false);
+  assert.equal(await page.retry(), false);
+  assert.equal(page.document.value?.speakers[0].name, "旧页面修改");
+  assert.equal(page.document.value?.revision, 0);
+  assert.equal(page.calls.length, 3);
+  page.dispose();
+});
+
+test("重选录音不改变文字与导出版本，不使已导出稿过期", async () => {
+  const page = reviewHarness();
+  await page.start();
+  page.renameSpeaker(0, "主持人");
+  await page.exportDocuments();
+  const before = JSON.stringify(page.document.value);
+  assert.equal(await page.selectAudio(), true);
+  assert.equal(JSON.stringify(page.document.value), before);
+  assert.equal(page.document.value?.revision, 1);
+  assert.equal(page.document.value?.export_revision, 1);
+  assert.equal(page.stale.value, false);
+  page.dispose();
+});
+
+test("取消重选录音保留版本和音频，页面仍可编辑", async () => {
+  const page = reviewHarness();
+  await page.start();
+  const before = JSON.stringify(page.document.value);
+  page.handlers.selectAudio = async () => ({ cancelled: true });
+  assert.equal(await page.selectAudio(), false);
+  assert.equal(JSON.stringify(page.document.value), before);
+  assert.equal(page.conflict.value, false);
+  assert.equal(page.editable.value, true);
+  assert.equal(page.operation.value, null);
   page.dispose();
 });
 

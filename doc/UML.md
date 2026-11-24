@@ -19,7 +19,7 @@
 | 07 转写流程 | 用户、Codex、本机工具、百炼的职责；会话交接、一次执行、原稿交付及已确认的回听开关 | [PNG](uml/07-workflow.png) / [Mermaid](uml/07-workflow.mmd) |
 | 08 记录保存失败 | `_save_status()`失败时的当次回执、磁盘状态与停止位置 | [PNG](uml/08-failure.png) / [Mermaid](uml/08-failure.mmd) |
 | 09 Skill 自动更新 | `scripts/update.py`、共享读取保护及Codex后续分派 | [PNG](uml/09-update.png) / [Mermaid](uml/09-update.mmd) |
-| 10 人工回听与校验稿 | `review_web.py`、ReviewSession、useReview；音频Range、版本保存、选目录导出及页面在场连接 | [PNG](uml/10-review.png) / [Mermaid](uml/10-review.mmd) |
+| 10 人工回听与校验稿 | 任务查询、`review_web.py`、ReviewSession、useReview；音频Range、版本保存、选目录导出及页面在场连接 | [PNG](uml/10-review.png) / [Mermaid](uml/10-review.mmd) |
 | 11 回听与校验稿状态 | 页面保存状态、草稿revision与导出记录export_revision的关系，独立于原任务 | [PNG](uml/11-review-state.png) / [Mermaid](uml/11-review-state.mmd) |
 
 `session_id` 定位编辑会话，`job_id` 定位已交接任务。图03/07中的预览不是执行授权；交接失败发现原录音变化或命令过长时保留预览，经既有“返回修改”退出后重新检查。成功交接以原子发布的 `config.json` 为完成标记；会话的handed_off关联新任务，不是同一对象转入执行状态。
@@ -28,7 +28,7 @@
 
 HTTP控制回执与SSE由不同请求线程发送，没有固定先后。显式取消先保存 `cancelled.json`，再设置终态事件；Codex取得结果后等待原serve退出。图04省略了HTTP分派生命线，事件发送仍由web完成。会话结束与任务执行是两个生命周期，编辑取消不表示云端取消。
 
-图10/11的人工回听复用已完成任务的job_id，草稿保存为任务JSON，Cookie只认证；它不回到图03的预览，也不再次调用图05的BL。校验稿直接写到用户本次选择的目录，取消选择不导出。最后页面断开且10秒内无重连时服务收尾，刷新或其他页面连接会保留服务；代码关闭仍不能提交浏览器尚未保存的输入。`review.delivery`及export_revision表示校验稿，原稿documents_ready含义保持。
+图10/11的人工回听复用已完成任务的job_id；可先按录音名和确认时间查询原任务，多匹配时由用户选择。每个任务固定一份本机校对稿，未修改时使用原JSON，修改保存为任务JSON；网页是临时编辑窗口，Cookie只认证。重选录音和导出回执不推进本页文字revision；校验稿按录音名及完整job_id写到用户选定目录，同任务重导覆盖，取消选择不导出。最后页面断开且10秒内无重连时服务收尾，已保存稿件保持；重新打开恢复原任务，不重新调用BL。`review.delivery`及export_revision表示校验稿，原稿documents_ready含义保持。
 
 状态字段、恢复操作和运行限制分别维护在 [errors.md](../skills/asr-transcription/references/errors.md)、[DEVELOPMENT](DEVELOPMENT.md) 与 [ISSUES](ISSUES.md)，不在此复制完整说明。已执行验证见 [ACCEPTANCE](ACCEPTANCE.md)。
 

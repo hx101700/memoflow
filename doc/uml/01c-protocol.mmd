@@ -93,7 +93,7 @@ note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，�
 note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
 note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>显式取消结果保存至cancelled.json，响应丢失后可恢复<br/>没有heartbeat或云端状态字段"
 note for ExecutionReport "models.py；图中摘录交接与恢复的关键字段<br/>cloud_outcome为not_started、unknown或result_received<br/>result、error、record_error、delivery、review等为可选字段<br/>原稿documents_ready仅在delivery.COMPLETE时为true<br/>job-status另附review的revision、delivery与export_revision"
-note for ReviewDraft "application/review.py；jobs/job_id/review/draft.json<br/>sentences仅保存原序号的正文与说话人改动<br/>speakers保存编号和姓名，audio_path仅记录重选路径<br/>先原子保存再更新内存revision；原JSON与配置保持"
+note for ReviewDraft "application/review.py；jobs/job_id/review/draft.json<br/>同job保留最新改动，未修改时直接使用原JSON<br/>revision只随正文、归属或姓名变化递增<br/>audio_path仅记录重选路径，保存时保持文字版本<br/>导出及关闭不删除草稿；原JSON与配置保持"
 note for DeliveryReport "models.py；两类导出复用该协议<br/>原稿记录在delivery/status.json<br/>校验稿记录在review/status.json，另含可选export_revision<br/>各格式仍分别记录READY或FAILED"
 
 note for SessionConnection "utils/session_files.py<br/>私有sessions/session_id/connection.json<br/>端口与令牌用于本机控制；PID与deadline用于残留回收<br/>结束清理后移除；正式交接回执仍保留"

@@ -1,6 +1,7 @@
 sequenceDiagram
 actor U as 用户
 participant C as Codex＋CLI
+participant T as transcription模块
 participant H as review_web模块
 participant V as ReviewSession
 participant W as Vue回听页
@@ -8,6 +9,12 @@ participant D as delivery／documents模块
 participant P as PathPicker
 participant M as media模块
 participant F as 本机任务与文件
+opt 用户按录音名或时间描述已有任务
+    C->>T: jobs，可按录音名或编号query筛选
+    T->>F: 只读已确认配置与执行状态
+    T-->>C: job_id、audio_name、confirmed_at、status及局部issues
+    Note over U,C: 多份匹配时先选择；沿用原任务与最新已保存稿
+end
 C->>H: review --job ID（可选no-browser）
 H->>F: 读取review/connection.json
 alt 同job服务可访问且未关闭
@@ -15,7 +22,7 @@ alt 同job服务可访问且未关闭
 else 没有连接或旧服务PID已确认结束
     H->>V: ReviewSession(runtime, job_id)
     V->>F: 核对配置、JSON_READY与原JSON摘要
-    V->>F: 恢复匹配摘要的draft及校验稿状态
+    V->>F: 恢复匹配摘要的draft及校验稿状态<br/>没有改动时直接使用原JSON
     break 来源或草稿无法核对
         H-->>C: 停止打开，保留原文件
     end
@@ -26,8 +33,15 @@ else 原服务存活、状态未知或身份不符
         H-->>C: 停止并提示检查原服务
     end
 end
+opt 普通调用
+    H->>W: 请求系统浏览器打开URL
+end
 H-->>C: listening：job_id、url、pid、reused、browser_request
-C->>W: 打开回执URL一次
+alt 使用no-browser
+    C->>W: 宿主打开回执URL一次
+else 普通调用
+    Note over C,H: Codex读取browser_request，失败按开页说明处理
+end
 W->>H: GET /review取得Cookie；GET /api/review
 H->>V: description()
 V-->>H: 当前描述
@@ -35,6 +49,11 @@ H-->>W: 句子当前值与original值、姓名、revision、audio及校验稿状
 W->>H: GET /api/review/presence，保持SSE连接
 H->>H: 登记页面；重连时取消无人使用计时
 Note over H,W: 共用LocalHandler校验Host、Origin及Cookie／X-ASR-Token<br/>URL不含令牌；JSON正文上限512KiB
+opt 在场连接短暂中断
+    W->>W: 保留当前输入及操作，提示正在恢复连接
+    W->>H: EventSource自动恢复presence
+    Note over H,W: 不重新GET稿件；保存仍以实际HTTP结果为准
+end
 loop 播放与人工编辑
     opt 用户定位下一处修改
         U->>W: 下一处修改
@@ -48,17 +67,20 @@ loop 播放与人工编辑
     H-->>W: 200／206；无效范围416
     Note over W,F: 行内回听在原结束时间暂停，底部普通播放连续进行<br/>不设连续模式开关，不生成逐句音频文件
     opt 文件移动或不可读取
+        W->>W: 等待同一保存队列成功
         W->>H: select-audio(picker_id)
-        H->>V: select_audio()
+        H->>V: select_audio(picker_id)
         V->>P: 系统窗口内直接选择或取消
         P-->>V: 已选路径或取消结果
         alt 用户取消
             V-->>H: cancelled=true，保留原绑定
             H-->>W: 取消结果
         else 已选择文件
-            V->>F: 核对原录音大小与SHA，再保存新路径和revision
-            V-->>H: 新audio与revision，或校验错误
-            H-->>W: 成功结果；不匹配时422
+            V->>F: 核对原录音大小与SHA
+            V->>F: 锁内保存新路径，保持最新文字内容及revision
+            V-->>H: 新audio或校验错误
+            H-->>W: 成功结果；内容不匹配422
+            W->>W: 只更新audio，保持本页文字revision
         end
     end
     opt 浏览器不支持／解码失败且HEAD确认可读
@@ -101,10 +123,11 @@ opt 用户导出校验稿
     else 用户选定目录
         V->>V: 再核对revision，锁内取得Transcript快照
         V->>D: export_documents(review_revision, review_directory)
-        D->>F: 选定目录下生成transcription-reviewed三格式<br/>逐项记录review/status.json
+        D->>F: 按录音名＋reviewed＋原job_id生成三格式<br/>逐项记录review/status.json；同job重导覆盖
         D-->>V: COMPLETE／PARTIAL／FAILED及export_revision
-        V-->>H: cancelled=false、交付结果与当前revision
+        V-->>H: cancelled=false、交付结果与export_revision
         H-->>W: delivery与export_revision
+        W->>W: 更新导出记录，保持本页文字revision
     end
     Note over V,F: 窗口从最近READY文件父目录或原documents开始<br/>原JSON、documents原稿及原delivery/status.json保持<br/>后续改动可使revision与export_revision不同
 end

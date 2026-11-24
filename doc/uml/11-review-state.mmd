@@ -4,9 +4,9 @@ participant S as ReviewSession
 participant F as review/draft.json
 participant D as delivery模块
 participant R as review/status.json
-Note over W,R: 沿用原job_id与JSON_READY；校对草稿和导出记录各自保存
+Note over W,R: 同一job固定一份本机校对稿；网页是临时编辑窗口<br/>校对草稿和导出记录各自保存，沿用原JSON_READY
 S->>F: 打开时读取已保存草稿
-F-->>S: revision、句子修改及说话人名称
+F-->>S: revision、句子修改及说话人名称<br/>没有草稿时使用原JSON基线
 S->>R: 读取最近一次校验稿交付记录
 R-->>S: delivery及export_revision，或暂无记录
 S-->>W: 当前稿件与保存／导出版本
@@ -26,7 +26,13 @@ loop 用户编辑正文、说话人或重置单句
         W->>W: 保留输入并显示saveError<br/>409设conflict；其余失败可明确重试
     end
 end
-Note over W,F: saving与dirtyCount是页面变量；revision表示已保存的最新草稿<br/>草稿覆盖最新修改，原转写保留作为重置基线
+Note over W,F: saving与dirtyCount是页面变量；revision只随文字与说话人改动递增<br/>保存状态在页首显示；草稿覆盖最新修改，原转写保留作为重置基线
+
+opt 用户重选同内容录音
+    W->>S: select-audio，先完成本页待保存修改
+    S->>F: 保存新音频路径，保持最新文字内容和revision
+    S-->>W: audio，保持本页文字revision
+end
 
 W->>W: 点击导出，先等待保存队列完成
 W->>S: export，携带已保存revision
@@ -46,7 +52,8 @@ else 用户选定目录且版本仍一致
         S->>S: 当次回执标为OUTCOME_UNKNOWN
         Note over S,R: 磁盘记录可能滞后，保留已写出的文件
     end
-    S-->>W: delivery、export_revision与当前revision
+    S-->>W: delivery、export_revision
+    W->>W: 更新导出状态，保持本页文字revision
 end
 Note over W,R: 之后继续修改只更新draft；export_revision仍对应上次导出<br/>页面优先提示保存进度，保存完成后版本不同则提示重新导出
-Note over S,R: 关闭服务保留草稿与交付记录，下次打开恢复<br/>连接与关页收尾见图10；本图不新增任务状态
+Note over S,R: 导出、取消、不修改或关闭服务都不删除稿件，下次打开恢复<br/>连接与关页收尾见图10；本图不新增任务状态

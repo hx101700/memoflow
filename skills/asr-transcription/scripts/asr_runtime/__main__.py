@@ -25,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("doctor", "api-key-status", "console-status", "login"):
         commands.add_parser(name)
+    jobs_parser = commands.add_parser("jobs", help="查询当前工作区的已确认转写任务")
+    jobs_parser.add_argument("--query", default="", help="按录音名或任务编号做不区分大小写的包含匹配；省略时列出全部任务")
     bootstrap_parser = commands.add_parser("bootstrap")
     bootstrap_parser.add_argument("--cleanup-old-cache", action="store_true", help="环境准备成功后清理旧版依赖下载缓存")
     serve_parser = commands.add_parser("serve", help="打开本机配置网页")
@@ -66,6 +68,9 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "job-status":
                 from .application.transcription import job_status
                 report = job_status(runtime, args.job)
+            elif args.command == "jobs":
+                from .application.transcription import list_jobs
+                report = list_jobs(runtime, args.query)
             elif args.command == "review-close":
                 from .review_web import control_review
                 report = control_review(runtime, args.job)

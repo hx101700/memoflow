@@ -311,7 +311,7 @@ def write_docx(transcript: Transcript, path: Path, *, source_name: str, job_id: 
 
 
 def _markdown_text(text: str) -> str:
-    """转义正文中的Markdown和HTML语法，保留文字及换行。"""
+    """转义文本中的Markdown和HTML语法，保留文字及换行。"""
     # CommonMark反斜杠转义阻止链接/图像等语法；HTML字符另行编码。
     # 只编码行首空白来避免代码块，英文正文保留普通空格，便于直接阅读源文件。
     result = []
@@ -339,7 +339,7 @@ def write_markdown(transcript: Transcript, path: Path, *, source_name: str, job_
     parts = [f"# {_markdown_text(_title(source_name))}", f"模型：{_markdown_text(model)}",
              f"任务：{_markdown_text(job_id)}"]
     for sentence in transcript.sentences:
-        parts.extend((f"### {_label(sentence, separator=' · ')}", _markdown_text(sentence.text)))
+        parts.extend((f"### {_markdown_text(_label(sentence, separator=' · '))}", _markdown_text(sentence.text)))
     content = "\n\n".join(parts) + "\n"
     try:
         with path.open("w", encoding="utf-8", newline="") as output:

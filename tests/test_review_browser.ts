@@ -100,7 +100,7 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   const caretPosition = await firstRow.getByRole("textbox").evaluate(input => (input as HTMLTextAreaElement).selectionStart);
   assert.ok(caretPosition > 0 && caretPosition < original.length, "点击正文应在点击文字附近进入编辑");
   await page.locator("#page-title").click();
-  assert.equal(await page.locator(".el-alert").count(), 1);
+  assert.equal(await page.locator(".el-alert").count(), 0);
   assert.equal(await page.getByRole("button", { name: "结束校验", exact: true }).count(), 0);
   const nextChange = page.getByRole("button", { name: "下一处修改", exact: true });
   assert.equal(await nextChange.isDisabled(), true);
@@ -122,7 +122,8 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await secondRow.locator(".review-paragraph").click();
   await secondRow.getByRole("textbox").fill("合成数据说明：这句已人工修改，保留独立的修改标记。");
   await page.locator("#page-title").click();
-  await page.getByText("修改已全部保存", { exact: true }).waitFor();
+  await page.getByText("已保存", { exact: true }).waitFor();
+  assert.equal(await page.locator("#review-notice").count(), 0);
   await page.getByRole("button", { name: "回听第 3 句", exact: true }).click();
   await page.waitForFunction(() => { const audio = document.querySelector("audio"); return audio && audio.paused && audio.currentTime >= 2.99; });
   assert.equal(await secondRow.getByText("已修改", { exact: true }).count(), 1);
@@ -139,7 +140,7 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await fourthRow.locator(".review-paragraph").click();
   await fourthRow.getByRole("textbox").fill("另一处待核对修改。");
   await page.locator("#page-title").click();
-  await page.getByText("修改已全部保存", { exact: true }).waitFor();
+  await page.getByText("已保存", { exact: true }).waitFor();
   await page.getByRole("button", { name: "播放", exact: true }).click();
   for (const index of [2, 4, 2]) {
     await nextChange.click();
@@ -205,7 +206,7 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await page.getByRole("option", { name: "Dark", exact: true }).click();
   assert.equal(await firstParagraph.innerText(), "浏览器保存期间仍保留的合成修改。");
   releaseSave();
-  await page.getByText("All changes saved", { exact: true }).waitFor();
+  await page.getByText("Saved", { exact: true }).waitFor();
   await page.unroute("**/api/review/save");
   await page.getByRole("button", { name: "Speaker names", exact: true }).click();
   await page.locator(".review-speaker-list input").first().fill("Synthetic host");
@@ -215,9 +216,9 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   await firstRow.getByRole("button", { name: "Sentence 1 · Speaker", exact: true }).click();
   await page.getByRole("option", { name: "Synthetic guest", exact: true }).click();
-  await page.getByText("All changes saved", { exact: true }).waitFor();
+  await page.getByText("Saved", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Reset sentence 1", exact: true }).click();
-  await page.getByText("All changes saved", { exact: true }).waitFor();
+  await page.getByText("Saved", { exact: true }).waitFor();
   assert.equal(await firstParagraph.innerText(), original);
   assert.equal(await firstRow.getByText("Modified", { exact: true }).count(), 0);
   assert.equal(await firstRow.locator(".review-speaker-label").innerText(), "Synthetic host");
@@ -238,12 +239,12 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   assert.equal(await page.getByRole("button", { name: "Cancel selection", exact: true }).count(), 0);
   allowExport();
   assert.equal((await (await cancelledExport).json()).cancelled, true);
-  await page.getByText("All changes saved", { exact: true }).waitFor();
+  await page.getByText("Saved", { exact: true }).waitFor();
   await firstParagraph.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector<HTMLElement>("#review-sentence-1 .review-paragraph")?.innerText.includes("导出校验稿前"));
   assert.equal(await firstParagraph.innerText(), "导出校验稿前的合成修改。");
   await page.getByRole("button", { name: "Export reviewed documents", exact: true }).click();
-  await page.getByText("Reviewed Word, Excel and Markdown files are ready.", { exact: true }).waitFor();
+  await page.getByText("Exported", { exact: true }).waitFor();
   const exported = await (await context.request.get(new URL("/api/review", connection.url).href)).json() as ReviewDocument;
   assert.equal(exported.sentences[0].text, "导出校验稿前的合成修改。");
   assert.equal(exported.delivery?.status, "COMPLETE");
@@ -268,7 +269,7 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await page.getByText("Synthetic save failure; input preserved.", { exact: true }).waitFor();
   assert.equal(await firstParagraph.innerText(), "失败后保留且导出已过期。");
   assert.equal(await page.locator(".el-alert").count(), 1);
-  assert.equal(await page.getByText("This draft has changed since the last export. Export again to update the reviewed documents.", { exact: true }).count(), 0);
+  assert.equal(await page.getByText("Saved · not exported", { exact: true }).count(), 0);
   await page.unroute("**/api/review/save");
   const retried = page.waitForResponse(response => new URL(response.url()).pathname === "/api/review/save");
   await page.getByRole("button", { name: "Retry saving", exact: true }).click(); await retried;
@@ -276,7 +277,8 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await firstParagraph.waitFor();
   assert.equal(await firstParagraph.innerText(), "失败后保留且导出已过期。");
   assert.equal(await firstRow.locator(".review-speaker-label").innerText(), "Synthetic host");
-  assert.equal(await page.locator(".el-alert").count(), 1);
+  await page.getByText("Saved · not exported", { exact: true }).waitFor();
+  assert.equal(await page.locator(".el-alert").count(), 0);
   await page.locator("#review-sentence-1000").scrollIntoViewIfNeeded();
   // content-visibility在进入视口后才完成正文布局，等待实际可读文本而非仅检查DOM内容。
   await page.waitForFunction(() => document.querySelector<HTMLElement>("#review-sentence-1000 .review-paragraph")?.innerText.includes("第1000句"));
@@ -365,7 +367,7 @@ test("Edge说话人名称弹窗限高滚动，新增定位且短窗口保留底�
   await page.screenshot({ path: path.join(fixture.workspace, "review-speakers-scroll-500.png"), animations: "disabled" });
   await done.click();
   await dialog.waitFor({ state: "hidden" });
-  await page.getByText("修改已全部保存", { exact: true }).waitFor();
+  await page.getByText("已保存", { exact: true }).waitFor();
   await page.reload();
   await page.getByRole("button", { name: "说话人名称", exact: true }).click();
   assert.equal(await dialog.locator(".review-speaker-list input").count(), 22);
