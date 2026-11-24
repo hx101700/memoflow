@@ -67,9 +67,6 @@ else 本次取得执行占用
     T->>J: save_record(execution, report)
     T->>T: _deliver(runtime, config, transcript, report)
     T->>D: export_documents(runtime, config, transcript)
-    D->>J: job_directory(runtime, config['job_id'])
-    D->>J: prepare_delivery()创建或复用delivery目录
-    D->>J: save_record(EXPORTING)
     D->>J: prepare_documents(runtime, config)
     J->>R: check_output_path(documents目录)
     J->>F: 创建或复用固定documents目录
@@ -77,11 +74,10 @@ else 本次取得执行占用
         D->>L: documents.publish_document(writer, transcript, final_path,<br/>model=config.model，其他标签来自确认配置)
         L->>F: 写partial文件，完成后替换同名成品<br/>Excel和Word回读；Markdown编码写入
         L-->>D: 字节数或格式异常
-        D->>J: save_record()保存该格式READY / FAILED
+        D->>D: 将该格式READY／FAILED附入当次回执
     end
-    D->>J: save_record(COMPLETE / PARTIAL / FAILED)
-    D-->>T: delivery回执
-    T->>T: _attach_delivery()计算documents_ready
+    D-->>T: 当次COMPLETE／PARTIAL／FAILED及files
+    T->>T: _deliver()附加delivery与documents_ready，不改写ASR记录
     T-->>C: JSON状态＋delivery＋review_enabled＋已知文件位置
 end
 opt 返回JSON_READY、review_enabled为true且无record_error
@@ -90,6 +86,6 @@ opt 返回JSON_READY、review_enabled为true且无record_error
     Note over C,H: 有效JSON即可回听，原稿部分导出失败不阻止<br/>沿用原job_id，不再请求BL；回听与独立导出见图10
 end
 Note over B,F: 云端鉴权、临时上传、提交、轮询、下载和原JSON落盘属于BL<br/>CLI、core、commands、runtime均为官方2.10.5<br/>Python等待完整命令；失败停止，job占用保持，不自动重试<br/>通用超时不能证明失败阶段；时限不保证云端完成<br/>job_id是本机转写任务编号；Python未提供可靠task_id恢复入口
-Note over T,F: JSON：已选根 / job_id / json / transcription.json<br/>成品：已选根 / job_id / documents / transcription.xlsx、.docx、.md<br/>导出状态：工作目录 / .asr-transcription / .state / jobs / job_id / delivery / status.json<br/>json_path先记录目标位置，其存在本身不是JSON成功证明
-Note over T,D: Excel和Word回读核验；Markdown编码写入<br/>COMPLETE表示三成品就绪；识别准确率由人工评价
+Note over T,F: JSON：已选根 / job_id / json / transcription.json<br/>导出目标：已选根 / job_id / documents / transcription.xlsx、.docx、.md<br/>文件导出后由用户管理，不持久记录导出状态<br/>json_path先记录目标位置，其存在本身不是JSON成功证明
+Note over T,D: Excel和Word回读核验；Markdown编码写入<br/>COMPLETE只表示本次三格式均已生成；识别准确率由人工评价
 Note over C,D: scripts/asr_runtime/application/transcription.py、delivery.py<br/>scripts/asr_runtime/utils/bailian.py::recognition_arguments、prepare_command、run_recognition<br/>utils/media.py、results.py、documents.py、job_files.py、files.py

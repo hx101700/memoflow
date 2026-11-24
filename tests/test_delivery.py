@@ -1,9 +1,11 @@
 """验证固定目录导出、同名替换和格式失败处理。"""
 
 import hashlib
+import io
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,7 +13,7 @@ from docx import Document
 from openpyxl import load_workbook
 
 from asr_runtime import MODEL
-from asr_runtime.utils.job_files import read_delivery
+from asr_runtime.__main__ import main
 from asr_runtime.utils.documents import DocumentError, write_xlsx
 from asr_runtime.utils.files import write_json_atomic
 from asr_runtime.utils.environment import SetupError
@@ -60,7 +62,7 @@ class DeliveryTests(RuntimeTestCase):
 
     def save_execution(self, **changes):
         """保存测试用执行状态与结果摘要。"""
-        report = {"job_id": self.job_id, "status": "JSON_READY", "documents_ready": False,
+        report = {"job_id": self.job_id, "status": "JSON_READY",
                   "cloud_outcome": "result_received", "json_path": str(self.json_path),
                   "result": load_transcript(self.json_path).summary()}
         report.update(changes)
@@ -80,7 +82,8 @@ class DeliveryTests(RuntimeTestCase):
         self.assertEqual(report["result"]["sha256"], hashlib.sha256(original).hexdigest())
         self.assertEqual(self.json_path.read_bytes(), original)
         self.cloud.assert_not_called()
-        self.assertEqual(job_status(self.runtime, self.job_id), report)
+        self.assertNotIn("delivery", job_status(self.runtime, self.job_id))
+        self.assertFalse((self.root / "delivery").exists())
 
     def test_one_format_failure_retains_other_formats_and_never_retries(self):
         """验证单格式失败保留其他成品且各格式调用一次。"""
@@ -97,7 +100,9 @@ class DeliveryTests(RuntimeTestCase):
         self.assertNotIn("private transcript", json.dumps(report))
         for extension in ("xlsx", "md"):
             self.assertTrue(Path(report["delivery"]["files"][extension]["path"]).is_file())
-        self.assertEqual(transcribe(self.runtime, self.job_id), report)
+        repeated = transcribe(self.runtime, self.job_id)
+        self.assertEqual(repeated["status"], "JSON_READY")
+        self.assertNotIn("delivery", repeated)
         self.cloud.assert_not_called()
 
     def test_known_document_error_and_filesystem_error_have_specific_messages(self):
@@ -136,9 +141,8 @@ class DeliveryTests(RuntimeTestCase):
             self.assertEqual(record["path"], second["files"][extension]["path"])
             self.assertNotEqual(Path(record["path"]).read_bytes(), b"synthetic edited document")
         self.assertEqual(set(Path(self.config["document_directory"]).iterdir()), expected)
-        self.assertTrue((self.root / "delivery/status.json").is_file())
+        self.assertFalse((self.root / "delivery").exists())
         self.assertFalse((self.root / "exports").exists())
-        self.assertEqual(read_delivery(self.root), second)
         self.cloud.assert_not_called()
 
     def test_overlapping_exports_do_not_replace_each_others_temporary_files(self):
@@ -167,7 +171,7 @@ class DeliveryTests(RuntimeTestCase):
                 release.set()
             first_report = first.result(timeout=5)
         self.assertNotEqual(paths[0], paths[1])
-        for report in (first_report, second, job_status(self.runtime, self.job_id)):
+        for report in (first_report, second):
             self.assertEqual(report["delivery"]["status"], "COMPLETE")
             self.assertTrue(report["documents_ready"])
         destination = Path(self.config["document_directory"])
@@ -237,7 +241,7 @@ class DeliveryTests(RuntimeTestCase):
         self.assertFalse(list(document.parent.glob("*.partial-*")))
         for extension in ("xlsx", "md"):
             self.assertEqual(report["delivery"]["files"][extension]["status"], "READY")
-        self.assertEqual(job_status(self.runtime, self.job_id), report)
+        self.assertNotIn("delivery", job_status(self.runtime, self.job_id))
         self.cloud.assert_not_called()
 
     def test_locked_target_preserves_the_existing_document(self):
@@ -317,7 +321,7 @@ class DeliveryTests(RuntimeTestCase):
         original_json = self.json_path.read_bytes()
         report = export_job(self.runtime, self.job_id)
         self.assertTrue(report["documents_ready"])
-        self.assertEqual(job_status(self.runtime, self.job_id), report)
+        self.assertNotIn("delivery", job_status(self.runtime, self.job_id))
         files = report["delivery"]["files"]
         with Path(files["xlsx"]["path"]).open("rb") as stream:
             workbook = load_workbook(stream, read_only=True)
@@ -336,47 +340,95 @@ class DeliveryTests(RuntimeTestCase):
         self.assertEqual(self.json_path.read_bytes(), original_json)
         self.cloud.assert_not_called()
 
-    def test_unreadable_delivery_record_reports_unknown(self):
-        """验证导出记录损坏时返回结果未知状态。"""
-        export_job(self.runtime, self.job_id)
-        (self.root / "delivery/status.json").write_text("{", encoding="utf-8")
-        report = job_status(self.runtime, self.job_id)
-        self.assertEqual(report["delivery"]["status"], "OUTCOME_UNKNOWN")
-        self.assertFalse(report["documents_ready"])
-
-    def test_delivery_files_list_is_reported_as_unknown(self) -> None:
-        """验证成品映射损坏为列表时保留JSON并返回未知交付状态。"""
+    def test_old_delivery_record_is_ignored_and_preserved(self):
+        """验证旧成品记录即使不可读也不影响ASR查询、重导或一次执行约束。"""
         directory = self.root / "delivery"
         directory.mkdir()
-        (directory / "status.json").write_text(json.dumps({
-            "job_id": self.job_id, "status": "COMPLETE", "message": "synthetic",
-            "files": ["xlsx", "docx", "md"],
-        }), encoding="utf-8")
-        report = job_status(self.runtime, self.job_id)
+        old_record = directory / "status.json"
+        old_record.write_bytes(b"{")
+        self.save_execution(documents_ready=False, message="BL已结束，转写JSON已保存并通过结构检查；等待本地导出。")
+        read_text = Path.read_text
+
+        def refuse_old_record(path, *args, **kwargs):
+            """禁止读取历史导出记录，允许任务原数据正常读取。"""
+            if path == old_record:
+                raise AssertionError("不应读取旧导出记录")
+            return read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", refuse_old_record):
+            for report in (job_status(self.runtime, self.job_id), transcribe(self.runtime, self.job_id)):
+                self.assertEqual(report["status"], "JSON_READY")
+                self.assertNotIn("delivery", report)
+                self.assertNotIn("documents_ready", report)
+                self.assertNotIn("等待本地导出", report["message"])
+            self.assertTrue(export_job(self.runtime, self.job_id)["documents_ready"])
+        self.assertEqual(old_record.read_bytes(), b"{")
+        self.cloud.assert_not_called()
+
+    def test_exported_files_can_be_changed_without_affecting_asr_status(self):
+        """验证用户改名、编辑或删除成品后，任务查询仍只描述原始识别结果。"""
+        before = (self.root / "execution/status.json").read_bytes()
+        result = export_job(self.runtime, self.job_id)
+        files = result["delivery"]["files"]
+        Path(files["md"]["path"]).write_text("用户自己的成品修改", encoding="utf-8")
+        Path(files["docx"]["path"]).rename(self.runtime.workspace / "renamed.docx")
+        Path(files["xlsx"]["path"]).unlink()
+        observed = job_status(self.runtime, self.job_id)
+        self.assertEqual(observed["status"], "JSON_READY")
+        self.assertNotIn("delivery", observed)
+        self.assertNotIn("documents_ready", observed)
+        self.assertEqual((self.root / "execution/status.json").read_bytes(), before)
+        self.cloud.assert_not_called()
+
+    def test_interrupted_export_returns_only_known_files_without_changing_asr(self):
+        """验证导出中断按已完成格式返回部分成功或失败，且不改写ASR记录。"""
+        before = (self.root / "execution/status.json").read_bytes()
+        for writer, expected, ready in (("write_xlsx", "FAILED", set()), ("write_docx", "PARTIAL", {"xlsx"})):
+            with self.subTest(writer=writer), \
+                    patch(f"asr_runtime.application.delivery.{writer}", side_effect=KeyboardInterrupt), \
+                    patch("asr_runtime.application.delivery.write_markdown") as markdown:
+                report = export_job(self.runtime, self.job_id)
+            self.assertEqual(report["status"], "JSON_READY")
+            self.assertEqual(report["delivery"]["status"], expected)
+            self.assertEqual({name for name, item in report["delivery"]["files"].items() if item["status"] == "READY"}, ready)
+            self.assertFalse(report["documents_ready"])
+            markdown.assert_not_called()
+        self.assertEqual((self.root / "execution/status.json").read_bytes(), before)
+        self.assertFalse((self.root / "delivery").exists())
+        self.cloud.assert_not_called()
+
+    def test_interrupted_directory_preparation_returns_failed_export(self):
+        """验证输出目录准备中断只影响本次导出，原始识别仍为成功。"""
+        with patch("asr_runtime.application.delivery.prepare_documents", side_effect=KeyboardInterrupt):
+            report = export_job(self.runtime, self.job_id)
         self.assertEqual(report["status"], "JSON_READY")
-        self.assertEqual(report["delivery"]["status"], "OUTCOME_UNKNOWN")
-        self.assertFalse(report["documents_ready"])
+        self.assertEqual(report["delivery"]["status"], "FAILED")
+        self.assertEqual(report["delivery"]["files"], {})
+        self.assertEqual(report["delivery"]["error_type"], "KeyboardInterrupt")
         self.assertTrue(self.json_path.is_file())
         self.cloud.assert_not_called()
 
-    def test_status_write_failure_still_reports_saved_json_without_reidentification(self):
-        """验证状态写入失败仍说明JSON已保存。"""
-        with patch("asr_runtime.application.delivery.save_record", side_effect=OSError("synthetic disk full")):
-            report = export_job(self.runtime, self.job_id)
-        self.assertEqual(report["status"], "JSON_READY")
-        self.assertEqual(report["cloud_outcome"], "result_received")
-        self.assertEqual(report["delivery"]["status"], "OUTCOME_UNKNOWN")
-        self.assertFalse(report["documents_ready"])
-        self.assertTrue(Path(report["json_path"]).is_file())
+    def test_cli_status_succeeds_without_delivery_but_export_failure_returns_nonzero(self):
+        """验证状态查询不要求成品就绪，实际导出失败仍给调用者非零退出码。"""
+        self.save_execution(documents_ready=False)
+        for command in ("job-status", "transcribe"):
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(["--workspace", str(self.runtime.workspace), command, "--job", self.job_id]), 0)
+            self.assertNotIn("delivery", json.loads(output.getvalue()))
+        output = io.StringIO()
+        with patch("asr_runtime.application.delivery.write_docx", side_effect=OSError("synthetic")), redirect_stdout(output):
+            self.assertEqual(main(["--workspace", str(self.runtime.workspace), "export", "--job", self.job_id]), 1)
+        self.assertEqual(json.loads(output.getvalue())["status"], "JSON_READY")
         self.cloud.assert_not_called()
 
-    def test_export_returns_current_delivery_without_status_lookup(self):
-        """验证导出直接返回当前执行结果。"""
-        expected = {"status": "PARTIAL", "message": "synthetic"}
-        with patch("asr_runtime.application.transcription.export_documents", return_value=expected), \
-             patch("asr_runtime.application.transcription.read_delivery", side_effect=AssertionError("导出不重新读取状态")):
-            report = export_job(self.runtime, self.job_id)
-        self.assertEqual(report["delivery"], expected)
+    def test_cli_success_record_failure_returns_nonzero_without_delivery(self):
+        """验证ASR成功记录未保存仍报告错误，不能因缺少成品跟踪误报成功。"""
+        report = {"job_id": self.job_id, "status": "JSON_READY",
+                  "record_error": {"source": "local", "explanation": "synthetic save failure"}}
+        with patch("asr_runtime.application.transcription.transcribe", return_value=report), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["--workspace", str(self.runtime.workspace), "transcribe", "--job", self.job_id]), 1)
 
     def test_loader_preserves_order_empty_sentence_ids_and_precise_milliseconds(self):
         """验证JSON解析保留原顺序、空句和毫秒时间。"""

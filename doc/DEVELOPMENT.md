@@ -11,7 +11,7 @@ MemoFlow 的目标是从语音生成符合用户习惯、重点要求和指定�
 | 参与者 | 职责 |
 | --- | --- |
 | Codex 与 Skill | 选择工作目录、将本次录音带入页面、根据用户确认消息提交设置、处理认证、执行工具并交付结果 |
-| Vue 页面 | 文件选择、配置与预览、复制确认消息；回听段落、播放器、校对保存与导出状态 |
+| Vue 页面 | 文件选择、配置与预览、复制确认消息；回听段落、播放器、校对保存与当次导出提示 |
 | PowerShell 安装入口 | 校验包内或下载的 Python/Node 归档，在工作目录解压并调用 Python 安装入口 |
 | Python | 管理本机会话、保存确认快照、媒体准备、调用 BL、解析结果和生成文档 |
 | BL | 鉴权、临时上传、识别提交、轮询、下载与原始 JSON 落盘 |
@@ -101,8 +101,8 @@ Session、ReviewSession、PathPicker 持有实际生命周期；无状态操作�
 | 对象 | 何时创建 | 状态与结束 | 持久数据 |
 | --- | --- | --- | --- |
 | 编辑会话 `session_id` | 启动网页服务时 | 编辑、预览；交接、取消或打开满两小时后结束 | 活动连接信息；成功交接回执；显式取消结果 |
-| 转写任务 `job_id` | 有效预览被代码交接时 | 配置固定；一次执行，结果与记录保留 | 配置/摘要、执行记录、文档交付记录 |
-| 回听会话 `ReviewSession` | 为已有 JSON_READY 任务打开回听服务时 | 复用job_id；保存、导出、结束，不改变转写执行状态 | job目录下review草稿、导出记录与临时连接 |
+| 转写任务 `job_id` | 有效预览被代码交接时 | 配置固定；一次执行，结果与记录保留 | 配置/摘要、ASR执行记录、原JSON及音频引用 |
+| 回听会话 `ReviewSession` | 为已有 JSON_READY 任务打开回听服务时 | 复用job_id；保存、导出、结束，不改变转写执行状态 | job目录下review草稿、必要播放副本与临时连接 |
 
 转写工单只负责“填写 → 预览”，往返不生成任务编号。前端完成预览展示后登记当前版本；后端可确认“当前预览已就绪”，不把成功校验直接等同页面状态。返回修改先通知后端，成功后才恢复可编辑表单。
 
@@ -129,7 +129,7 @@ Session、ReviewSession、PathPicker 持有实际生命周期；无状态操作�
 | 文件类别 | 处理与依据 |
 | --- | --- |
 | 输入音频与热词 Excel | 音频直接读取原路径；Excel 内存解析；不产生输入文件副本，原文件不属于清理范围 |
-| 未发布配置与候选回执 | 按所属会话清理 config.json.tmp、config.sha256、候选 receipt；存在执行/交付记录或其他归属异常时保留 |
+| 未发布配置与候选回执 | 按所属会话清理 config.json.tmp、config.sha256、候选 receipt；存在执行目录、旧版交付目录或其他归属异常时保留 |
 | 会话内 Key 暂存 | .env 及 python-dotenv 的同目录临时文件随会话回收；正式运行根 .env 始终保留 |
 | JSON / 文档原子写入临时文件 | 文件名记录 PID。下次 serve 只删除所属进程已结束的临时文件，保留正式 status.json 和成品 |
 | Python 库临时目录 | serve、review、transcribe、export 使用私有 .runtime/tmp/python-PID-随机值，正常退出清理；死进程目录在下次 serve 回收 |
@@ -196,8 +196,8 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 | `RUNNING` | 已写入启动前保守记录，不证明云端受理或进程存活 |
 | `STOPPED` | 此次执行停止，以 phase 与 cloud_outcome 解释 |
 | `JSON_READY` | 原始 JSON 通过结构检查 |
-| `documents_ready=true` | delivery 为 COMPLETE，三格式均完成 |
-| `OUTCOME_UNKNOWN` | 读取已有执行/交付目录但记录不可读时合成的查询结果，或导出中断的当次交付回执；不是新的持久执行阶段 |
+| `documents_ready=true` | 仅当次CLI导出回执包含：delivery 为 COMPLETE，三格式均完成，不写入执行记录 |
+| `OUTCOME_UNKNOWN` | 读取已有执行目录但记录不可读时合成的查询结果；不是新的持久执行阶段 |
 | `record_error` | 记录写入失败，磁盘可能滞后于当次回执 |
 
 成功 JSON 记录写入失败时保留 JSON 并在导出前返回。当前没有补签摘要或恢复成功记录入口。`job-status` 只读本地记录，不查询云端或进程存活。[转写流程](UML.md#07-转写流程)展示各方职责，分别保留编辑会话、执行记录和独立交付边界；保存失败导致的当次回执与磁盘滞后见[图08](UML.md#08-记录保存失败)。具体状态与修复见 [errors.md](../skills/asr-transcription/references/errors.md)。
@@ -206,9 +206,11 @@ API Key 与任务快照分离。`KeyDisplay.vue` 的局部状态持有密码输�
 
 ## 文档交付与路径
 
-results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把 `config.model` 传给 writer，保留历史任务真实模型；依次尝试 Excel、Word、Markdown，单格式失败仍尝试其他格式。每次用同目录独立临时文件完成后替换固定目标，失败保留旧目标。Excel/Word 替换前回读，Markdown 编码保真由测试验证。
+results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把 `config.model` 传给 writer，保留历史任务真实模型；依次尝试 Excel、Word、Markdown，单格式失败仍尝试其他格式，中断则停止剩余格式。每次用同目录独立临时文件完成后替换固定目标，失败保留旧目标。Excel/Word 替换前回读，Markdown 编码保真由测试验证。
 
-`export --job` 重导核对配置、磁盘 JSON_READY 及原 JSON 摘要，复用同一 writer、路径和模型，不读取音频、Excel 或 Key，也不调用 BL。原稿交付记录为 `delivery/status.json`；此入口只导出原JSON，手工改过的原稿文件应先另存。回听页面导出由原生窗口选择目录，使用 `录音名-reviewed-JOB_ID` 文件名，并将交付结果记入 `review/status.json`；原稿文件和原交付记录保持。文件名取 `Path(config["audio"]["name"]).stem[:80]` 与完整job_id，同任务在同目录重导覆盖，不同任务互不覆盖；文档标题保留完整源文件名。
+`export --job` 重导核对配置、磁盘 JSON_READY 及原 JSON 摘要，复用同一 writer、路径和模型，不读取音频、Excel 或 Key，也不调用 BL；此入口只导出原JSON。回听页面导出由原生窗口选择目录，使用 `录音名-reviewed-JOB_ID` 文件名。文件名取 `Path(config["audio"]["name"]).stem[:80]` 与完整job_id，同任务在同目录重导覆盖自己的同名文件；文档标题保留完整源文件名。需保留外部编辑时，用户应先改名或另存已有成品。
+
+两类三格式文件的生命周期均在导出后结束，用户可改名、移动或编辑，MemoFlow不再跟踪。`export_documents()`只返回当次COMPLETE／PARTIAL／FAILED和各格式files；`transcribe`、`export`将其连同documents_ready附入当次CLI回执，不改写ASR记录。回听只显示本次提示，不保存导出结果或路径，也不比较导出版本。长期业务数据仅保留音频引用／必要播放副本、原JSON、校对草稿与必要ASR任务记录；旧版本导出记录及用户文件保持原位，不自动删除或迁移。
 
 - 标题均为“源文件名（不含扩展名） 录音转写”，不另列音频信息行。
 - Excel 使用等线、黑白无填充，第三行即表头；标题和任务说明左对齐，表头与非正文列居中，正文左对齐并自动换行。展示行高封顶，完整文本保留；真实存储超限时报错。
@@ -224,12 +226,12 @@ results 唯一解析原始 JSON，三个 writer 共用 Transcript。delivery 把
 | 音频来源 | 本次对话附件或用户通过系统窗口选择的原始绝对路径，任务只保存引用 |
 | 热词来源 | 浏览器发送的 Excel 字节在内存读取，任务保存词典 |
 | 配置与摘要 | `.state/jobs/<job_id>/config.json`、`config.sha256` |
-| 执行 / 导出记录 | 同一 job 目录的 `execution/status.json` / `delivery/status.json` |
-| 校对草稿 / 校验稿导出记录 | 同一 job 目录的 `review/draft.json` / `review/status.json` |
+| ASR执行记录 | 同一 job 目录的 `execution/status.json` |
+| 校对草稿 | 同一 job 目录的 `review/draft.json` |
 | 回听连接 / 播放副本 | 同一 job 目录的 `review/connection.json` / 按需生成的 `review/playback.mp3` |
 | 原始 JSON | `<json_root>/<job_id>/json/transcription.json` |
-| 三种成品 | `<document_root>/<job_id>/documents/transcription.{xlsx,docx,md}` |
-| 三种人工校验稿 | `<本次原生窗口选定目录>/<录音名>-reviewed-<job_id>.{xlsx,docx,md}` |
+| 原稿导出目标 | `<document_root>/<job_id>/documents/transcription.{xlsx,docx,md}`；完成后不跟踪 |
+| 校验稿导出目标 | `<本次原生窗口选定目录>/<录音名>-reviewed-<job_id>.{xlsx,docx,md}`；完成后不跟踪 |
 
 JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。内容保真、识别质量与 Office 视觉效果分别验收。
 
@@ -249,11 +251,11 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 | 接口 | 请求与结果 |
 | --- | --- |
-| `GET /api/review` | 返回原模型、文件名、revision、句子/说话人、audio可用性、delivery、export_revision及closed；每句含original_text与original_speaker_id供比较/重置，不返回录音绝对路径 |
+| `GET /api/review` | 返回原模型、文件名、revision、句子/说话人、audio可用性及closed；每句含original_text与original_speaker_id供比较/重置，不返回录音绝对路径或导出信息 |
 | `GET /api/review/presence` | 保持受保护SSE连接，登记页面在场；服务端通过连接EOF识别离开，不发送周期心跳 |
 | `GET /api/review/audio`、`HEAD /api/review/audio` | 读取当前绑定录音；单段起止、开放结尾或后缀Range返回206及Content-Range，不满足返回416及总字节数；HEAD不发音频正文 |
 | `POST /api/review/save` | revision加可选sentences与speakers；返回ok及已保存revision；旧版本返回409，校验错误422 |
-| `POST /api/review/export` | 严格提交revision与picker_id；选择目录取消返回cancelled=true，成功返回cancelled=false、delivery及export_revision，不返回文字revision |
+| `POST /api/review/export` | 严格提交revision与picker_id；选择目录取消返回cancelled=true，完成返回cancelled=false及当次delivery，不返回文字revision |
 | `POST /api/review/select-audio` | picker_id关联原生窗口；取消保留绑定，匹配原录音后返回audio，不传入或返回文字revision |
 | `POST /api/review/prepare-audio` | 按需生成或复用完整播放副本，返回audio；不改变原稿或调用ASR |
 | `POST /api/review/close` | 关闭会话及选择器，返回closed后停止服务；不代替保存请求 |
@@ -264,11 +266,11 @@ JSON 与文档默认根均为 `<workspace>/transcriptions/`，可分别选择。
 
 前端 `useReview` 用800ms延迟及失焦触发串行保存；保存期间的新输入保留为下一批，不被旧回执覆盖。失败后保留输入、停止自动保存，用户可明确重试；409冲突要求先保留输入并重新读取。导出与重选录音先等待同一保存队列成功，再发对应请求。直接关闭浏览器标签页不会替用户完成保存；未保存或保存中通过标准beforeunload提示。
 
-导出请求先检查revision，再通过共享PathPicker打开目录窗口，由用户在系统窗口中选择或取消。前端只为本次请求生成picker_id，不保存独立的选择等待状态，也不提供回听专用取消接口。初始目录优先使用最近交付中已有READY文件的父目录，否则使用原documents；目录不存在时回退工作目录。取消返回cancelled=true，不生成文件或改写导出状态。用户选定目录后再次核对会话、revision及导出占用，才冻结已保存版本快照，锁外复用 `export_documents(..., review_revision=revision, review_directory=selected)`。窗口等待期间其他页面保存了新版本时，旧请求被拒绝，不导出混合版本。
+导出请求先检查revision，再通过共享PathPicker打开目录窗口，由用户在系统窗口中选择或取消。前端只为本次请求生成picker_id，不保存独立的选择等待状态，也不提供回听专用取消接口。初始目录使用配置中的documents，目录不存在时回退工作目录，不读取历史导出路径。取消返回cancelled=true，不生成文件。用户选定目录后再次核对会话、revision及导出占用，才冻结已保存内容快照，锁外复用 `export_documents(..., review_directory=selected)`。窗口等待期间其他页面保存了新版本时，旧请求被拒绝，不导出混合内容。
 
-三个writer共用合并后的Transcript；`Sentence.speaker_name`只用于输出人工姓名，原结果解析仍保留原编号。校验稿按上节任务命名规则直接写到选定目录，原documents及原JSON保持。同任务再次选择同一目录会覆盖自己的校验稿，对这些文件的外部手工修改应先另存。单格式失败继续其余格式，交付记录含本次export_revision和各实际文件路径。前端只据导出回执更新delivery和export_revision，不据其推进本页文字revision；其他页面在导出期间保存的修改仍受后续save版本检查保护。
+三个writer共用合并后的Transcript；`Sentence.speaker_name`只用于输出人工姓名，原结果解析仍保留原编号。校验稿按上节任务命名规则直接写到选定目录，原documents及原JSON保持。当次回执含各已处理格式的实际结果，前端全部成功时显示一次短提示，部分或全部失败显示告示；不把回执存入稿件或更新本页文字revision。其他页面在导出期间保存的修改仍受后续save版本检查保护。
 
-`job-status`在原执行/原稿交付之外附加review，只返回版本与交付摘要，不启动回听；读取draft.json时不把其中正文放入回执。校验稿完成须看 `review.delivery.status=COMPLETE`；`review.revision != review.export_revision`表示已保存草稿与已导出版本不同。原 `documents_ready`只描述原稿，不能代表校验稿；页面未保存的改动也不在磁盘查询结果中。
+`job-status`在ASR执行状态之外附加review，只返回已保存草稿的revision或读取问题，不启动回听、不返回正文，也不读取导出信息。页面未保存的改动不在磁盘查询结果中；查询不能说明用户是否已经导出、移动或修改成品。
 
 ### 音频与关闭
 
@@ -334,7 +336,7 @@ Codex在更新和本工作目录依赖准备成功后，根据Release正文用�
 
 说话人对话框使用 `ElScrollbar`，列表高度上限为 `min(360px, 50vh)`；标题、说明和底部新增/完成按钮位于滚动区外。新增仍调用原 `useReview.addSpeaker()`，等待Vue更新后滚到列表末项并聚焦新增名称输入，焦点使用preventScroll避免移动外层页面；自动保存逻辑保持。
 
-回听页在录音名旁以ElText小字显示保存及导出状态；提示区只在加载、音频转换、连接中断或错误等需要说明时出现。导出期间播放器继续响应播放和暂停。音频重选失败且录音仍不可用时保留重选入口，用户直接在系统窗口选择或取消，不增加页面等待/取消操作。保存及导出版本分别判断，不以播放状态代表保存完成。
+回听页在录音名旁以ElText小字显示“保存中”或“已保存”；本次导出成功使用ElMessage短提示，失败沿已有告示呈现，不缓存导出状态。提示区只在加载、音频转换、连接中断或错误等需要说明时出现。导出期间播放器继续响应播放和暂停。音频重选失败且录音仍不可用时保留重选入口，用户直接在系统窗口选择或取消，不增加页面等待/取消操作。不以播放或导出结果代表稿件保存完成。
 
 Vite 将前端构建到 Skill 的 `scripts/asr_runtime/static/`，交付 index.html、app.js、app.css、favicon.svg 和第三方许可。用户不需要前端构建环境。开发 Node 要求由根 package.json 的 `^20.19.0 || >=22.12.0` 约束；Skill 使用固定 Node 24.21.0，满足该条件。具体环境前提与验证命令统一见下节。
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { ElAlert, ElButton, ElDialog, ElConfigProvider, ElIcon, ElInput, ElOption, ElScrollbar, ElSelect, ElSlider, ElSwitch, ElText } from "element-plus";
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { ElAlert, ElButton, ElDialog, ElConfigProvider, ElIcon, ElInput, ElMessage, ElOption, ElScrollbar, ElSelect, ElSlider, ElSwitch, ElText } from "element-plus";
 import { Download, User } from "@element-plus/icons-vue";
 import en from "element-plus/es/locale/lang/en";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
@@ -15,7 +15,7 @@ import ReviewSentence from "./components/ReviewSentence.vue";
 const props = defineProps<{ connect: (language: () => Language, t: Translate) => ReviewApi }>();
 const { language, theme, t } = usePreferences("reviewTitlePage");
 const review = useReview(props.connect(() => language.value, t), t);
-const { document: draft, error, saveError, conflict, connectionError, saving, operation, dirtyCount, editable, stale } = review;
+const { document: draft, error, saveError, conflict, connectionError, saving, operation, dirtyCount, editable } = review;
 const locale = computed(() => language.value === "en" ? en : zhCn);
 const audio = ref<HTMLAudioElement>();
 const playerKey = ref(0);
@@ -49,13 +49,17 @@ const notice = computed<{ type: "error" | "warning" | "info"; text: string; acti
   if (error.value) return { type: "error", text: error.value.describe(language.value), action: audioUnavailable.value && !conflict.value ? "audio" : undefined };
   if (operation.value === "prepare") return { type: "info", text: t("reviewAudioPreparing") };
   if (audioUnavailable.value) return { type: "warning", text: audioProblem.value, action: "audio" };
-  if (draft.value?.delivery && draft.value.delivery.status !== "COMPLETE") return { type: "warning", text: t(draft.value.delivery.status === "PARTIAL" ? "reviewExportPartial" : "reviewExportFailed") };
   return draft.value ? null : { type: "info", text: t("loading") };
 });
 
-// 常规保存与导出进度就近显示，异常仍集中在提示区域。
-const saveStatus = computed(() => t(saving.value ? "reviewSaving" : dirtyCount.value ? "reviewUnsaved"
-  : stale.value ? "reviewExportStale" : draft.value?.delivery?.status === "COMPLETE" ? "reviewExported" : "reviewSaved"));
+// 页首只显示稿件保存进度，异常仍集中在提示区域。
+const saveStatus = computed(() => t(saving.value || dirtyCount.value ? "reviewSaving" : "reviewSaved"));
+
+// 本次三格式导出完成后显示一次成功提示。
+async function exportDocuments(): Promise<void> {
+  const delivery = await review.exportDocuments();
+  if (delivery?.status === "COMPLETE") ElMessage.success({ message: () => h("span", t("reviewExported")) });
+}
 
 // 定位页首标题，保持两个页面一致的品牌导航。
 function focusTitle(): void { window.document.getElementById("page-title")?.focus(); window.scrollTo({ top: 0 }); }
@@ -261,10 +265,10 @@ onUnmounted(() => {
           </div>
           <div v-if="draft && !draft.closed" class="review-action-buttons">
             <span class="review-file">{{ draft.source_name }}</span>
-            <ElText id="review-save-state" size="small" type="info" aria-live="polite">{{ saveStatus }}</ElText>
+            <ElText v-if="!saveError" id="review-save-state" size="small" type="info" aria-live="polite">{{ saveStatus }}</ElText>
             <div class="review-header-buttons">
               <ElButton :icon="User" :disabled="!editable" @click="namesOpen = true">{{ t('reviewSpeakers') }}</ElButton>
-              <ElButton type="primary" :icon="Download" :disabled="!editable || Boolean(saveError)" :loading="operation === 'export'" @click="review.exportDocuments">{{ t('reviewExport') }}</ElButton>
+              <ElButton type="primary" :icon="Download" :disabled="!editable || Boolean(saveError)" :loading="operation === 'export'" @click="exportDocuments">{{ t('reviewExport') }}</ElButton>
             </div>
           </div>
         </div>

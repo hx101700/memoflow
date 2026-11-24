@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from ..models import DeliveryReport, ExecutionReport, JobConfig
+from ..models import ExecutionReport, JobConfig
 from .environment import Runtime, SetupError
 from .files import write_json_atomic
 
@@ -102,39 +102,6 @@ def read_execution(root: Path) -> ExecutionReport | None:
                 "message": "任务已被占用但执行记录不可读，不能重新提交。请检查本地进程和记录。"}
 
 
-def read_delivery(root: Path) -> DeliveryReport | None:
-    """读取任务的导出状态，记录损坏时返回结果未知。"""
-    directory = root / "delivery"
-    if not directory.exists():
-        return None
-    try:
-        if directory.resolve() != directory:
-            raise ValueError("redirected report")
-        report = json.loads((directory / "status.json").read_text(encoding="utf-8"))
-        if (not isinstance(report, dict) or report.get("job_id") != root.name
-                or report.get("status") not in ("EXPORTING", "COMPLETE", "PARTIAL", "FAILED")
-                or not isinstance(report.get("message"), str)):
-            raise ValueError("invalid report")
-        if report["status"] == "COMPLETE":
-            files = report.get("files", {})
-            if (not isinstance(files, dict) or set(files) != {"xlsx", "docx", "md"}
-                    or any(not isinstance(record, dict) or record.get("status") != "READY"
-                           or not record.get("path") for record in files.values())):
-                raise ValueError("incomplete delivery")
-        return cast(DeliveryReport, report)
-    except (OSError, ValueError, TypeError):
-        return {"status": "OUTCOME_UNKNOWN", "message": "本机导出记录不可读，请检查已有文件；不会重新转写或自动导出。"}
-
-
-def prepare_delivery(root: Path) -> Path:
-    """准备任务的固定导出状态目录。"""
-    state = root / "delivery"
-    if state.resolve() != state:
-        raise SetupError("导出记录目录不能重定向。")
-    state.mkdir(parents=True, exist_ok=True)
-    return state
-
-
 def result_path(config: JobConfig) -> Path:
     """解析已确认的JSON保存路径，并核对任务目录归属。"""
     directory = Path(config["json_directory"])
@@ -168,5 +135,5 @@ def prepare_documents(runtime: Runtime, config: JobConfig) -> Path:
 
 
 def save_record(directory: Path, report: Mapping[str, object]) -> None:
-    """原子保存本目录的执行或导出状态记录。"""
+    """原子保存本目录的ASR执行状态记录。"""
     write_json_atomic(directory / "status.json", report)

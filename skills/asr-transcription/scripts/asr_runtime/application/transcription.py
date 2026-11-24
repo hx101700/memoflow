@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import MODEL
-from ..models import AudioInfo, AudioRecord, DeliveryReport, ExecutionReport, JobConfig, Transcript
+from ..models import AudioInfo, AudioRecord, ExecutionReport, JobConfig, Transcript
 from ..utils.bailian import BailianFailure, PreparedCommand, prepare_command, recognition_arguments, run_recognition
 from ..utils.environment import Runtime, SetupError
 from ..utils.files import FileError, file_fingerprint
 from ..utils.job_files import (
-    job_directory, read_config, read_execution, read_delivery, reserve_execution,
+    job_directory, read_config, read_execution, reserve_execution,
     result_path, prepare_result, save_record,
 )
 from ..utils.results import load_transcript
@@ -35,7 +35,7 @@ def _save_status(directory: Path, report: ExecutionReport) -> bool:
 
 
 def job_status(runtime: Runtime, job_id: str) -> ExecutionReport:
-    """查询任务的本地状态与最近一次交付结果。"""
+    """查询任务的ASR执行状态和持久校对稿版本。"""
     root = job_directory(runtime, job_id)
     report = read_execution(root)
     if report is None:
@@ -46,11 +46,9 @@ def job_status(runtime: Runtime, job_id: str) -> ExecutionReport:
         return report
     if report["status"] in ("PREPARING", "RUNNING"):
         report["message"] = "这是最近保存的执行状态，不代表进程仍存活。请检查原执行进程，勿重新提交。"
-    delivery = read_delivery(root)
-    if delivery is not None:
-        if delivery["status"] == "EXPORTING":
-            delivery["message"] = "这是最近保存的导出状态，不代表进程仍在运行。请检查原进程和已完成文件；不会自动重试。"
-        _attach_delivery(report, delivery)
+    elif report["status"] == "JSON_READY":
+        report["message"] = "转写JSON已保存并通过结构检查。"
+    report.pop("documents_ready", None)
     from .review import read_review_status
     review = read_review_status(runtime, job_id)
     if review is not None:
@@ -95,22 +93,12 @@ def list_jobs(runtime: Runtime, query: str = "") -> dict[str, object]:
     return {"jobs": jobs, "issues": issues}
 
 
-def _attach_delivery(report: ExecutionReport, delivery: DeliveryReport) -> ExecutionReport:
-    """合并导出回执并更新文档就绪状态。"""
+def _deliver(runtime: Runtime, config: JobConfig, transcript: Transcript, report: ExecutionReport) -> ExecutionReport:
+    """生成本次校对稿，将一次性导出结果附入回执而不改写执行记录。"""
+    delivery = export_documents(runtime, config, transcript)
     report.update({"delivery": delivery, "documents_ready": delivery["status"] == "COMPLETE",
                    "message": delivery["message"]})
     return report
-
-
-def _deliver(runtime: Runtime, config: JobConfig, transcript: Transcript, report: ExecutionReport) -> ExecutionReport:
-    """生成转写任务的校对稿，将交付结果合并到执行回执。"""
-    try:
-        delivery = export_documents(runtime, config, transcript)
-    except (OSError, SetupError, KeyboardInterrupt) as exc:
-        # 即使状态文件也无法写入，仍把已保存的JSON交给调用者，不能误报转写失败。
-        delivery = {"status": "OUTCOME_UNKNOWN", "error_type": type(exc).__name__,
-                    "message": "本机导出中断或记录无法保存。JSON及已生成文件已保留，请检查目录权限、空间和文件；未重新转写。"}
-    return _attach_delivery(report, delivery)
 
 
 def export_job(runtime: Runtime, job_id: str) -> ExecutionReport:
@@ -182,7 +170,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
               "review_enabled": config.get("review_enabled", False),
               "authorization_source": "session_handoff", "cloud_outcome": "not_started",
               "started_at": datetime.now(timezone.utc).isoformat(),
-              "executor_pid": os.getpid(), "documents_ready": False}
+              "executor_pid": os.getpid()}
     if not _save_status(execution, report):
         report.update({"status": "STOPPED", "message": "执行记录未保存，BL尚未启动，录音未上传；未自动重试。"})
         return report
@@ -203,7 +191,7 @@ def transcribe(runtime: Runtime, job_id: str) -> ExecutionReport:
         transcript = load_transcript(destination)
         result = transcript.summary()
         report.update({"status": "JSON_READY", "cloud_outcome": "result_received", "result": result,
-                       "message": "BL已结束，转写JSON已保存并通过结构检查；等待本地导出。"})
+                       "message": "BL已结束，转写JSON已保存并通过结构检查。"})
     except BailianFailure as exc:
         outcome = "unknown" if report["status"] == "RUNNING" and exc.started else "not_started"
         message = ("BL执行已停止，云端结果未知；未自动重试，也未取消云端任务。" if outcome == "unknown"

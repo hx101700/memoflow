@@ -6,9 +6,9 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
-from ..models import DeliveryReport, LocalizedText, ReviewDraft, ReviewSentence, Sentence
+from ..models import LocalizedText, ReviewDraft, ReviewSentence, Sentence
 from ..utils.environment import Runtime, SetupError
 from ..utils.files import FileError, check_file_unchanged, file_fingerprint, resolve_input, write_json_atomic
 from ..utils.job_files import job_directory, read_config, read_execution, result_path
@@ -47,30 +47,8 @@ def _review_directory(runtime: Runtime, job_id: str) -> Path:
     return path
 
 
-def _read_delivery(path: Path, job_id: str) -> DeliveryReport | None:
-    """读取校对导出记录，损坏时仅报告交付结果未知。"""
-    if not path.exists():
-        return None
-    try:
-        value = json.loads(path.read_bytes())
-        if (path.resolve() != path or not isinstance(value, dict) or value.get("job_id") != job_id
-                or value.get("status") not in ("EXPORTING", "COMPLETE", "PARTIAL", "FAILED")
-                or type(value.get("export_revision")) is not int or value["export_revision"] < 0
-                or not isinstance(value.get("message"), str)):
-            raise ValueError("invalid review status")
-        if value["status"] == "COMPLETE":
-            files = value.get("files")
-            if (not isinstance(files, dict) or set(files) != {"xlsx", "docx", "md"}
-                    or any(not isinstance(record, dict) or record.get("status") != "READY"
-                           or not isinstance(record.get("path"), str) or not record["path"] for record in files.values())):
-                raise ValueError("incomplete review delivery")
-        return cast(DeliveryReport, value)
-    except (OSError, ValueError, TypeError):
-        return {"status": "OUTCOME_UNKNOWN", "message": "校对导出记录不可读，请检查已生成文件；未自动重导。"}
-
-
 def read_review_status(runtime: Runtime, job_id: str) -> dict[str, object] | None:
-    """读取草稿版本与校验导出记录，向任务查询返回状态摘要。"""
+    """读取持久校对稿的文字版本摘要。"""
     directory = _review_directory(runtime, job_id)
     if not directory.exists():
         return None
@@ -84,9 +62,7 @@ def read_review_status(runtime: Runtime, job_id: str) -> dict[str, object] | Non
             revision = value["revision"]
     except (OSError, ValueError, TypeError):
         return {"status": "OUTCOME_UNKNOWN", "message": "校对草稿不可读，已保留原文件，请检查记录。"}
-    delivery = _read_delivery(directory / "status.json", job_id)
-    return {"revision": revision, "delivery": delivery,
-            "export_revision": delivery.get("export_revision") if delivery else None}
+    return {"revision": revision}
 
 
 class ReviewSession:
@@ -120,7 +96,6 @@ class ReviewSession:
         self._audio_error: LocalizedText | None = None
         self._load_draft()
         self._directory.mkdir(parents=True, exist_ok=True)
-        self._delivery = _read_delivery(self._directory / "status.json", job_id)
         self._bind_initial_audio()
 
     def _require_open(self) -> None:
@@ -285,7 +260,7 @@ class ReviewSession:
                               "The recording is unavailable or has changed. Select the original recording again.", "audio") from exc
 
     def description(self) -> dict[str, object]:
-        """返回已保存校对内容、音频可用性和最近导出版本。"""
+        """返回已保存校对内容、文字版本和音频可用性。"""
         with self._lock:
             sentences = self._sentences()
             speakers = {sentence.speaker_id for sentence in (*self._source.sentences, *sentences)
@@ -297,8 +272,7 @@ class ReviewSession:
                                    "original_text": original.text, "original_speaker_id": original.speaker_id}
                                   for original, sentence in zip(self._source.sentences, sentences)],
                     "speakers": [{"id": identifier, "name": self._names.get(identifier, "")} for identifier in sorted(speakers)],
-                    "audio": self._audio_description(), "delivery": deepcopy(self._delivery),
-                    "export_revision": self._delivery.get("export_revision") if self._delivery else None, "closed": self._closed}
+                    "audio": self._audio_description(), "closed": self._closed}
 
     def save(self, payload: Mapping[str, object]) -> dict[str, object]:
         """合并本批句子和姓名改动，保存成功后返回新版本。"""
@@ -330,13 +304,6 @@ class ReviewSession:
             if self._exporting:
                 raise ReviewError("校对稿正在导出，请等待本次完成。", "Review documents are being exported. Wait for this export to finish.")
             initial = Path(self.config["document_directory"])
-            if self._delivery:
-                for record in self._delivery.get("files", {}).values():
-                    if record.get("status") == "READY" and record.get("path"):
-                        previous = Path(record["path"]).parent
-                        if previous.is_dir():
-                            initial = previous
-                            break
         selected = self._picker.select(initial if initial.is_dir() else self.runtime.workspace,
                                         payload["picker_id"], mode="directory")
         if selected is None:
@@ -346,25 +313,14 @@ class ReviewSession:
             self._check_revision(payload)
             if self._exporting:
                 raise ReviewError("校对稿正在导出，请等待本次完成。", "Review documents are being exported. Wait for this export to finish.")
-            revision = self._revision
             transcript = replace(self._source, sentences=self._sentences())
             self._exporting = True
-            self._delivery = {"status": "EXPORTING", "export_revision": revision, "message": "正在本机生成校对稿。"}
         try:
-            delivery = export_documents(self.runtime, self.config, transcript, review_revision=revision,
-                                        review_directory=selected)
-        except (OSError, SetupError, KeyboardInterrupt) as exc:
-            delivery = {"status": "OUTCOME_UNKNOWN", "export_revision": revision, "error_type": type(exc).__name__,
-                        "message": "校对导出或记录保存中断，草稿及已有文件保留，请检查本机文件；未重新转写。"}
-        except BaseException:
+            delivery = export_documents(self.runtime, self.config, transcript, review_directory=selected)
+            return {"ok": True, "cancelled": False, "delivery": delivery}
+        finally:
             with self._lock:
                 self._exporting = False
-            raise
-        with self._lock:
-            self._exporting = False
-            self._delivery = delivery
-            return {"ok": True, "cancelled": False, "delivery": deepcopy(delivery),
-                    "export_revision": revision}
 
     def audio_path(self) -> Path:
         """返回已经绑定并核对属性的音频文件，供HTTP范围读取。"""

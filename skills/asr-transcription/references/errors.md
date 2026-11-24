@@ -240,25 +240,23 @@ LOCAL_EXECUTION_STOPPED保留error.phase和error_type，BL错误沿用已有code
 | read_result | 读取、解析并检查原始JSON |
 | save_status | 写执行状态；record_error.attempted_status说明哪次状态未保存 |
 
-执行记录写入失败或中断放在独立record_error中，不替换原始执行事实，也不自动重写。PREPARING/RUNNING写入失败时，本次回执明确STOPPED/not_started；JSON_READY写入失败时仍返回JSON_READY/result_received、结果摘要和目标路径，documents_ready=false且不进入导出。此时job-status可能仍读到旧状态；export仍要求已保存的JSON_READY及摘要，没有补签、恢复记录或重新识别入口。
+执行记录写入失败或中断放在独立record_error中，不替换原始执行事实，也不自动重写。PREPARING/RUNNING写入失败时，本次回执明确STOPPED/not_started；JSON_READY写入失败时仍返回JSON_READY/result_received、结果摘要和目标路径，并明确未生成校对稿，不进入导出。此时job-status可能仍读到旧状态；export仍要求已保存的JSON_READY及摘要，没有补签、恢复记录或重新识别入口。
 
 json_path是已确定的JSON目标位置，不单独证明文件存在或有效；JSON_READY才表示本次已成功读取并通过结构检查。RUNNING在启动BL前保守落盘，因此后续仅凭该磁盘记录不能证明是否已启动。命令参数、配置等入口错误仍可能直接返回failed/message。上述本地code不是官方错误码。
 
-### 文档交付记录
+### 当次文档导出结果
 
-人工回听稿使用同一套交付状态，单独保存在 `review/status.json`，通过 `job-status.review` 查询。原稿的 `documents_ready` 只说明原转写稿已交付。`review.revision` 与 `review.export_revision` 不同表示最近修改尚未导出。
+原稿与人工校验稿共用当次 `delivery` 回执，不保存为任务状态。文件导出后由用户管理，改名、移动或编辑不影响ASR记录及校对草稿；`job-status`不查询这些文件或过去的导出结果。
 
 | delivery.status | 含义 |
 | --- | --- |
-| EXPORTING | 最近记录在导出，不保证进程仍活着 |
-| COMPLETE | 三种成品已保存，Excel/Word回读核验通过，Markdown编码写入完成 |
-| PARTIAL | 部分格式成功，其余失败；保留成功文件 |
-| FAILED | 全部失败或无法创建输出目录，原JSON保留 |
-| OUTCOME_UNKNOWN | 导出中断或记录不可读/写，不声称成品齐备 |
+| COMPLETE | 本次三种成品已保存，Excel/Word回读核验通过，Markdown编码写入完成 |
+| PARTIAL | 本次部分格式成功，其余失败或中断；保留成功文件 |
+| FAILED | 本次没有成功生成文件，可能是格式失败、目录不可用或中断；原JSON保留 |
 
-files内分别记录本次各格式的READY/FAILED、路径/大小或错误类型。单格式生成失败时已有目标文件保留，文件仍存在不代表本次导出成功。已知格式错误有本地说明，文件系统错误提示权限/空间/占用；未知程序异常只报告类型，不假装一定是磁盘问题。
+files内分别返回本次已处理格式的READY/FAILED、路径/大小或错误类型；中断时尚未处理的格式可能不在回执中。单格式生成失败时已有目标文件保留，文件仍存在不代表本次导出成功。已知格式错误有本地说明，文件系统错误提示权限/空间/占用；未知程序异常只报告类型，不假装一定是磁盘问题。命令或连接中断而未取得回执时，核对本次已生成文件，不依据旧任务状态声称导出完成。
 
-导出失败不把JSON_READY改成云端失败。显式export核对执行记录中的结果JSON摘要，在该任务的documents文件夹生成三格式并覆盖同名成品，不重新识别；记录缺少摘要或结果发生变化时停止，不补摘要。每个任务的导出状态保存在`WORKSPACE/.asr-transcription/.state/jobs/<job_id>/delivery/status.json`，job-status读取该记录，不重新验证成品存在或摘要。
+导出失败不把JSON_READY改成云端失败。显式export核对执行记录中的结果JSON摘要，在该任务的documents文件夹生成三格式并覆盖同名成品，不重新识别；记录缺少摘要或结果发生变化时停止，不补摘要。CLI的documents_ready只表示当次三格式是否全部成功。旧版本留下的导出记录及用户文件不自动删除或迁移，也不再作为当前查询来源。
 
 ### 人工回听问题
 
@@ -270,7 +268,7 @@ files内分别记录本次各格式的READY/FAILED、路径/大小或错误类�
 | 正在恢复连接 | 浏览器自动恢复页面在场连接，保留当前输入；该提示不等于保存失败。保存是否完成以页首状态为准，出现保存错误时按“修改未保存”处理。 |
 | 校对版本已变化（HTTP 409） | 先复制当前未保存修改，再刷新核对最新草稿。另一个页面可能已经保存；工具保留双方已有内容，不覆盖旧版本。 |
 | 取消了导出目录选择 | 本次未生成文件，已保存草稿和先前校验稿保留；需要导出时再次选择目录。 |
-| 部分校验稿未生成 | 查看 `review.delivery.files` 的各格式结果，处理文件占用、权限或格式提示后重新导出；原稿和成功格式保留。 |
+| 部分校验稿未生成 | 按本次导出告示与回执处理文件占用、权限或格式问题，再选择目录导出；原稿和成功格式保留，任务查询不保留导出结果。 |
 | 误关页面或校验服务已结束 | 告诉 Codex 继续校验该任务；可给原 `job_id`，也可描述录音名或时间，由Codex在原工作目录查询并选定任务，再恢复最新已保存稿。尚未保存的页面输入不能从磁盘恢复。 |
 | 不记得任务编号或查询含局部问题 | 使用[任务查询](usage.md#查询与重新导出)核对录音名、确认时间和状态。`issues`说明部分记录不可读，不代表其余候选不可用；多份匹配先选择，未找到时核对原工作目录，不自动重新转写。 |
 

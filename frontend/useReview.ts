@@ -2,7 +2,7 @@ import { computed, ref, shallowRef } from "vue";
 import { uiError, type UiError } from "./api";
 import { ReviewRequestError } from "./review";
 import type { Translate } from "./i18n";
-import type { ReviewApi, ReviewDocument } from "./types";
+import type { ReviewApi, ReviewDelivery, ReviewDocument } from "./types";
 
 // 管理可编辑回听稿，串行保存局部修改并在导出前保存完毕。
 export function useReview(api: ReviewApi, t: Translate) {
@@ -22,8 +22,6 @@ export function useReview(api: ReviewApi, t: Translate) {
   let disposed = false;
   let stopPresence: (() => void) | undefined;
   const editable = computed(() => Boolean(document.value && !document.value.closed && !operation.value && !conflict.value));
-  const stale = computed(() => document.value?.export_revision !== null &&
-    (dirtyCount.value > 0 || document.value?.export_revision !== document.value?.revision));
 
   // 记录待保存数量，失败后仅保留输入，等待用户明确重试。
   function schedule(): void {
@@ -66,7 +64,7 @@ export function useReview(api: ReviewApi, t: Translate) {
     return inFlight;
   }
 
-  // 加载本机回听稿，保留服务端当前版本与历史导出状态。
+  // 加载本机校对稿的已保存内容、版本与音频信息。
   async function start(): Promise<void> {
     try { document.value = await api.request("/api/review"); resumePresence(); }
     catch (reason) { error.value = uiError(reason, () => t("unavailableHelp")); }
@@ -125,19 +123,21 @@ export function useReview(api: ReviewApi, t: Translate) {
     return flush();
   }
 
-  // 先保存全部编辑再导出校验稿，页面保持打开供继续修改。
-  async function exportDocuments(): Promise<void> {
-    if (!editable.value || !document.value) return;
+  // 先保存全部编辑，再导出校验稿并返回本次结果。
+  async function exportDocuments(): Promise<ReviewDelivery | null> {
+    if (!editable.value || !document.value) return null;
     operation.value = "export";
     error.value = null;
     try {
-      if (!await flush()) return;
+      if (!await flush()) return null;
       const result = await api.request("/api/review/export", { revision: document.value.revision, picker_id: crypto.randomUUID() });
-      if (!result.cancelled) {
-        document.value.delivery = result.delivery;
-        document.value.export_revision = result.export_revision;
+      if (result.cancelled) return null;
+      if (result.delivery.status !== "COMPLETE") {
+        const message = result.delivery.status === "PARTIAL" ? "reviewExportPartial" : "reviewExportFailed";
+        error.value = uiError(null, () => t(message));
       }
-    } catch (reason) { operationFailed(reason); }
+      return result.delivery;
+    } catch (reason) { operationFailed(reason); return null; }
     finally { operation.value = null; }
   }
 
@@ -179,6 +179,6 @@ export function useReview(api: ReviewApi, t: Translate) {
   // 卸载后停止定时保存，不在离开时发起无法确认的请求。
   function dispose(): void { disposed = true; suspendPresence(); }
 
-  return { document, error, saveError, conflict, connectionError, saving, operation, dirtyCount, editable, stale,
+  return { document, error, saveError, conflict, connectionError, saving, operation, dirtyCount, editable,
     start, resumePresence, suspendPresence, changeSentence, resetSentence, renameSpeaker, addSpeaker, flush, retry, exportDocuments, selectAudio, prepareAudio, dispose };
 }

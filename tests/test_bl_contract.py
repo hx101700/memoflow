@@ -316,7 +316,7 @@ class BailianContractTests(RuntimeTestCase):
                 self.service_error = (status, {"code": code, "message": message, "request_id": "billing-fixture"})
                 report = self.invoke_saved_job("submit_billing_error")
                 self.assertEqual(report["status"], "STOPPED")
-                self.assertFalse(report["documents_ready"])
+                self.assertNotIn("documents_ready", report)
                 self.assertEqual(report["cloud_outcome"], "unknown")
                 self.assertEqual(report["error"]["cli_exit_code"], 1)
                 self.assertEqual(report["error"]["http_status"], status)

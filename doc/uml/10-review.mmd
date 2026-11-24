@@ -22,7 +22,7 @@ alt 同job服务可访问且未关闭
 else 没有连接或旧服务PID已确认结束
     H->>V: ReviewSession(runtime, job_id)
     V->>F: 核对配置、JSON_READY与原JSON摘要
-    V->>F: 恢复匹配摘要的draft及校验稿状态<br/>没有改动时直接使用原JSON
+    V->>F: 恢复匹配摘要的draft<br/>没有改动时直接使用原JSON
     break 来源或草稿无法核对
         H-->>C: 停止打开，保留原文件
     end
@@ -45,7 +45,7 @@ end
 W->>H: GET /review取得Cookie；GET /api/review
 H->>V: description()
 V-->>H: 当前描述
-H-->>W: 句子当前值与original值、姓名、revision、audio及校验稿状态
+H-->>W: 句子当前值与original值、姓名、revision及audio
 W->>H: GET /api/review/presence，保持SSE连接
 H->>H: 登记页面；重连时取消无人使用计时
 Note over H,W: 共用LocalHandler校验Host、Origin及Cookie／X-ASR-Token<br/>URL不含令牌；JSON正文上限512KiB
@@ -119,17 +119,17 @@ opt 用户导出校验稿
     P-->>V: 选定目录或取消
     alt 用户取消选择
         V-->>H: cancelled=true
-        H-->>W: 保留草稿与原交付；不生成文件
+        H-->>W: 保留草稿；不生成文件
     else 用户选定目录
         V->>V: 再核对revision，锁内取得Transcript快照
-        V->>D: export_documents(review_revision, review_directory)
-        D->>F: 按录音名＋reviewed＋原job_id生成三格式<br/>逐项记录review/status.json；同job重导覆盖
-        D-->>V: COMPLETE／PARTIAL／FAILED及export_revision
-        V-->>H: cancelled=false、交付结果与export_revision
-        H-->>W: delivery与export_revision
-        W->>W: 更新导出记录，保持本页文字revision
+        V->>D: export_documents(review_directory)
+        D->>F: 按录音名＋reviewed＋原job_id生成三格式<br/>同job在同目录重导覆盖自己的同名文件
+        D-->>V: 当次COMPLETE／PARTIAL／FAILED及files
+        V-->>H: cancelled=false与本次delivery
+        H-->>W: 当次导出结果
+        W->>W: 成功短提示／失败告示，不缓存结果<br/>保持本页文字revision
     end
-    Note over V,F: 窗口从最近READY文件父目录或原documents开始<br/>原JSON、documents原稿及原delivery/status.json保持<br/>后续改动可使revision与export_revision不同
+    Note over V,F: 窗口从原配置documents开始，不可用时回退工作目录<br/>原JSON与草稿保持；导出文件交给用户后不再跟踪
 end
 alt 用户关闭或离开页面
     W->>H: 释放presence连接；服务端观察socket EOF

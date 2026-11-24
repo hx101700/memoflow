@@ -70,7 +70,6 @@ class DeliveryReport {
   +Literal status
   +str message
   +dict files
-  +int export_revision
 }
 class ReviewDraft {
   <<TypedDict>>
@@ -87,13 +86,13 @@ SessionTerminal --> ConfirmationReceipt : handed_off包含任务回执
 JobConfig ..> ExecutionReport : 仅一次执行
 ExecutionReport --> DeliveryReport : JSON成功后的文档结果
 JobConfig ..> ReviewDraft : 原JSON摘要绑定本机校对
-ReviewDraft ..> DeliveryReport : 校验稿另记export_revision
+ReviewDraft ..> DeliveryReport : 合并原JSON用于当次导出
 note for Draft "application/session.py<br/>id为预览版本；form保存可恢复输入<br/>预览不含job_id，不在磁盘保存每次编辑<br/>preview_ready登记展示；edit使该版本失效"
 note for JobConfig "models.py；utils/job_files.py<br/>继承已校验输入，交接时生成编号与输出路径<br/>配置和SHA发布一次，授权为True<br/>review_enabled为可选字段，旧任务缺失按false；不进入BL参数<br/>Key独立保存在运行目录.env，执行时读取"
 note for ConfirmationReceipt "utils/session_files.py<br/>sessions/session_id/receipt.json持久保存对应关系<br/>响应丢失或服务退出后返回同一job_id<br/>execution_started描述交接当时，不是实时进度"
 note for SessionTerminal "state为handed_off、expired、cancelled<br/>编辑终态经web.py的SSE发送一次<br/>显式取消结果保存至cancelled.json，响应丢失后可恢复<br/>没有heartbeat或云端状态字段"
-note for ExecutionReport "models.py；图中摘录交接与恢复的关键字段<br/>cloud_outcome为not_started、unknown或result_received<br/>result、error、record_error、delivery、review等为可选字段<br/>原稿documents_ready仅在delivery.COMPLETE时为true<br/>job-status另附review的revision、delivery与export_revision"
+note for ExecutionReport "models.py；图中摘录交接与恢复的关键字段<br/>cloud_outcome为not_started、unknown或result_received<br/>result、error、record_error、delivery、review等为可选字段<br/>delivery与documents_ready仅附在当次导出回执，不持久保存<br/>job-status另附review的revision或读取问题"
 note for ReviewDraft "application/review.py；jobs/job_id/review/draft.json<br/>同job保留最新改动，未修改时直接使用原JSON<br/>revision只随正文、归属或姓名变化递增<br/>audio_path仅记录重选路径，保存时保持文字版本<br/>导出及关闭不删除草稿；原JSON与配置保持"
-note for DeliveryReport "models.py；两类导出复用该协议<br/>原稿记录在delivery/status.json<br/>校验稿记录在review/status.json，另含可选export_revision<br/>各格式仍分别记录READY或FAILED"
+note for DeliveryReport "models.py；两类导出的当次结果，不写入任务记录<br/>status为COMPLETE、PARTIAL或FAILED<br/>已处理格式分别返回READY或FAILED<br/>文件导出后由用户管理，工具不再跟踪"
 
 note for SessionConnection "utils/session_files.py<br/>私有sessions/session_id/connection.json<br/>端口与令牌用于本机控制；PID与deadline用于残留回收<br/>结束清理后移除；正式交接回执仍保留"

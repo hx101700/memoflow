@@ -168,7 +168,7 @@ class ReviewTests(RuntimeTestCase):
         self.edit_first(review, text='=HYPERLINK("https://example.invalid")')
         report = self.export_review(review)
         self.assertFalse(report["cancelled"])
-        self.assertEqual(report["export_revision"], 1)
+        self.assertNotIn("export_revision", report)
         self.assertEqual(report["delivery"]["status"], "COMPLETE")
         files = report["delivery"]["files"]
         for extension, record in files.items():
@@ -184,8 +184,9 @@ class ReviewTests(RuntimeTestCase):
         self.assertIn("张老师", Path(files["md"]["path"]).read_text(encoding="utf-8"))
         for path, original in self.original_files.items():
             self.assertEqual(path.read_bytes(), original)
-        self.assertEqual(read_review_status(self.runtime, self.job_id)["export_revision"], 1)
-        self.assertEqual(self.open_review().description()["delivery"], report["delivery"])
+        self.assertEqual(read_review_status(self.runtime, self.job_id), {"revision": 1})
+        self.assertNotIn("delivery", self.open_review().description())
+        self.assertFalse((self.root / "review/status.json").exists())
         self.cloud.assert_not_called()
 
     def test_shared_export_directory_keeps_each_jobs_files_and_replaces_same_job(self):
@@ -224,7 +225,7 @@ class ReviewTests(RuntimeTestCase):
         for path, original in second_bytes.items():
             self.assertEqual(path.read_bytes(), original)
         self.assertIn("任务A的再次校对", Path(updated["md"]["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(read_review_status(self.runtime, self.job_id)["delivery"]["status"], "COMPLETE")
+        self.assertEqual(read_review_status(self.runtime, self.job_id), {"revision": 2})
         self.cloud.assert_not_called()
 
     def test_review_filename_leaves_room_for_publication_suffix(self):
@@ -236,25 +237,30 @@ class ReviewTests(RuntimeTestCase):
         for extension, file in report["delivery"]["files"].items():
             self.assertEqual(Path(file["path"]).name, f"{'录' * 80}-reviewed-{self.job_id}.{extension}")
         self.assertIn("录" * 110, Path(report["delivery"]["files"]["md"]["path"]).read_text(encoding="utf-8"))
+        self.assertFalse((self.root / "review/draft.json").exists())
+        self.assertFalse((self.root / "review/status.json").exists())
 
-    def test_export_cancel_keeps_previous_delivery_and_creates_no_files(self):
-        """验证取消选择不启动导出，已有导出记录和文件保持原样。"""
+    def test_export_cancel_keeps_draft_and_existing_files(self):
+        """验证导出或取消都不修改持久稿件，取消也不改动已生成文件。"""
         review = self.open_review()
         self.edit_first(review)
+        draft = (self.root / "review/draft.json").read_bytes()
         with patch.object(review._picker, "select", return_value=None), \
                 patch("asr_runtime.application.review.export_documents", side_effect=AssertionError("取消不能导出")):
             self.assertEqual(review.export({"revision": 1, "picker_id": "cancelled"}), {"ok": True, "cancelled": True})
         self.assertFalse((self.root / "review/status.json").exists())
         self.assertFalse(list(Path(self.config["document_directory"]).glob("*-reviewed-*")))
         completed = self.export_review(review)
-        status = (self.root / "review/status.json").read_bytes()
+        files = {Path(item["path"]): Path(item["path"]).read_bytes() for item in completed["delivery"]["files"].values()}
         with patch.object(review._picker, "select", return_value=None):
             self.assertTrue(review.export({"revision": 1, "picker_id": "cancelled-again"})["cancelled"])
-        self.assertEqual((self.root / "review/status.json").read_bytes(), status)
-        self.assertEqual(review.description()["delivery"], completed["delivery"])
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), draft)
+        self.assertFalse((self.root / "review/status.json").exists())
+        for path, content in files.items():
+            self.assertEqual(path.read_bytes(), content)
 
-    def test_export_picker_starts_at_last_successful_directory_after_reopen(self):
-        """验证重开后目录选择从最近成功成品位置开始，初次使用原稿目录。"""
+    def test_export_picker_starts_at_configured_directory_after_reopen(self):
+        """验证每次目录选择沿用配置起点，不跟踪上次一次性成品。"""
         review = self.open_review()
         self.edit_first(review)
         selected = self.runtime.workspace / "人工选择目录"
@@ -267,7 +273,7 @@ class ReviewTests(RuntimeTestCase):
         reopened = self.open_review()
         with patch.object(reopened._picker, "select", return_value=None) as picker:
             reopened.export({"revision": 1, "picker_id": "next-export"})
-        picker.assert_called_once_with(selected, "next-export", mode="directory")
+        picker.assert_called_once_with(Path(self.config["document_directory"]), "next-export", mode="directory")
 
     def test_directory_selection_does_not_block_saves_and_rechecks_revision(self):
         """验证选择目录时可以保存，但过期导出请求不能悄悄导出新版本。"""
@@ -344,6 +350,22 @@ class ReviewTests(RuntimeTestCase):
         self.assertEqual(report["delivery"]["files"]["md"]["status"], "READY")
         self.assertEqual(review.description()["revision"], 1)
 
+    def test_interrupted_export_preserves_draft_and_allows_a_later_explicit_export(self):
+        """验证中断保留稿件和本次已生成文件，释放导出占用且不会自动重导。"""
+        review = self.open_review()
+        self.edit_first(review)
+        before = (self.root / "review/draft.json").read_bytes()
+        with patch("asr_runtime.application.delivery.write_docx", side_effect=KeyboardInterrupt) as writer:
+            report = self.export_review(review)
+        writer.assert_called_once()
+        self.assertEqual(report["delivery"]["status"], "PARTIAL")
+        self.assertEqual(report["delivery"]["files"]["xlsx"]["status"], "READY")
+        self.assertNotIn("md", report["delivery"]["files"])
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), before)
+        self.assertEqual(self.export_review(review)["delivery"]["status"], "COMPLETE")
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), before)
+        self.assertFalse((self.root / "review/status.json").exists())
+
     def test_saves_can_continue_during_export_but_overlapping_export_is_rejected(self):
         """验证导出固定旧快照，后续保存不阻塞且导出版本不会被误标为最新。"""
         review = self.open_review()
@@ -370,7 +392,7 @@ class ReviewTests(RuntimeTestCase):
                 release.set()
             report = exporting.result(timeout=10)
         self.assertNotIn("revision", report)
-        self.assertEqual(report["export_revision"], 1)
+        self.assertNotIn("export_revision", report)
         self.assertEqual(review.description()["revision"], 2)
         self.assertEqual(review.description()["sentences"][0]["text"], "最新正文")
         with self.assertRaises(ReviewConflict):
@@ -409,8 +431,8 @@ class ReviewTests(RuntimeTestCase):
         self.assertEqual(restored.description()["revision"], 0)
         self.assertEqual((self.root / "config.json").read_bytes(), self.original_files[self.root / "config.json"])
 
-    def test_audio_reselection_keeps_document_and_export_revisions(self):
-        """验证重选只持久化录音位置，不推进文字版本或使已导出稿过期。"""
+    def test_audio_reselection_keeps_document_revision(self):
+        """验证重选只持久化录音位置，保持文字版本且不跟踪成品。"""
         review = self.open_review()
         self.edit_first(review)
         self.export_review(review)
@@ -421,10 +443,11 @@ class ReviewTests(RuntimeTestCase):
             result = review.select_audio("moved")
         self.assertNotIn("revision", result)
         for actual in (review.description(), self.open_review().description()):
-            self.assertEqual((actual["revision"], actual["export_revision"]), (1, 1))
+            self.assertEqual(actual["revision"], 1)
             self.assertEqual(actual["sentences"], before["sentences"])
             self.assertEqual(actual["speakers"], before["speakers"])
-            self.assertEqual(actual["delivery"], before["delivery"])
+            self.assertNotIn("delivery", actual)
+            self.assertNotIn("export_revision", actual)
         self.assertEqual(read_review_status(self.runtime, self.job_id)["revision"], 1)
 
     def test_audio_reselection_keeps_edits_saved_during_picker(self):
@@ -531,12 +554,51 @@ class ReviewTests(RuntimeTestCase):
             self.open_review()
         self.assertEqual(path.read_bytes(), b"{")
 
-    def test_incomplete_delivery_record_is_not_reported_complete(self):
-        """验证校对导出记录缺少成品时返回未知，不误报三格式已就绪。"""
-        self.open_review()
-        save_record(self.root / "review", {"job_id": self.job_id, "status": "COMPLETE", "files": {},
-                                           "export_revision": 0, "message": "synthetic"})
-        self.assertEqual(read_review_status(self.runtime, self.job_id)["delivery"]["status"], "OUTCOME_UNKNOWN")
+    def test_old_delivery_record_is_ignored_and_preserved_on_reopen_and_export(self):
+        """验证历史导出记录损坏也不影响恢复稿件，导出不会读取或替换它。"""
+        review = self.open_review()
+        self.edit_first(review)
+        old_record = self.root / "review/status.json"
+        old_record.write_bytes(b"{")
+        read_bytes = Path.read_bytes
+
+        def refuse_old_record(path):
+            """禁止读取历史成品状态，同时允许读取原JSON及持久稿件。"""
+            if path == old_record:
+                raise AssertionError("不应读取旧导出记录")
+            return read_bytes(path)
+
+        with patch.object(Path, "read_bytes", refuse_old_record):
+            self.assertEqual(read_review_status(self.runtime, self.job_id), {"revision": 1})
+            reopened = self.open_review()
+            self.assertEqual(reopened.description()["sentences"][0]["text"], "已校对第一句")
+            self.assertNotIn("delivery", reopened.description())
+            self.assertEqual(self.export_review(reopened)["delivery"]["status"], "COMPLETE")
+        self.assertEqual(old_record.read_bytes(), b"{")
+
+    def test_changed_export_files_do_not_change_saved_review(self):
+        """验证成品改名、编辑或删除后仍恢复同一稿件，下一次导出使用已保存内容。"""
+        review = self.open_review()
+        self.edit_first(review)
+        draft = (self.root / "review/draft.json").read_bytes()
+        report = self.export_review(review)
+        files = report["delivery"]["files"]
+        markdown = Path(files["md"]["path"])
+        markdown.write_text("外部手工改稿", encoding="utf-8")
+        renamed = self.runtime.workspace / "renamed.docx"
+        Path(files["docx"]["path"]).rename(renamed)
+        Path(files["xlsx"]["path"]).unlink()
+        review.close()
+        reopened = self.open_review()
+        self.assertEqual(reopened.description()["sentences"][0]["text"], "已校对第一句")
+        self.assertNotIn("delivery", reopened.description())
+        destination = self.runtime.workspace / "another-export"
+        destination.mkdir()
+        exported = self.export_review(reopened, directory=destination)
+        self.assertIn("已校对第一句", Path(exported["delivery"]["files"]["md"]["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(markdown.read_text(encoding="utf-8"), "外部手工改稿")
+        self.assertTrue(renamed.is_file())
+        self.assertEqual((self.root / "review/draft.json").read_bytes(), draft)
 
     def test_missing_result_checksum_stops_review(self):
         """验证已标记成功但缺少摘要的旧记录不能打开校对。"""

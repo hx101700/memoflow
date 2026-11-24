@@ -27,7 +27,7 @@ else JSON_READY记录保存失败
     S->>F: save_record()调用原子写入
     F-->>S: I/O错误或中断
     S-->>T: false＋record_error(JSON_READY)
-    T-->>C: JSON_READY / result_received<br/>json_path＋结果摘要；documents_ready=false
+    T-->>C: JSON_READY / result_received<br/>json_path＋结果摘要；说明本次未生成校对稿
     Note over T,F: 当次回执保留已知结果；磁盘可能仍为RUNNING<br/>本次在导出前返回；export仍要求磁盘成功记录及摘要
 else STOPPED记录保存失败
     Note over T,F: 已有原始执行错误；本次回执状态已设置STOPPED

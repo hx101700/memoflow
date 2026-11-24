@@ -3,7 +3,7 @@ import test from "node:test";
 import { useTranscription, type ViewEffects } from "../frontend/useTranscription";
 import { useReview } from "../frontend/useReview";
 import { ReviewRequestError, sentenceModified, createReviewApi } from "../frontend/review";
-import type { ReviewApi, ReviewDocument, ReviewEndpoints } from "../frontend/types";
+import type { ReviewApi, ReviewDelivery, ReviewDocument, ReviewEndpoints } from "../frontend/types";
 import { createApi, UiError } from "../frontend/api";
 import { availability, configuration, createModel, hotwordRows } from "../frontend/model";
 import { localize, translate, type Translate } from "../frontend/i18n";
@@ -1154,7 +1154,7 @@ test("目录选择保留普通编辑能力，等待期间阻止整单校验", ()
 // 创建只含合成文本的回听会话，不读取音频或调用云端。
 function reviewHarness() {
   const initial: ReviewDocument = { job_id: "synthetic-review", skill_version: "0.1.5", model: "synthetic",
-    source_name: "synthetic.wav", revision: 0, closed: false, delivery: null, export_revision: null,
+    source_name: "synthetic.wav", revision: 0, closed: false,
     audio: { available: true, name: "synthetic.wav", kind: "original", error: null },
     sentences: [{ index: 1, begin_ms: 0, end_ms: 1000, text: "原句", speaker_id: 0, original_text: "原句", original_speaker_id: 0 },
       { index: 2, begin_ms: 1000, end_ms: 2000, text: "第二句", speaker_id: null, original_text: "第二句", original_speaker_id: null }], speakers: [{ id: 0, name: "" }] };
@@ -1174,7 +1174,7 @@ function reviewHarness() {
       if (path === "/api/review") result = structuredClone(initial);
       else if (path === "/api/review/save") result = handlers.save ? await handlers.save(payload!) : { revision: ++revision };
       else if (path === "/api/review/export") result = handlers.export ? await handlers.export()
-        : handlers.cancelled ? { cancelled: true } : { cancelled: false, export_revision: revision, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } };
+        : handlers.cancelled ? { ok: true, cancelled: true } : { ok: true, cancelled: false, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } };
       else if (path === "/api/review/select-audio") result = handlers.selectAudio ? await handlers.selectAudio()
         : { cancelled: false, audio: initial.audio };
       else if (path === "/api/review/prepare-audio") result = { audio: { ...initial.audio, kind: "preview" } };
@@ -1267,17 +1267,19 @@ test("全局说话人名称与新增编号随句子归属同批保存", async ()
   page.dispose();
 });
 
-test("导出前保存完成，导出后继续编辑标记旧成品过期，选择目录带独立编号", async () => {
+test("导出前保存完成，只返回本次结果，之后继续编辑不跟踪已交付文件", async () => {
   const page = reviewHarness();
   await page.start();
   page.changeSentence(1, { text: "导出前修改" });
-  await page.exportDocuments();
+  const delivery = await page.exportDocuments();
   assert.deepEqual(page.calls.map(call => call.path), ["/api/review", "/api/review/save", "/api/review/export"]);
-  assert.equal(page.document.value?.export_revision, 1);
-  assert.equal(page.stale.value, false);
+  assert.equal(delivery?.status, "COMPLETE");
+  assert.equal(page.document.value?.revision, 1);
+  assert.equal("delivery" in page.document.value!, false);
+  assert.equal("export_revision" in page.document.value!, false);
   assert.equal(page.editable.value, true);
   page.changeSentence(2, { text: "导出后修改" });
-  assert.equal(page.stale.value, true);
+  assert.equal(page.dirtyCount.value, 1);
   assert.equal(typeof (page.calls.at(-1)?.payload as { picker_id: string }).picker_id, "string");
   assert.equal(page.operation.value, null);
   page.dispose();
@@ -1293,12 +1295,10 @@ test("导出期间另页保存后，本页保持原文字版本且后续保存�
   await started.promise;
   // 模拟另一页已保存新文字版本，旧页面的后续写入由服务端拒绝。
   page.handlers.save = async () => { throw new ReviewRequestError({ zh: "冲突", en: "Conflict" }, 409); };
-  pending.resolve({ cancelled: false, export_revision: 0, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } });
+  pending.resolve({ ok: true, cancelled: false, delivery: { status: "COMPLETE", files: {}, message: "synthetic" } });
   await exporting;
   assert.equal(page.document.value?.revision, 0);
-  assert.equal(page.document.value?.export_revision, 0);
   assert.equal(page.document.value?.speakers[0].name, "");
-  assert.equal(page.stale.value, false);
   page.renameSpeaker(0, "本页输入");
   assert.equal(await page.flush(), false);
   assert.equal((page.calls.at(-1)?.payload as { revision: number }).revision, 0);
@@ -1346,7 +1346,7 @@ test("旧页重选录音保持原文字版本，之后修改姓名仍被版本�
   page.dispose();
 });
 
-test("重选录音不改变文字与导出版本，不使已导出稿过期", async () => {
+test("导出后重选录音仍只绑定音频，不改变文字稿", async () => {
   const page = reviewHarness();
   await page.start();
   page.renameSpeaker(0, "主持人");
@@ -1355,8 +1355,6 @@ test("重选录音不改变文字与导出版本，不使已导出稿过期", as
   assert.equal(await page.selectAudio(), true);
   assert.equal(JSON.stringify(page.document.value), before);
   assert.equal(page.document.value?.revision, 1);
-  assert.equal(page.document.value?.export_revision, 1);
-  assert.equal(page.stale.value, false);
   page.dispose();
 });
 
@@ -1391,21 +1389,39 @@ test("逐句重置恢复原始正文和归属，全局姓名保持修改", async
   page.dispose();
 });
 
-test("取消目录选择保留已保存草稿和上次导出状态", async () => {
+test("取消目录选择只保留导出前保存的草稿，不生成或记录导出结果", async () => {
   const page = reviewHarness();
   await page.start();
   await page.exportDocuments();
-  const delivery = page.document.value!.delivery;
   page.handlers.cancelled = true;
   page.changeSentence(1, { text: "取消前保存" });
-  await page.exportDocuments();
+  assert.equal(await page.exportDocuments(), null);
   assert.equal(page.document.value!.revision, 1);
-  assert.equal(page.document.value!.delivery, delivery);
-  assert.equal(page.document.value!.export_revision, 0);
-  assert.equal(page.stale.value, true);
+  assert.equal(page.document.value!.sentences[0].text, "取消前保存");
+  assert.equal("delivery" in page.document.value!, false);
+  assert.equal("export_revision" in page.document.value!, false);
   assert.equal(page.operation.value, null);
   assert.equal(page.editable.value, true);
   page.dispose();
+});
+
+test("部分或全部导出失败只提示本次结果，保留已生成文件并保持稿件不变", async () => {
+  for (const status of ["PARTIAL", "FAILED"] as const) {
+    const page = reviewHarness();
+    await page.start();
+    const before = JSON.stringify(page.document.value);
+    const delivery: ReviewDelivery = { status, files: {
+      docx: { status: "FAILED", message: "synthetic file error" },
+      ...(status === "PARTIAL" ? { xlsx: { status: "READY", path: "D:/fixture/reviewed.xlsx" } as const } : {}),
+    }, message: "synthetic" };
+    page.handlers.export = async () => ({ ok: true, cancelled: false, delivery });
+    assert.deepEqual(await page.exportDocuments(), delivery);
+    assert.equal(JSON.stringify(page.document.value), before);
+    assert.equal(page.error.value?.describe("zh-CN"), translate("zh-CN", status === "PARTIAL" ? "reviewExportPartial" : "reviewExportFailed"));
+    assert.equal(page.operation.value, null);
+    assert.equal(page.editable.value, true);
+    page.dispose();
+  }
 });
 
 test("离页仅关闭在场连接，缓存恢复不重读或覆盖未保存稿件", async () => {

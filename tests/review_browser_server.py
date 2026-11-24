@@ -79,7 +79,6 @@ def make_review_job(workspace: Path) -> tuple[Runtime, str]:
     save_record(execution, {
         "job_id": job_id, "status": "JSON_READY", "cloud_outcome": "result_received",
         "json_path": str(destination), "result": load_transcript(destination).summary(),
-        "documents_ready": False,
     })
     delivered = export_job(runtime, job_id)
     if not delivered.get("documents_ready"):

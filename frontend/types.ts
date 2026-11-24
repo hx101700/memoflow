@@ -85,19 +85,19 @@ export interface ReviewSentence { index: number; begin_ms: number; end_ms: numbe
 export interface ReviewSpeaker { id: number; name: string }
 export interface ReviewAudio { available: boolean; name: string; kind: "original" | "mono" | "preview" | null; error: LocalizedText | null }
 export interface ReviewDelivery {
-  status: "EXPORTING" | "COMPLETE" | "PARTIAL" | "FAILED" | "OUTCOME_UNKNOWN";
-  files?: Record<string, { status: "READY" | "FAILED"; path?: string; message?: string }>;
+  status: "COMPLETE" | "PARTIAL" | "FAILED";
+  files: Record<string, { status: "READY" | "FAILED"; path?: string; message?: string }>;
   message: string;
 }
 export interface ReviewDocument {
   job_id: string; skill_version: string | null; model: string; source_name: string; revision: number;
   sentences: ReviewSentence[]; speakers: ReviewSpeaker[]; audio: ReviewAudio;
-  delivery: ReviewDelivery | null; export_revision: number | null; closed: boolean;
+  closed: boolean;
 }
 export interface ReviewEndpoints {
   "/api/review": ReviewDocument;
   "/api/review/save": { revision: number };
-  "/api/review/export": { cancelled: true } | { cancelled: false; delivery: ReviewDelivery; export_revision: number | null };
+  "/api/review/export": { ok: true; cancelled: true } | { ok: true; cancelled: false; delivery: ReviewDelivery };
   "/api/review/select-audio": { cancelled: true } | { cancelled: false; audio: ReviewAudio };
   "/api/review/prepare-audio": { audio: ReviewAudio };
 }

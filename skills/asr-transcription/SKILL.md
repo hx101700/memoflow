@@ -96,9 +96,9 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 
 执行 `PYTHON ENTRY --workspace WORKSPACE review --job JOB_ID`。宿主负责开链接时加 `--no-browser`，收到 `listening` 后由宿主打开回执 URL 一次；普通调用由工具请求系统浏览器打开，读取 `browser_request` 结果即可。失败按[开页问题](references/errors.md#页面打开问题)处理。`reused=true` 表示原页面服务仍在运行，沿用回执中的服务，不重复创建任务。此次操作只在本机使用已保存的转写结果与录音。
 
-打开后请用户逐句播放、修改正文及说话人；每句可重置为原正文与原说话人归属。修改自动保存，页面用简短状态说明是否已保存或尚待导出。点击“导出校验稿”先完成保存，再由用户选择目录；取消选择保留修改，成功后可继续编辑。把页面交给用户后结束当前回复并保留服务，正常使用不依赖截图检查。
+打开后请用户逐句播放、修改正文及说话人；每句可重置为原正文与原说话人归属。修改自动保存，页面用简短状态说明是否已保存。点击“导出校验稿”先完成保存，再由用户选择目录；取消选择保留修改，成功时页面提示本次导出完成。把页面交给用户后结束当前回复并保留服务，正常使用不依赖截图检查。
 
-用户询问校验结果时，读取 `job-status --job JOB_ID` 的 `review`：校验文档以 `review.delivery.status=COMPLETE` 为准；`review.revision` 与 `review.export_revision` 不同表示还有已保存修改尚未导出。只交付READY文件。页面或保存失败时读[人工回听问题](references/errors.md#人工回听问题)。
+用户询问校对保存状态时，读取 `job-status --job JOB_ID` 的 `review.revision`；恢复内容通过同一回听入口完成。三格式文件是一次性导出产物，成功与失败以本次导出回执为准；后续需要文件时从原始结果或当前校对稿重新导出。页面或保存失败时读[人工回听问题](references/errors.md#人工回听问题)。
 
 用户等待页面显示已保存后可直接关闭标签页；最后一个回听页面断开且10秒内没有重连时，服务自动退出，刷新或仍有其他页面时继续保留。用户明确要求Codex结束时，先提示未保存输入完成保存，再调用 `review-close --job JOB_ID` 并等待原服务退出。已保存草稿和文档保留；以后按原编号重新打开。音频无法读取时由页面重新选择原录音，工具核对内容身份；不需要重新上传或识别。完整操作见[人工回听](references/usage.md#人工回听校验)。
 
@@ -117,9 +117,9 @@ description: 在 Codex 中通过本机网页将单个录音转为带时间戳的
 ## 已有任务与交付
 
 - 用户按录音名或时间描述已有任务时，复用上述本地 `jobs` 查询定位；编号由工具提供，多个匹配再请用户选择。
-- `job-status --job JOB_ID` 读取本地记录，`RUNNING` 不证明进程仍在运行或反映云端实时状态。
+- `job-status --job JOB_ID` 读取ASR执行记录与校对稿版本；`RUNNING` 不证明进程仍在运行或反映云端实时状态。
 - 用户明确要求重导时，提示先另存人工修改，再运行一次 `export --job JOB_ID`。读取原 JSON，在固定目录覆盖三种文档，等待同一导出结束。
-- `JSON_READY` 表示 JSON 可用；`documents_ready=true` 且 `delivery.status=COMPLETE` 才表示三种文档全部保存。用 `json_path` 和 `delivery.files` 中 `READY` 项的路径交付，请用户校对。
+- `JSON_READY` 表示 JSON 可用；当次转写或导出回执的 `documents_ready=true` 且 `delivery.status=COMPLETE` 表示本次三种文件全部保存。按当次回执中的 `json_path` 和 `delivery.files` 的 `READY` 路径交付。导出结束后文件由用户自行使用、改名或编辑，任务不维护这些成品状态。
 - 转写／导出失败或结果未知时停止对应阶段，保留文件，按[错误与状态](references/errors.md)解释。每任务一次执行，不清占用或自动重传。记录、清理警告按原命令的主结果处理。
 - 当前模型因免费额度、欠费或预算限制被拒绝时，按[额度与计费提示](references/errors.md#额度与计费提示)说明原因、处理入口和原任务编号，优先引用回执的 `error.code`、`explanation` 与实际消息。用户处理后，由其明确发起新的转写；保留原任务和云端结果状态，不自动调整计费设置、换模型、换Key或重传。
 

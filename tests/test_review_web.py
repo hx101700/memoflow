@@ -53,7 +53,6 @@ class ReviewFixture(WebFixture):
         save_record(execution, {
             "job_id": self.job_id, "status": "JSON_READY", "cloud_outcome": "result_received",
             "json_path": str(self.json_path), "result": load_transcript(self.json_path).summary(),
-            "documents_ready": False,
         })
         self.original_json = self.json_path.read_bytes()
         self.original_config = self.config_path.read_bytes()
@@ -276,7 +275,8 @@ class ReviewWebTests(ReviewFixture):
         self.assertFalse(exported["cancelled"])
         self.assertEqual(exported["delivery"]["status"], "COMPLETE")
         self.assertNotIn("revision", exported)
-        self.assertEqual(exported["export_revision"], restored["revision"])
+        self.assertNotIn("export_revision", exported)
+        self.assertEqual(self.description()["revision"], restored["revision"])
         picker.assert_called_once_with(Path(self.config["document_directory"]), "export-reviewed", mode="directory")
         reviewed = {kind: Path(record["path"]) for kind, record in exported["delivery"]["files"].items()}
         self.assertEqual(set(reviewed), {"xlsx", "docx", "md"})
@@ -304,7 +304,7 @@ class ReviewWebTests(ReviewFixture):
             })
         self.assertEqual(status, 200)
         self.assertTrue(json.loads(body)["cancelled"])
-        picker.assert_called_once_with(destination, "cancel-next-export", mode="directory")
+        picker.assert_called_once_with(Path(self.config["document_directory"]), "cancel-next-export", mode="directory")
         self.cloud.assert_not_called()
 
     def test_cancelled_export_does_not_create_documents_or_change_revision(self) -> None:
@@ -321,7 +321,7 @@ class ReviewWebTests(ReviewFixture):
         self.assertTrue(json.loads(body)["cancelled"])
         picker.assert_called_once_with(original_directory, "cancel-export", mode="directory")
         self.assertEqual(self.description()["revision"], description["revision"])
-        self.assertIsNone(self.description()["delivery"])
+        self.assertNotIn("delivery", self.description())
         self.assertEqual({path: path.read_bytes() for path in self.runtime.workspace.rglob("*") if path.is_file()},
                          files_before)
         self.cloud.assert_not_called()

@@ -221,14 +221,13 @@ class DocumentReport(TypedDict):
 
 
 class DeliveryReport(TypedDict):
-    """记录本机三种格式校对稿的当前已知导出结果。"""
+    """描述本次三格式导出的结果，不作为成品持久状态。"""
 
-    status: Literal["EXPORTING", "COMPLETE", "PARTIAL", "FAILED", "OUTCOME_UNKNOWN"]
+    status: Literal["COMPLETE", "PARTIAL", "FAILED"]
     message: str
     job_id: NotRequired[str]
-    files: NotRequired[dict[str, DocumentReport]]
+    files: dict[str, DocumentReport]
     error_type: NotRequired[str]
-    export_revision: NotRequired[int]
 
 
 class ExecutionReport(TypedDict):

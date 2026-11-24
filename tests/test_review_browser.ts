@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import test, { type TestContext } from "node:test";
 import { chromium, type Browser } from "playwright";
-import type { ReviewDocument } from "../frontend/types";
+import type { ReviewDocument, ReviewEndpoints } from "../frontend/types";
 
 const repository = path.resolve(".");
 
@@ -243,15 +243,43 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await firstParagraph.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector<HTMLElement>("#review-sentence-1 .review-paragraph")?.innerText.includes("导出校验稿前"));
   assert.equal(await firstParagraph.innerText(), "导出校验稿前的合成修改。");
+  const beforeExport = await (await context.request.get(new URL("/api/review", connection.url).href)).json() as ReviewDocument;
+  const exportResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/review/export");
   await page.getByRole("button", { name: "Export reviewed documents", exact: true }).click();
-  await page.getByText("Exported", { exact: true }).waitFor();
+  await page.locator(".el-message--success").getByText("Exported", { exact: true }).waitFor();
+  const exportResult = await (await exportResponse).json() as ReviewEndpoints["/api/review/export"];
+  assert.equal(exportResult.cancelled, false);
+  if (exportResult.cancelled) throw new Error("合成导出不应取消");
   const exported = await (await context.request.get(new URL("/api/review", connection.url).href)).json() as ReviewDocument;
-  assert.equal(exported.sentences[0].text, "导出校验稿前的合成修改。");
-  assert.equal(exported.delivery?.status, "COMPLETE");
-  for (const file of Object.values(exported.delivery?.files ?? {})) {
+  assert.deepEqual(exported, beforeExport);
+  assert.equal("delivery" in exported, false);
+  assert.equal("export_revision" in exported, false);
+  assert.equal(exportResult.delivery.status, "COMPLETE");
+  for (const file of Object.values(exportResult.delivery.files)) {
     assert.equal(path.dirname(file.path!), path.join(workspace, "review_exports"));
     assert.ok((await fs.stat(file.path!)).size > 0);
     assert.equal((await page.locator("body").innerText()).includes(file.path!), false);
+  }
+  assert.equal(await page.locator("#review-save-state").innerText(), "Saved");
+  await page.locator(".el-message--success").waitFor({ state: "hidden" });
+  for (const status of ["PARTIAL", "FAILED"] as const) {
+    await page.route("**/api/review/export", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      ok: true, cancelled: false, delivery: { status, files: {
+        docx: { status: "FAILED", message: "synthetic failure" },
+        ...(status === "PARTIAL" ? { xlsx: { status: "READY", path: "D:/synthetic/completed.xlsx" } } : {}),
+      }, message: "synthetic" },
+    }) }), { times: 1 });
+    await page.getByRole("button", { name: "Export reviewed documents", exact: true }).click();
+    await page.getByText(status === "PARTIAL"
+      ? "Some reviewed documents could not be generated. Completed files and your saved edits are preserved."
+      : "Reviewed documents could not be completed. Your saved edits and original files are preserved.", { exact: true }).waitFor();
+    assert.equal(await page.locator(".el-alert").count(), 1);
+    assert.equal(await page.locator(".el-message--success").count(), 0);
+    assert.equal(await page.locator("#review-save-state").innerText(), "Saved");
+    await page.reload();
+    await firstParagraph.waitFor();
+    assert.equal(await page.locator("#review-save-state").innerText(), "Saved");
+    assert.equal(await page.locator(".el-alert").count(), 0);
   }
 
   let allowSaveFailure!: () => void;
@@ -262,22 +290,22 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
     await route.fulfill({ status: 503, contentType: "application/json",
       body: JSON.stringify({ ok: false, error: { zh: "合成保存故障，输入保留。", en: "Synthetic save failure; input preserved." } }) });
   });
-  await firstParagraph.click(); await first.fill("失败后保留且导出已过期。");
+  await firstParagraph.click(); await first.fill("保存失败后保留的修改。");
   await page.locator("#page-title").click();
   await page.getByText("Saving…", { exact: true }).waitFor();
   allowSaveFailure();
   await page.getByText("Synthetic save failure; input preserved.", { exact: true }).waitFor();
-  assert.equal(await firstParagraph.innerText(), "失败后保留且导出已过期。");
+  assert.equal(await firstParagraph.innerText(), "保存失败后保留的修改。");
   assert.equal(await page.locator(".el-alert").count(), 1);
-  assert.equal(await page.getByText("Saved · not exported", { exact: true }).count(), 0);
+  assert.equal(await page.locator("#review-save-state").count(), 0);
   await page.unroute("**/api/review/save");
   const retried = page.waitForResponse(response => new URL(response.url()).pathname === "/api/review/save");
   await page.getByRole("button", { name: "Retry saving", exact: true }).click(); await retried;
   await page.reload();
   await firstParagraph.waitFor();
-  assert.equal(await firstParagraph.innerText(), "失败后保留且导出已过期。");
+  assert.equal(await firstParagraph.innerText(), "保存失败后保留的修改。");
   assert.equal(await firstRow.locator(".review-speaker-label").innerText(), "Synthetic host");
-  await page.getByText("Saved · not exported", { exact: true }).waitFor();
+  await page.getByText("Saved", { exact: true }).waitFor();
   assert.equal(await page.locator(".el-alert").count(), 0);
   await page.locator("#review-sentence-1000").scrollIntoViewIfNeeded();
   // content-visibility在进入视口后才完成正文布局，等待实际可读文本而非仅检查DOM内容。
@@ -314,7 +342,7 @@ test("Edge阅读回听支持完整正文、重置、单一提示、导出目录�
   await restored.goto(reopened.connection.url);
   const restoredText = restored.locator("#review-sentence-1 .review-paragraph");
   await restoredText.waitFor();
-  assert.equal(await restoredText.innerText(), "失败后保留且导出已过期。");
+  assert.equal(await restoredText.innerText(), "保存失败后保留的修改。");
   assert.equal(await restored.locator("#review-sentence-1 .review-speaker-label").innerText(), "Synthetic host");
   await restored.close();
   assert.equal(await reopened.waitForExit(15_000), true);

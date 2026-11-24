@@ -89,9 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "failed", "message": str(exc)}, ensure_ascii=False))
         return 1
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 1 if (report.get("issues") or report.get("configured") is False
+    return 1 if (report.get("issues") or report.get("record_error") or report.get("configured") is False
                  or report.get("status") in ("STOPPED", "OUTCOME_UNKNOWN")
-                 or (report.get("status") == "JSON_READY" and not report.get("documents_ready"))) else 0
+                 or ("delivery" in report and report.get("documents_ready") is False)) else 0
 
 
 if __name__ == "__main__":
